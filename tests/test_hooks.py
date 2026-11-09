@@ -167,6 +167,25 @@ class InstructionsTest(HookTestCase):
         self.assertIsNone(self.hooks._pre_llm_call(session_id="s9"))
 
 
+class SystemPromptSectionTest(HookTestCase):
+    def test_section_is_for_app_chats_only(self):
+        self.add_session("s1", title="Hermes Mini")
+        self.add_session("s9", title="CLI", source="cli")
+        self.assertIn("Hermes Mini app", self.hooks._app_system_prompt({"session_id": "s1"}))
+        self.assertEqual(self.hooks._app_system_prompt({"session_id": "s9"}), "")
+
+    def test_section_covers_jobs_images_and_silence(self):
+        text = self.hooks._APP_SYSTEM_PROMPT
+        for phrase in (
+            "deliver='hermes-mini:main'",
+            "deliver='hermes-mini:<session id or exact chat title>'",
+            "MEDIA:",
+            "![description](https://",
+            "Silent rules",
+        ):
+            self.assertIn(phrase, text)
+
+
 class ProgressNudgeTest(HookTestCase):
     def test_nudges_only_in_app_chats(self):
         self.add_session("s1", title="Hermes Mini")
