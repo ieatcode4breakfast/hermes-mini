@@ -1,5 +1,10 @@
 :root {
   color-scheme: light dark;
+  /* Motion: things arrive on --ease-out (fast start, soft landing) and leave on --ease-exit (quick, out of the way);
+     --ease-spring adds a small overshoot for little pops. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
   --bg: #f5f5f7;
   --fg: #15161a;
   --muted: #6b6e78;
@@ -183,7 +188,7 @@ input, textarea, select { font-family: inherit; }
   width: 46px; height: 46px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
   color: var(--fg); background: var(--surface); border: 0; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
 }
-.fab:active { transform: scale(0.96); }
+.fab:active { transform: scale(0.93); }
 .fab svg { width: 20px; height: 20px; }
 /* Chats menu: the mirror of New chat on the left, same size and surface, no border. */
 .fab.fab-menu {
@@ -371,10 +376,10 @@ input, textarea, select { font-family: inherit; }
   transform: translateX(-50%); width: min(calc(100% - 32px), var(--col));
   pointer-events: none;
   font-size: 22px; font-weight: 500; line-height: 1.3; text-align: center; color: var(--fg);
-  text-wrap: balance; animation: empty-in 200ms ease-out both;
+  text-wrap: balance; animation: empty-in 360ms var(--ease-out) both;
 }
 @media (min-width: 600px) { .empty-state { font-size: 24px; } }
-@keyframes empty-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes empty-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 .empty-state.leaving { animation: empty-out 250ms ease-out both; }
 @keyframes empty-out { to { opacity: 0; transform: translate(-50%, 12px); } }
 .msg.first-in { animation: first-in 400ms ease-out both; }
@@ -392,7 +397,7 @@ input, textarea, select { font-family: inherit; }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
 .typing i:nth-child(2) { animation-delay: 0.2s; }
 .typing i:nth-child(3) { animation-delay: 0.4s; }
-@keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.25; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
 .narration {
   display: inline-block; margin-left: 8px; max-width: calc(100% - 44px);
   font-size: 13.5px; line-height: 1.4; color: var(--muted); vertical-align: middle;
@@ -458,16 +463,16 @@ input, textarea, select { font-family: inherit; }
 .row { display: flex; align-items: flex-end; gap: 8px; }
 /* "+" attach menu: a small popover above the button with Photos and Files. */
 .attach-wrap { position: relative; flex: 0 0 auto; }
-.icon-btn.plus svg { transition: transform 0.18s ease; }
+.icon-btn.plus svg { transition: transform 0.26s var(--ease-spring); }
 .icon-btn.plus.open svg { transform: rotate(45deg); }
 .attach-menu {
   position: absolute; bottom: calc(100% + 14px); left: 0; z-index: 20; min-width: 168px;
   display: flex; flex-direction: column; padding: 6px; gap: 2px;
   background: var(--surface); border: 0; border-radius: 16px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); transform-origin: bottom left; animation: menu-in 0.14s ease-out;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); transform-origin: bottom left; animation: menu-in 0.22s var(--ease-out);
 }
 .attach-menu[hidden] { display: none; }
-@keyframes menu-in { from { opacity: 0; transform: scale(0.94) translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes menu-in { from { opacity: 0; transform: scale(0.9) translateY(6px); } to { opacity: 1; transform: none; } }
 .menu-item {
   display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px;
   background: transparent; color: var(--fg); font: inherit; font-size: 15px; text-align: left; cursor: pointer;
@@ -494,7 +499,7 @@ textarea::-webkit-scrollbar { display: none; }
    It fades in over ~170ms with a 4px lift; the exit keeps it in the DOM so the fade can play, but pointer-events and
    the tab order are off throughout the exit. */
 .jump-latest {
-  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%) translateY(4px);
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%) translateY(8px) scale(0.9);
   width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: var(--fg); background: var(--surface);
@@ -505,7 +510,7 @@ textarea::-webkit-scrollbar { display: none; }
 .jump-latest.shown {
   opacity: 1; visibility: visible; transform: translateX(-50%);
   pointer-events: auto;
-  transition: opacity 170ms ease, transform 170ms ease, visibility 0s linear 0s;
+  transition: opacity 160ms ease-out, transform 260ms var(--ease-out), visibility 0s linear 0s;
 }
 .jump-latest[hidden] { display: none; }
 .jump-latest:active { transform: translateX(-50%) scale(0.96); }
@@ -671,19 +676,19 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 /* ---------- chats drawer (drawer.js) ---------- */
 .scrim {
   position: fixed; inset: 0; z-index: 40; background: var(--scrim); touch-action: none;
-  opacity: 0; visibility: hidden; transition: opacity 250ms ease-out, visibility 0s linear 250ms;
+  opacity: 0; visibility: hidden; transition: opacity 200ms ease-in, visibility 0s linear 200ms;
 }
-.scrim.open { opacity: 1; visibility: visible; transition: opacity 250ms ease-out, visibility 0s; }
+.scrim.open { opacity: 1; visibility: visible; transition: opacity 260ms ease-out, visibility 0s; }
 .drawer {
   position: fixed; top: 0; bottom: 0; left: 0; z-index: 41; width: min(86vw, 340px);
   display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
   padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left);
   box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
   transform: translateX(-102%); visibility: hidden; outline: none;
-  transition: transform 250ms ease-out, visibility 0s linear 250ms;
+  transition: transform 220ms var(--ease-exit), visibility 0s linear 220ms;
   touch-action: pan-y; overscroll-behavior: contain;
 }
-.drawer.open { transform: none; visibility: visible; transition: transform 250ms ease-out, visibility 0s; }
+.drawer.open { transform: none; visibility: visible; transition: transform 340ms var(--ease-out), visibility 0s; }
 .drawer.dragging { transition: none; }
 /* One horizontal system. The gutter (8px) is the list's padding and the outer edge of every row, the computer,
    New chat and the row menu. Inside each, content starts 12px in (x=20): the "+" circle, the row titles and the group
@@ -881,13 +886,13 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   position: fixed; left: 50%; top: 50%; z-index: 63; box-sizing: border-box;
   width: min(calc(100vw - 32px), 480px); padding: 24px; border-radius: 28px;
   background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
-  transform: translate(-50%, -50%) scale(0.97); opacity: 0; visibility: hidden;
-  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s linear 200ms;
+  transform: translate(-50%, -50%) scale(0.94); opacity: 0; visibility: hidden;
+  transition: transform 160ms var(--ease-exit), opacity 160ms ease-in, visibility 0s linear 160ms;
 }
 .confirm-dialog { z-index: 75; width: min(calc(100vw - 32px), 400px); }
 .rename-dialog.open, .confirm-dialog.open {
   transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible;
-  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s;
+  transition: transform 280ms var(--ease-out), opacity 160ms ease-out, visibility 0s;
 }
 .rename-title, .confirm-title { margin: 0 0 20px; font-size: 20px; font-weight: 500; line-height: 1.3; color: var(--fg); }
 .confirm-title { margin-bottom: 8px; }
@@ -933,12 +938,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   display: flex; flex-direction: column;
   width: min(calc(100vw - 32px), 440px); max-height: min(80vh, 640px); padding: 20px;
   border-radius: 28px; background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
-  transform: translate(-50%, -50%) scale(0.97); opacity: 0; visibility: hidden;
-  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s linear 200ms;
+  transform: translate(-50%, -50%) scale(0.94); opacity: 0; visibility: hidden;
+  transition: transform 160ms var(--ease-exit), opacity 160ms ease-in, visibility 0s linear 160ms;
 }
 .todo-dialog.open {
   transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible;
-  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s;
+  transition: transform 280ms var(--ease-out), opacity 160ms ease-out, visibility 0s;
 }
 /* Title centred, close at the right; the empty left column balances it. */
 .todo-head { flex: none; display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: center; gap: 8px; margin: 0 0 14px; }
@@ -1055,13 +1060,13 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
   position: fixed; left: 0; top: 0; z-index: 59; box-sizing: border-box; width: auto; min-width: 168px; margin: 0; padding: 0;
   border: 0; border-radius: 16px; background: var(--raised); color: var(--fg);
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28); transform-origin: top left;
-  opacity: 0; visibility: hidden; transform: scale(0.97);
-  transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 0s linear 140ms;
+  opacity: 0; visibility: hidden; transform: scale(0.9);
+  transition: opacity 110ms ease-in, transform 110ms var(--ease-exit), visibility 0s linear 110ms;
   overflow: hidden;
 }
 .row-menu.open {
   opacity: 1; visibility: visible; transform: none;
-  transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 0s;
+  transition: opacity 120ms ease-out, transform 220ms var(--ease-out), visibility 0s;
 }
 .row-menu-item {
   display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: 48px;
@@ -1117,16 +1122,16 @@ body.docked .drawer {
   visibility: visible;
   width: 300px;
   box-shadow: none;
-  transition: transform 250ms ease-out, visibility 0s;
+  transition: transform 340ms var(--ease-out), visibility 0s;
   border-right: 0; /* no divider */
 }
 /* Computer open: the chats panel tucks away to the left and the chat column slides over to the edge, so the computer
    gets the room. Closing the computer brings the panel back. */
 body.docked.computer-docked .drawer {
   transform: translateX(-102%); visibility: hidden;
-  transition: transform 250ms ease-out, visibility 0s linear 250ms;
+  transition: transform 220ms var(--ease-exit), visibility 0s linear 220ms;
 }
-body.docked .app { transition: margin-left 250ms ease-out; }
+body.docked .app { transition: margin-left 320ms var(--ease-out); }
 body.docked.computer-docked .app { margin-left: 0; }
 @media (prefers-reduced-motion: reduce) {
   body.docked .drawer, body.docked .app { transition: none; }
@@ -1186,7 +1191,7 @@ body.docked.computer-docked #menuBtn { display: flex; }
 body.docked.computer-docked #scrim { display: block; z-index: 71; }
 body.docked.computer-docked .drawer.open {
   transform: none; visibility: visible; z-index: 72; box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
-  transition: transform 250ms ease-out, visibility 0s;
+  transition: transform 340ms var(--ease-out), visibility 0s;
 }
 /* The panel's own pop-ups (the row menu and the rename card) follow it above the computer pane; at their usual 58-63
    they opened under the raised panel. Still below the confirm dialog (74/75). Same z for scrim
@@ -1218,7 +1223,7 @@ body.pane-resizing .bot-screen { pointer-events: none; }
    panel tucks away and its 300px goes to the computer. */
 body.docked.computer-docked.computer-three-pane .drawer {
   transform: none; visibility: visible;
-  transition: transform 250ms ease-out, visibility 0s;
+  transition: transform 340ms var(--ease-out), visibility 0s;
   box-shadow: none;
 }
 body.docked.computer-docked.computer-three-pane .drawer.open { transform: none; visibility: visible; box-shadow: none; }
@@ -1246,7 +1251,7 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
   background: color-mix(in srgb, var(--user-fg) 16%, transparent); color: var(--user-fg); cursor: pointer;
 }
 .bubble-toggle:hover { background: color-mix(in srgb, var(--user-fg) 24%, transparent); }
-.bubble-toggle svg { width: 16px; height: 16px; transition: transform 180ms ease; }
+.bubble-toggle svg { width: 16px; height: 16px; transition: transform 240ms var(--ease-out); }
 .bubble.long:not(.collapsed) .bubble-toggle svg { transform: rotate(180deg); }
 
 
@@ -1320,8 +1325,8 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
   position: fixed; left: 0; top: 0; z-index: 66; box-sizing: border-box;
   display: flex; flex-direction: column; padding: 16px 16px 12px;
   border-radius: 20px; background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
-  transform: translateY(-6px); opacity: 0; visibility: hidden;
-  transition: transform 180ms ease-out, opacity 180ms ease-out, visibility 0s linear 180ms;
+  transform: translateY(-8px) scale(0.96); transform-origin: var(--caret-x, 50%) 0; opacity: 0; visibility: hidden;
+  transition: transform 150ms var(--ease-exit), opacity 150ms ease-in, visibility 0s linear 150ms;
 }
 .inbox-dialog::before {
   content: ""; position: absolute; top: -7px; left: calc(var(--caret-x, 50%) - 8px); width: 16px; height: 16px;
@@ -1329,7 +1334,7 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
 }
 .inbox-dialog.open {
   transform: none; opacity: 1; visibility: visible;
-  transition: transform 180ms ease-out, opacity 180ms ease-out, visibility 0s;
+  transition: transform 280ms var(--ease-out), opacity 160ms ease-out, visibility 0s;
 }
 .inbox-dialog:focus { outline: none; } /* focused on open only to hold keyboard focus; no ring (inbox.js) */
 /* Chrome's frame: the title row and the tab strip are
@@ -1433,4 +1438,50 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
 }
 @media (max-width: 420px) {
   .inbox-title { font-size: 15px; }
+}
+
+/* ---------- motion polish ---------- */
+/* Round and pill buttons: a quick, soft press and smooth colour changes (Send turning into Stop, a button tinting
+   while its panel is open, the header buttons stepping back for the Inbox). */
+.fab, .icon-btn, .send, .btn, .ghost, .rename-submit, .confirm-submit, .rename-cancel, .confirm-cancel, .todo-head .todo-back {
+  transition: transform 160ms var(--ease-out), background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 180ms ease;
+}
+.icon-btn:active, .send:active:not(:disabled) { transform: scale(0.92); }
+.btn:active, .rename-cancel:active, .confirm-cancel:active,
+.rename-submit:active:not(:disabled), .confirm-submit:active:not(:disabled) { transform: scale(0.97); }
+/* Quiet icon buttons and menu rows: the hover and press tints ease in instead of snapping. Opacity is listed because
+   some of these also fade in on row hover. */
+.msg-act, .bubble .code-copy, .chat-dots, .chat-reset, .group-action, .todo-close, .todo-del, .todo-clear, .todo-additem,
+.inbox-close, .inbox-markall, .inbox-row, .edit-cancel, .dictate-cancel, .menu-item, .row-menu-item,
+.theme-switch button, .push-btn, .bubble-toggle, .drawer-new-icon {
+  transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease-out;
+}
+.todo-check { transition: background-color 140ms ease, border-color 140ms ease, transform 140ms var(--ease-out); }
+.todo-check:active:not(:disabled) { transform: scale(0.86); }
+.composer .row { transition: background-color 160ms ease; }
+/* A message you just sent rises into place from the composer's side; a reply that starts fades up. History rows
+   never carry .msg-in (app.js adds it only to live rows), so opening a chat stays instant. */
+.msg.msg-in { animation: msg-in 280ms var(--ease-out) backwards; }
+.msg.user.msg-in { transform-origin: 100% 100%; animation-name: msg-in-user; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes msg-in-user { from { opacity: 0; transform: translateY(12px) scale(0.97); } }
+/* Things that appear by losing [hidden]: the edit bar and the attachment tray rise in, a count badge pops, the
+   picture viewer fades in. */
+.edit-bar, .tray { animation: rise-in 220ms var(--ease-out) backwards; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
+.fab-count { animation: badge-pop 280ms var(--ease-spring) backwards; }
+@keyframes badge-pop { from { opacity: 0; transform: scale(0.5); } }
+.viewer { animation: viewer-in 180ms ease-out backwards; }
+@keyframes viewer-in { from { opacity: 0; } }
+/* Phones: the to-do list is a full page that slides, so it gets the drawer's timing, not the small card's. */
+@media (max-width: 640px) {
+  .todo-dialog { transition: transform 220ms var(--ease-exit), opacity 220ms ease-in, visibility 0s linear 220ms; }
+  .todo-dialog.open { transition: transform 340ms var(--ease-out), opacity 120ms ease-out, visibility 0s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg.msg-in, .edit-bar, .tray, .fab-count, .viewer, .attach-menu { animation: none; }
+  .todo-dialog, .todo-dialog.open { transition: none; }
+  .fab, .icon-btn, .send, .btn, .ghost, .rename-submit, .confirm-submit, .rename-cancel, .confirm-cancel, .todo-head .todo-back, .todo-check { transition: none; }
+  .fab:active, .icon-btn:active, .send:active:not(:disabled), .btn:active, .rename-cancel:active, .confirm-cancel:active,
+  .rename-submit:active:not(:disabled), .confirm-submit:active:not(:disabled), .todo-check:active:not(:disabled) { transform: none; }
 }

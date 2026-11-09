@@ -1749,6 +1749,7 @@ function addUserBubble(text, attachments, animateIn = false, meta = {}) {
   addMessageActions(row);
   const fly = animateIn && state.viewedEmpty;
   row.classList.toggle("first-in", fly);
+  row.classList.toggle("msg-in", animateIn && !fly); // entrance animation for a message sent just now (style.css)
   setEmptyState(false, { fly });
   els.log.append(row);
   const bubble = row.querySelector(".bubble");
@@ -2872,7 +2873,7 @@ els.log.addEventListener("click", (event) => {
 
 function ensureTurn() {
   if (!state.turn) {
-    const row = el("div", "msg assistant");
+    const row = el("div", "msg assistant msg-in");
     const bubble = el("div", "bubble");
     // The reply text is re-rendered into `content` on every paint; `status` (typing dots + narration) is a
     // separate node that is never detached while the turn streams, so the dots' CSS animation keeps running
