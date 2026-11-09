@@ -62,7 +62,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
   const listEl = $("inboxList");
   const emptyEl = $("inboxEmpty");
   // The empty state names this install's agent ("No messages from V yet" on V's), like the rest of the app's text.
-  const agentName = document.querySelector('meta[name="agent-name"]')?.content || "Mini";
+  const agentName = document.querySelector('meta[name="agent-name"]')?.content || "Hermes";
   emptyEl.textContent = `No messages from ${agentName} yet`;
   // All | Unread tabs. Unread asks the server for unread rows only (?unread=1), so it pages the
   // same way All does. A row read while the Unread tab is showing stays until the list reloads.

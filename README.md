@@ -8,9 +8,9 @@ steering, optional push notifications, dictation, and an optional bundled view o
 desktop.
 
 - **Product name**: Hermes Mini (the app's title, bookmark and install name).
-- **Agent name**: yours. On first run you confirm a name and upload a picture; nothing is preset.
-- **One plugin**: settings, state and your picture live outside the plugin, so updating the code
-  never touches them.
+- **Agent name**: the name your Hermes bot already has — the default profile's bot title first, then
+  the serving profile's — with **Hermes** as the fallback when none is set.
+- **One plugin**: settings and state live outside the plugin, so updating the code never touches them.
 
 ## Requirements
 
@@ -88,19 +88,15 @@ You do not need to open the default dashboard page first.
 
 ## First run
 
-1. Open the app. If Hermes has no model configured yet, the setup sheet says so and links to the
-   Hermes docs, but you can still finish your own setup.
-2. **Confirm your agent's name.** It is prefilled with your Hermes identity — the selected bot's
-   title, else the profile's display name, else a named profile id, else **Mini**. Edit it freely.
-3. **Upload a picture.** A neutral placeholder shows until you do. PNG, JPEG or WebP, up to 4 MB and
-   2048 px on the longest edge.
-4. Choose **Get started**. Only this save writes anything.
+There is none. Open the app and it is ready to use: the header and composer take the name Hermes
+already has for the bot — the default profile's bot title, then the serving profile's, then its
+display name or a named profile id, and finally **Hermes**. The app never renames the agent, and it
+stores no name or picture of its own.
 
-Later, the settings button in the chats panel reopens the same sheet to change the name or picture,
-and to set an optional name for the main chat row.
+If Hermes has no model configured yet, the chat says so and links to the Hermes docs; history,
+to-dos and the inbox still work.
 
-Nothing is saved before that button: opening the app, reading the page, and every capability probe
-are pure reads.
+Opening the app, reading the page, and every capability probe are pure reads.
 
 ### Configure a model
 
@@ -159,9 +155,16 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 per profile: a second Hermes profile gets its own name, picture and data, and one profile's app never
 reads another's.
 
-The optional app instructions file is `$HERMES_HOME/data/hermes-mini/app-instructions.md`. If it
-exists, its text rides along with every user message **in an app chat only** (and its subagents),
-never in Discord, cron, or another channel. The plugin ships no instructions and sets none.
+Every app chat carries a built-in turn rule: acknowledge the newest message and say in one line
+what happens next before starting work. It rides along with every user message **in an app chat
+only** (and its subagents), never in Discord, cron, or another channel.
+
+An optional file at `$HERMES_HOME/data/hermes-mini/app-instructions.md` is appended to that rule.
+Use it for extra operator instructions; the built-in acknowledgement stays.
+
+During a long turn, the plugin also asks the agent for a short progress update every four minutes,
+or every ten tool calls, so a phone user is not left watching a silent screen. It applies to app
+chats only and skips delegated subagents.
 
 ## Push notifications
 
@@ -198,8 +201,8 @@ Bot Desktop is not set up, the button is hidden.
 - **No bell.** `cryptography`/`httpx` are missing from Hermes' environment, or the browser does not
   support Push.
 - **No computer button.** Bot Desktop is unsupported or not installed on this host.
-- **The name is `Mini`.** No bot title, display name or named profile exists yet. Just type your own
-  name in setup or settings.
+- **The name is `Hermes`.** No bot title, display name or named profile exists yet. Set a bot name
+  in Hermes and the app picks it up on the next load.
 
 ## Verified, and not
 

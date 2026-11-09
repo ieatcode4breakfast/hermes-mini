@@ -1,8 +1,8 @@
 """Paths, external settings and identity priority.
 
 These exercise the contract that makes the package replaceable: nothing is written into the plugin
-directory, reads create no files, and the agent name follows "saved override, bot title, display
-name, named profile, then Mini" without ever renaming a Hermes bot or profile.
+directory, reads create no files, and the agent name follows "default-profile bot title, serving
+bot title, display name, named profile, then Hermes" without ever renaming a Hermes bot or profile.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ class SettingsTest(DisposableHome):
 class IdentityTest(DisposableHome):
     def test_defaults_to_mini_and_never_shows_generic_profile(self):
         name, source = self.core.identity_from_hermes()
-        self.assertEqual(name, "Mini")
+        self.assertEqual(name, "Hermes")
         self.assertEqual(source, "default")
         self.assertEqual(self.core.profile_label(), "")
 
@@ -112,6 +112,16 @@ class IdentityTest(DisposableHome):
         name, source = self.core.identity_from_hermes()
         self.assertEqual(name, "Navigator")
         self.assertEqual(source, "bot_title")
+
+    def test_bot_picture_is_inlined_when_the_app_has_none(self):
+        assets = self.home / "assets"
+        assets.mkdir(parents=True, exist_ok=True)
+        (assets / "avatar.png").write_bytes(images.png(32, 32))
+        url = self.core.hermes_avatar_data_url()
+        self.assertTrue(url.startswith("data:image/png;base64,"), url[:30])
+
+    def test_no_bot_picture_means_no_inline_image(self):
+        self.assertEqual(self.core.hermes_avatar_data_url(), "")
 
     def test_display_name_is_second(self):
         self.write_profile("display_name: Grace\n")
@@ -127,14 +137,14 @@ class IdentityTest(DisposableHome):
         finally:
             os.environ["HERMES_HOME"] = str(self.home)
 
-    def test_saved_override_beats_hermes_identity(self):
-        self.write_profile("display_name: Grace\n")
+    def test_hermes_bot_title_beats_a_stale_saved_name(self):
+        self.write_profile("ui_meta:\n  hermes-bots:\n    title: Vesper\n")
         settings = self.core.load_settings()
         settings["agent"]["name"] = "Ada"
         self.core.save_settings(settings)
         identity = self.core.agent_identity()
-        self.assertEqual(identity["name"], "Ada")
-        self.assertEqual(identity["source"], "app")
+        self.assertEqual(identity["name"], "Vesper")
+        self.assertEqual(identity["source"], "bot_title")
 
     def test_saving_identity_does_not_touch_profile_yaml(self):
         profile = self.write_profile("display_name: Grace\n")

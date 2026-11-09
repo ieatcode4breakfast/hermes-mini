@@ -82,7 +82,7 @@ class ServiceWorkerTest(unittest.TestCase):
     def test_scope_and_api_path(self):
         self.assertIn('"index.html"', self.text)
         self.assertIn("/api/plugins/hermes-mini/", self.text)
-        self.assertIn("const CACHE = \"hermes-mini-v1\"", self.text)
+        self.assertRegex(self.text, r'const CACHE = "hermes-mini-v\d+"')
 
     def test_install_precaches_optional_files_individually(self):
         # cache.addAll for every file would make one missing optional asset fail the whole install.

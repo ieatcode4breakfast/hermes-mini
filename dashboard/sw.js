@@ -5,7 +5,7 @@
 // correct because those files are the app. The computer viewer and its noVNC runtime are OPTIONAL_CORE:
 // each is precached on its own, and a failure there is ignored, so a desktop module that is absent can
 // never fail the app install. They are fetched on demand the first time the viewer opens anyway.
-const CACHE = "hermes-mini-v1";
+const CACHE = "hermes-mini-v18";
 const SCOPE_PATH = new URL("./", self.location.href).pathname;
 // The app is served at /dashboard-plugins/hermes-mini/ but its API lives at /api/plugins/hermes-mini/
 // (any reverse-proxy prefix in front of both is preserved). Same split app.js makes for PREFIX.
@@ -26,8 +26,8 @@ const CORE = [
   "toast.js",
   "md.js",
   "pwa.json",
-  "icon.svg",
-  "avatar-placeholder.svg",
+  "favicon-64.png",
+  "avatar-placeholder.png",
   "icon-192.png",
   "badge-96.png",
   "icon-512.png",

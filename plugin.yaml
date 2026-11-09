@@ -15,6 +15,7 @@ provides_hooks:
   - on_human_input_request
   - post_llm_call
   - pre_llm_call
+  - transform_tool_result
 provides_tools: []
 tags:
   - chat

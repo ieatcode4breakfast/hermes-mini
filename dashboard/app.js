@@ -17,9 +17,9 @@ import * as identityApi from "./identity.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "saved override, then bot title, then display name, then named
-// profile, then Mini". Until that resolves the neutral "Mini" is shown. The product name, which is what the
+// profile, then Hermes". Until that resolves the neutral "Hermes" is shown. The product name, which is what the
 // tab title and the installed app carry, stays "Hermes Mini" and is separate from the agent name.
-let AGENT = "Mini";
+let AGENT = "Hermes";
 
 // Internal stored title of the app's main chat (bridge.py HOME_TITLE). Only this app lists that row and it
 // displays the external home label, so this key is never shown to a person.
@@ -78,10 +78,10 @@ const els = {
   msgMenuScrim: $("msgMenuScrim"),
 };
 
-// Everything a person sees or a screen reader announces follows the agent name. The tab title and the
-// installed app name stay "Hermes Mini", which is the product and not the agent.
+// Everything a person sees or a screen reader announces follows the agent name, including the tab
+// title. The installed app name stays "Hermes Mini", which is the product and not the agent.
 function applyAgentBranding() {
-  document.title = "Hermes Mini";
+  document.title = AGENT;
   const appName = document.querySelector('meta[name="application-name"]');
   if (appName) appName.content = "Hermes Mini";
   const name = document.querySelector(".identity .name");
@@ -399,11 +399,38 @@ function clearLog() {
 
 // ---------- HTTP ----------
 
+// A standalone plugin page is not the dashboard SPA, so the loopback session token is not
+// injected into this document. Collect it once from the dashboard root; a gated deployment
+// withholds it and the app falls back to cookie auth.
+let sessionTokenPromise = null;
+function sessionToken() {
+  if (window.__HERMES_SESSION_TOKEN__) return Promise.resolve(window.__HERMES_SESSION_TOKEN__);
+  if (!sessionTokenPromise) {
+    sessionTokenPromise = fetch("/", { credentials: "include" })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((html) => {
+        const match = /__HERMES_SESSION_TOKEN__="([^"]+)"/.exec(html);
+        const gated = /__HERMES_AUTH_REQUIRED__=(true|false)/.exec(html);
+        if (gated) window.__HERMES_AUTH_REQUIRED__ = gated[1] === "true";
+        window.__HERMES_SESSION_TOKEN__ = match ? match[1] : "";
+        return window.__HERMES_SESSION_TOKEN__;
+      })
+      .catch(() => "");
+  }
+  return sessionTokenPromise;
+}
+window.__hermesMiniSessionToken = sessionToken;
+
 async function api(path, init = {}) {
+  const token = await sessionToken();
   const res = await fetch(PREFIX + path, {
     credentials: "include",
     ...init,
-    headers: { Accept: "application/json", ...(init.headers || {}) },
+    headers: {
+      Accept: "application/json",
+      ...(token ? { "X-Hermes-Session-Token": token } : {}),
+      ...(init.headers || {}),
+    },
   });
   if (res.status === 401) {
     let body = {};
@@ -810,10 +837,17 @@ function stopPing() {
 async function connect() {
   if (state.connecting) return state.connecting;
   state.connecting = (async () => {
-    const { ticket } = await api("/api/auth/ws-ticket", { method: "POST" });
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${location.host}${PREFIX}/api/ws?ticket=${encodeURIComponent(ticket)}`;
-    await openSocket(url);
+    let query;
+    if (window.__HERMES_AUTH_REQUIRED__) {
+      const { ticket } = await api("/api/auth/ws-ticket", { method: "POST" });
+      query = `ticket=${encodeURIComponent(ticket)}`;
+    } else {
+      // Loopback dashboards authorize the socket with the session token; only gated
+      // deployments mint single-use tickets. The dashboard SPA does the same.
+      query = `token=${encodeURIComponent(await sessionToken())}`;
+    }
+    await openSocket(`${proto}//${location.host}${PREFIX}/api/ws?${query}`);
   })().finally(() => {
     state.connecting = null;
   });
@@ -1484,9 +1518,9 @@ function targetFrom(value) {
 }
 
 // The row a target names. By row id when the push carried one; otherwise the assistant row whose text starts with the
-// match, or is the start of it when the row is shorter. Two replies can open the same way, so the one nearest the
-// notification's time wins, and one further away than the window is treated as a different message.
-// When a turn is active or streaming, falls back to the in-progress turn bubble.
+// match, or is the start of it when the row is shorter, or contains it when a tool preamble comes first. Two replies
+// can open the same way, so the one nearest the notification's time wins, and one further away than the window is
+// treated as a different message. When a turn is active or streaming, falls back to the in-progress turn bubble.
 function findTargetRow(target) {
   const rows = chatRows();
   if (target.messageId !== null) {
@@ -1505,7 +1539,7 @@ function findTargetRow(target) {
   if (!wanted) return null;
   if (state.turn && state.turn.row) {
     const turnText = squashSpace(state.turn.text || "");
-    if (turnText && (turnText.startsWith(wanted) || wanted.startsWith(turnText))) {
+    if (turnText && (turnText.startsWith(wanted) || wanted.startsWith(turnText) || turnText.includes(wanted))) {
       return state.turn.row;
     }
   }
@@ -1513,7 +1547,7 @@ function findTargetRow(target) {
     const meta = row.hermesMiniMsg;
     if (meta.role !== "assistant") return false;
     const text = squashSpace(meta.text);
-    return Boolean(text) && (text.startsWith(wanted) || wanted.startsWith(text));
+    return Boolean(text) && (text.startsWith(wanted) || wanted.startsWith(text) || text.includes(wanted));
   });
   if (candidates.length < 2 || !target.ts) return candidates[0] || null;
   let best = null;
@@ -1583,6 +1617,13 @@ async function waitForSocket(ms = 5000) {
   return state.wsReady;
 }
 
+// A tap can land while a chat switch is still starting. switchSession() refuses a second switch, so a deep link
+// that ignored that would read the chat being left and call its message missing.
+async function waitForSwitch(ms = 5000) {
+  const until = Date.now() + ms;
+  while (state.switching && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 // Opens the chat a notification named, then its message. A chat that is gone falls back to what the app shows anyway
 // (the main chat) and still says the message was not found, because it was in the chat that is missing.
 async function openTarget(id, target) {
@@ -1602,9 +1643,30 @@ async function openTarget(id, target) {
     await waitForSocket();
     if (run !== deeplinkRun) return false;
     await openPushedSession(id);
+    await waitForSwitch();
     if (run !== deeplinkRun) return false;
-    const row = state.viewedId === id ? await loadUntilFound(target) : null;
-    if (run !== deeplinkRun) return false;
+    if (state.viewedId !== id && !state.switching) {
+      // The switch that was already running belonged to another tap: open the target now.
+      await openPushedSession(id);
+      await waitForSwitch();
+      if (run !== deeplinkRun) return false;
+    }
+    let row = null;
+    if (state.viewedId === id) {
+      if (!state.turn) {
+        // A reply that just finished is still a live row with no durable id, and the history page
+        // loaded before it existed does not have it. Rebuild the page from history so the target is
+        // found by its stored row id (Inbox) or stored text (notification).
+        try {
+          await loadHistory();
+        } catch {
+          /* fall back to the rows already on screen */
+        }
+        if (run !== deeplinkRun) return false;
+      }
+      row = await loadUntilFound(target);
+      if (run !== deeplinkRun) return false;
+    }
     if (!row) {
       showToast("Message not found", "error");
       return false;
@@ -4520,9 +4582,13 @@ for (const button of document.querySelectorAll("[data-theme-choice]")) {
 
 // Docked layout: a wide window with a mouse gets three panes - the chats column on the left, the chat in
 // the middle and the computer on the right. Phones and narrow windows keep the off-canvas drawer and the
-// full-screen computer exactly as before. One query is the single source of truth; the modules receive
-// isDocked through their deps so they never import this file.
+// full-screen computer exactly as before. The modules receive isDocked through their deps so they never
+// import this file.
 const dockedQuery = window.matchMedia("(min-width: 1100px) and (hover: hover) and (pointer: fine)");
+// With the computer open, the chats column stays only while there is room for all three panes: the 300px
+// chats column, a readable chat (THREE_PANE_CHAT_MIN) and the computer's minimum (PANE_W_MIN). The state is
+// dynamic: dragging the seam to enlarge the computer past the chat's minimum hides the column even on a wide
+// window, freeing its 300px for the computer. app.js toggles body.computer-three-pane and CSS follows it.
 const isDocked = () => dockedQuery.matches;
 
 // The chats drawer (menu button, list, Pinned group, row menu) lives in drawer.js. It reads state through these
@@ -4691,9 +4757,12 @@ els.inboxBtn.addEventListener("keydown", (event) => {
 void todo.refresh();
 void inbox.refreshBadge();
 
-// The chats panel is a column only while docked and the computer is closed. With the computer open it tucks away and
-// the hamburger brings it back as an overlay, like on a phone.
-const drawerDocked = () => isDocked() && !document.body.classList.contains("computer-docked");
+// The chats panel is a column whenever the window is docked: always with the computer closed, and with it open only
+// while app.js has decided all three panes still fit. Otherwise it tucks away and the hamburger brings it back as an
+// overlay, like on a phone.
+const drawerDocked = () => isDocked()
+  && (!document.body.classList.contains("computer-docked")
+      || document.body.classList.contains("computer-three-pane"));
 const drawerApi = createDrawer({
   api,
   isDocked: drawerDocked,
@@ -4754,6 +4823,7 @@ let pushNoteTimer = 0;
 
 async function openPushedSession(id) {
   if (!id) return;
+  await waitForSwitch();
   if (id === state.homeId) {
     // The home thread is already loaded on most launches; only switch when another chat is on screen.
     if (state.viewedId !== state.homeId) await switchSession(state.homeId);
@@ -4960,20 +5030,67 @@ if (restartBtn) {
 function applyDockedLayout() {
   const docked = dockedQuery.matches;
   document.body.classList.toggle("docked", docked);
-  drawerApi.dockedChanged(drawerDocked());
+  // A window or docked-layout change re-evaluates the default fit; a deliberate seam drag can still hide
+  // the chats column afterwards.
+  wantThreePane = true;
+  applyThreePane();
   botScreen.dockedChanged(docked);
+  // Keep the seam width inside the new limits instead of letting the pane spill past the window. With no
+  // saved width yet, clamp the 440px default so the three-pane chat is at least THREE_PANE_CHAT_MIN.
+  setChatWidth(currentChatWidth());
   if (state.viewedEmpty) layoutEmpty();
 }
 
 // Drag the seam between the chat and the docked computer to resize them. The chat keeps at least
 // 320px and the computer at least 420px; the width is a per-device convenience in localStorage.
 const CHAT_W_MIN = 320;
+// Three panes only make sense when the chat itself stays readable; below this the chats column hides.
+const THREE_PANE_CHAT_MIN = 600;
 const PANE_W_MIN = 420;
+// The chats column keeps its 300px only while it is actually beside an open computer; otherwise the chat
+// starts at the window edge and the seam offset is zero.
+const drawerOffset = () => (document.body.classList.contains("computer-docked") && drawerDocked() ? 300 : 0);
 function setChatWidth(px) {
-  const max = Math.max(CHAT_W_MIN, window.innerWidth - PANE_W_MIN);
-  const width = Math.round(Math.min(Math.max(px, CHAT_W_MIN), max));
+  // Whenever the computer is open the chat keeps its readable minimum, even after the chats column tucks
+  // away; the computer takes whatever is left but never below its own minimum.
+  const min = document.body.classList.contains("computer-docked") ? THREE_PANE_CHAT_MIN : CHAT_W_MIN;
+  const max = Math.max(min, window.innerWidth - PANE_W_MIN - drawerOffset());
+  const width = Math.round(Math.min(Math.max(px, min), max));
   document.documentElement.style.setProperty("--chat-w", `${width}px`);
   return width;
+}
+const currentChatWidth = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chat-w")) || 440;
+
+// Three panes need the 300px chats column, a readable chat and the computer's minimum. The user can also
+// drag the seam past the chat's minimum: that hides the chats column and hands its 300px to the computer.
+let wantThreePane = true;
+let drawerWasDocked = null;
+let wasComputerDocked = document.body.classList.contains("computer-docked");
+
+function threePaneAllowed() {
+  if (!isDocked() || !document.body.classList.contains("computer-docked")) return false;
+  // If the panel is hidden, showing it takes 300px from the chat; test the width the chat would have
+  // afterwards, not the wider hidden chat.
+  const panelOn = document.body.classList.contains("computer-three-pane");
+  const chat = Math.max(currentChatWidth() - (panelOn ? 0 : 300), THREE_PANE_CHAT_MIN);
+  return window.innerWidth >= 300 + chat + PANE_W_MIN;
+}
+
+function applyThreePane() {
+  const wasOn = document.body.classList.contains("computer-three-pane");
+  const seam = drawerOffset() + currentChatWidth();
+  const on = wantThreePane && threePaneAllowed();
+  if (wasOn !== on) document.body.classList.toggle("computer-three-pane", on);
+  // Showing or hiding the column changes the chat's left edge, not its right edge (the seam). With the
+  // computer open, hand the 300px to/from the chat so the seam stays exactly where it was.
+  if (on !== wasOn && document.body.classList.contains("computer-docked")) {
+    setChatWidth(seam - drawerOffset());
+  }
+  const now = drawerDocked();
+  if (now !== drawerWasDocked) {
+    drawerWasDocked = now;
+    drawerApi.dockedChanged(now);
+  }
 }
 try {
   const saved = Number(localStorage.getItem("hermesMiniChatWidth"));
@@ -4993,7 +5110,21 @@ try {
   });
   split.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.id) return;
-    drag.width = setChatWidth(event.clientX);
+    // The seam is the chat's right edge. The panel only changes the chat's left edge, so the seam stays
+    // under the pointer: hiding the panel grows the chat to the left, showing it shrinks the chat back.
+    const boundary = Math.round(event.clientX);
+    const hadPanel = drawerOffset() > 0;
+    if (hadPanel && boundary < 300 + THREE_PANE_CHAT_MIN) {
+      wantThreePane = false;
+      applyThreePane();
+    } else if (!hadPanel
+               && window.innerWidth >= 300 + THREE_PANE_CHAT_MIN + PANE_W_MIN
+               && boundary >= 300 + THREE_PANE_CHAT_MIN
+               && window.innerWidth - boundary >= PANE_W_MIN) {
+      wantThreePane = true;
+      applyThreePane();
+    }
+    drag.width = setChatWidth(boundary - drawerOffset());
   });
   const end = (event) => {
     if (!drag || event.pointerId !== drag.id) return;
@@ -5016,20 +5147,25 @@ try {
       // storage blocked
     }
   });
-  // A narrower window keeps both panes above their minimums.
+  // A narrower window keeps both panes above their minimums, and a wider one can bring the chats column
+  // back after it was hidden by dragging the computer wider.
   window.addEventListener("resize", () => {
-    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chat-w"));
-    if (current) setChatWidth(current);
+    if (document.body.classList.contains("computer-docked")) wantThreePane = true;
+    applyThreePane();
+    setChatWidth(currentChatWidth());
   });
 }
 
 // The computer opening or closing (body.computer-docked) switches the chats panel between column and overlay.
-let drawerWasDocked = null;
+// It also changes how much room the chat seam may take; opening a fresh computer starts from the default fit.
 new MutationObserver(() => {
-  const now = drawerDocked();
-  if (now === drawerWasDocked) return;
-  drawerWasDocked = now;
-  drawerApi.dockedChanged(now);
+  const isOpen = document.body.classList.contains("computer-docked");
+  if (isOpen !== wasComputerDocked) {
+    wasComputerDocked = isOpen;
+    wantThreePane = true;
+  }
+  applyThreePane();
+  setChatWidth(currentChatWidth());
 }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
 if (typeof dockedQuery.addEventListener === "function") dockedQuery.addEventListener("change", applyDockedLayout);
@@ -5090,7 +5226,7 @@ autosize();
   try {
     identityApi.wire({
       onIdentity: ({ name, homeLabel }) => {
-        AGENT = name || "Mini";
+        AGENT = name || "Hermes";
         const meta = document.querySelector('meta[name="home-label"]');
         if (meta) meta.content = homeLabel || AGENT;
         applyAgentBranding();

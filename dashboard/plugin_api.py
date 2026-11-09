@@ -1668,16 +1668,18 @@ def _avatar_url(filename: str) -> str:
 def _identity_payload() -> dict[str, Any]:
     identity = core.agent_identity()
     settings = core.load_settings()
+    avatar_file = settings["agent"]["avatar"]
     return {
         "product": core.PRODUCT_NAME,
         "name": identity["name"],
         # Where the prefilled name came from, so the setup screen can explain itself.
         "name_source": identity["source"],
-        "avatar_url": _avatar_url(identity["avatar"]),
+        # An uploaded picture wins; otherwise use the picture Hermes already has for this bot.
+        "avatar_url": _avatar_url(avatar_file) if avatar_file else core.hermes_avatar_data_url(),
         "home_label": identity["home_label"],
         "onboarding_complete": settings["onboarding"]["complete"],
         "saved_name": settings["agent"]["name"],
-        "has_custom_avatar": bool(settings["agent"]["avatar"]),
+        "has_custom_avatar": bool(avatar_file),
     }
 
 

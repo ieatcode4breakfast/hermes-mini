@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- App chats now ship with the acknowledgment rule built in: the agent acknowledges a new message
+  and says in one line what happens next before starting work. An optional app-instructions file is
+  appended to the rule instead of replacing it.
+- Long app turns now ask the agent for a short progress update every four minutes, or every ten tool
+  calls, so the person watching the app sees what is happening.
+- The Computer view hides the "in control" label while the desktop is stopped; only Start Screen
+  remains.
+- Inbox and notification deep links now wait for an in-progress chat switch and reload the newest
+  history page before searching, so a reply that just finished on screen is found by its stored row
+  id. Notification text matching also accepts the pushed opening after a tool preamble.
+- Desktop: with the computer open, the chats column, active chat and computer stay visible together
+  only while the chat can be at least 600px wide and the computer at least 420px. Dragging the
+  computer wider (or shrinking the window) hides the chats column; the chat expands into its place
+  and the seam stays put. Dragging back right brings the column back the same way. The active chat
+  keeps its 820px readable column: below that width it uses the full pane, above it the text centres
+  with equal margins.
+- New default artwork: the Hermes Mini portrait is the app icon, the browser tab icon, and the
+  fallback profile picture when the Hermes profile has no picture of its own.
+- The browser tab title shows the Hermes bot name instead of the product name.
+- Removed the first-run welcome sheet and the settings editor. The app now always shows the Hermes
+  bot name — the default profile's bot title first, then the serving profile's — with `Hermes` only
+  when no name exists. No name or picture is stored by the app. The app now falls back to the
+  bot's own profile picture when no picture was uploaded through it.
+
 ## [0.1.0] — first release
 
 The first standalone release of Hermes Mini: a single Hermes plugin that serves a mobile-first chat

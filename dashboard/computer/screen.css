@@ -341,6 +341,12 @@ body.docked.computer-docked .bot-screen {
   border-left: 0; /* no divider */
 }
 
+/* Three-pane state (app.js toggles body.computer-three-pane): the chat starts 300px in, so the computer
+   starts after both. This stylesheet loads after style.css, so the offset lives here where it can win over
+   the rule above. During the close slide the body class is already gone; the pane still holds this slot. */
+body.docked.computer-docked.computer-three-pane .bot-screen,
+body.docked.computer-three-pane .bot-screen.bs-leaving-docked { left: calc(300px + var(--chat-w, 440px)); }
+
 /* The picture stays centred; the title rides down to sit just above it (screen.js sets the transform). Above the
    stage's layers so it is never covered. */
 .bs-title { position: relative; z-index: 4; }

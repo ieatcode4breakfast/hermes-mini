@@ -21,7 +21,7 @@ const HOME_TITLE = "Hermes Mini"; // app.js THREAD_TITLE
 // the plugin's settings), else the agent's own name (app.js reads the same tags). setHomeLabel keeps the two in
 // step when the identity changes at runtime.
 let homeLabel = document.querySelector('meta[name="home-label"]')?.content
-  || document.querySelector('meta[name="agent-name"]')?.content || "Mini";
+  || document.querySelector('meta[name="agent-name"]')?.content || "Hermes";
 // The PWA's own family of sessions: no source badge on these.
 const NATIVE_SOURCES = new Set(["tui"]);
 const SOURCE_LABELS = {
@@ -1295,7 +1295,7 @@ export function createDrawer(deps) {
   // setHomeLabel: the home row follows the agent name/home label without a reload (app.js calls it after the
   // identity loads or changes).
   function setHomeLabel(label) {
-    const next = String(label || "").trim() || "Mini";
+    const next = String(label || "").trim() || "Hermes";
     if (next === homeLabel) return;
     homeLabel = next;
     void refresh();

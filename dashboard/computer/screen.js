@@ -432,6 +432,9 @@ export function createBotScreen(deps) {
     if (!openFlag) return;
     const hold = iHold();
     const other = humanOther();
+    // A stopped desktop has no control to describe: hide the ownership label and leave only Start.
+    const stopped = phase === "stopped" || !!(status && status.running === false);
+    leaseBadge.hidden = stopped;
 
     leaseBadge.textContent = hold ? "You're in control" : other ? "Another viewer in control" : `${AGENT}'s in control`;
     leaseBadge.dataset.owner = hold ? "you" : other ? "other" : "agent";

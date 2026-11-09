@@ -39,7 +39,8 @@
   <!-- use-credentials: Chrome fetches the manifest without cookies by default, so a reverse proxy in front
        of the dashboard would answer its login page and the console showed a CORS error. -->
   <link rel="manifest" href="pwa.json" crossorigin="use-credentials">
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="computer/screen.css">
 </head>
@@ -53,7 +54,7 @@
       </button>
       <!-- Tapping the agent's picture or name opens the Inbox; the unread count sits on the picture. -->
       <div class="identity" id="inboxBtn" role="button" tabindex="0" aria-label="Inbox" aria-haspopup="dialog" aria-controls="inboxDialog" aria-expanded="false">
-        <img class="avatar" id="agentAvatar" src="avatar-placeholder.svg" alt="" width="64" height="64">
+        <img class="avatar loading" id="agentAvatar" alt="" width="64" height="64">
         <span id="inboxCount" class="fab-count avatar-count" hidden></span>
         <h1 class="name" id="agentName">&nbsp;</h1>
         <p id="caption" class="caption" hidden></p>
@@ -167,10 +168,6 @@
       <button id="restartBtn" class="push-btn restart-btn" type="button" aria-label="Restart Hermes" title="Restart Hermes">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg>
       </button>
-      <!-- Opens the identity and settings sheet (name, picture, home label, optional push contact). -->
-      <button id="settingsBtn" class="push-btn settings-btn" type="button" aria-label="Settings" title="Settings">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
       </div>
     </div>
   </aside>
@@ -270,35 +267,6 @@
 
   <!-- Drag handle on the invisible seam between the chat and the docked computer (wide windows only). -->
   <div id="paneSplit" class="pane-split" role="separator" aria-orientation="vertical" aria-label="Resize chat and computer" tabindex="-1"></div>
-
-  <!-- First-run setup / identity editor. Shown on top of everything until the person confirms a name and
-       uploads a picture. Nothing is written until Save. Also reachable later from the settings button. -->
-  <div id="setupScrim" class="scrim setup-scrim" aria-hidden="true"></div>
-  <div id="setupDialog" class="setup-dialog" role="dialog" aria-modal="true" aria-labelledby="setupTitle" aria-describedby="setupIntro" hidden>
-    <h2 id="setupTitle" class="setup-title">Welcome to Hermes Mini</h2>
-    <p id="setupIntro" class="setup-intro">
-      Give your agent a name and a picture. Both are stored on this Hermes install, outside the app
-      itself, so a later update keeps them.
-    </p>
-    <div class="setup-photo-row">
-      <img id="setupPreview" class="setup-preview" src="avatar-placeholder.svg" alt="Profile picture preview" width="88" height="88">
-      <div class="setup-photo-actions">
-        <button id="setupPick" class="setup-button secondary" type="button">Upload a picture</button>
-        <p class="setup-hint">PNG, JPEG or WebP, up to 4 MB.</p>
-      </div>
-      <input id="setupFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-    </div>
-    <label class="setup-label" for="setupName">Your agent's name</label>
-    <input id="setupName" class="setup-input" type="text" maxlength="60" autocomplete="off" spellcheck="false" enterkeyhint="done">
-    <label class="setup-label" for="setupHomeLabel">Name of the main chat <span class="setup-optional">(optional)</span></label>
-    <input id="setupHomeLabel" class="setup-input" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Same as the agent's name">
-    <p id="setupError" class="setup-error" role="alert" hidden></p>
-    <p id="setupProviderNote" class="setup-provider-note" hidden></p>
-    <div class="setup-actions">
-      <button id="setupCancel" class="setup-button secondary" type="button" hidden>Cancel</button>
-      <button id="setupSave" class="setup-button primary" type="button">Save</button>
-    </div>
-  </div>
 
   <script>
     // App height from the real window height, not 100dvh. After the app reloads itself on an update,

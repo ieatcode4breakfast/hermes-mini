@@ -48,7 +48,7 @@ class IdentityRoutesTest(RouteTestCase):
         response = self.client.get("/api/plugins/hermes-mini/identity")
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["name"], "Mini")
+        self.assertEqual(body["name"], "Hermes")
         self.assertFalse(body["onboarding_complete"])
         self.assertEqual(self.snapshot_tree(self.home), before)
         self.assertFalse((self.home / "hermes-mini").exists())
@@ -70,7 +70,8 @@ class IdentityRoutesTest(RouteTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
-        self.assertEqual(body["name"], "Ada")
+        # The display name always comes from Hermes; an app-side save no longer renames the agent.
+        self.assertEqual(body["name"], "Hermes")
         self.assertTrue(body["onboarding_complete"])
         self.assertTrue(body["avatar_url"].startswith("/api/plugins/hermes-mini/avatar/"))
 

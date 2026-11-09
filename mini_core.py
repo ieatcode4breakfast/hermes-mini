@@ -15,6 +15,7 @@ and mutable app state in ``$HERMES_HOME/data/hermes-mini/``.
 from __future__ import annotations
 
 import json
+import base64
 import logging
 import os
 import re
@@ -29,7 +30,7 @@ log = logging.getLogger("hermes_mini.core")
 
 PLUGIN_ID = "hermes-mini"
 PRODUCT_NAME = "Hermes Mini"
-FALLBACK_AGENT_NAME = "Mini"
+FALLBACK_AGENT_NAME = "Hermes"
 
 # Limits for the user's own profile picture. Small on purpose: it is a chat avatar, not a gallery.
 MAX_AVATAR_BYTES = 4 * 1024 * 1024
@@ -339,6 +340,68 @@ def profile_meta() -> dict[str, Any]:
     return read_document(path)
 
 
+def default_hermes_home() -> Path:
+    """The default profile's home (``~/.hermes``), also when a named profile is serving."""
+    try:
+        from hermes_constants import get_default_hermes_root  # documented plugin-safe helper
+
+        return Path(get_default_hermes_root())
+    except Exception:  # noqa: BLE001 - derive it from the active home
+        home = hermes_home()
+        if "profiles" in home.parts:
+            index = home.parts.index("profiles")
+            return Path(*home.parts[:index])
+        return home
+
+
+def bot_title(home: Path) -> str:
+    """The bot title recorded on ``home``'s ``profile.yaml``, or ``""``."""
+    meta = read_document(home / "profile.yaml")
+    ui_meta = meta.get("ui_meta") if isinstance(meta, dict) else None
+    bots = ui_meta.get("hermes-bots") if isinstance(ui_meta, dict) else None
+    return clean_name(bots.get("title")) if isinstance(bots, dict) else ""
+
+
+_HERMES_AVATAR_EXTS = ("png", "jpg", "jpeg", "webp")
+_HERMES_AVATAR_MAX_BYTES = 1_500_000
+
+
+def hermes_avatar() -> Path | None:
+    """The picture Hermes stores for the bot (``assets/avatar.<ext>``), default profile first."""
+    seen: list[Path] = []
+    for home in (default_hermes_home(), hermes_home()):
+        if home in seen:
+            continue
+        seen.append(home)
+        for ext in _HERMES_AVATAR_EXTS:
+            path = home / "assets" / f"avatar.{ext}"
+            if path.is_file():
+                return path
+    return None
+
+
+def hermes_avatar_data_url() -> str:
+    """The bot picture as an inline ``data:`` URL, or ``""``.
+
+    A plain ``<img src="/api/...">`` cannot carry the dashboard's session token, so the picture
+    travels with the identity payload instead of through a protected route. The format is taken
+    from the bytes themselves, and an oversized file is ignored rather than bloating every load.
+    """
+    path = hermes_avatar()
+    if path is None:
+        return ""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    if not data or len(data) > _HERMES_AVATAR_MAX_BYTES:
+        return ""
+    media = sniff_image_type(data)
+    if not media:
+        return ""
+    return f"data:{media};base64,{base64.b64encode(data).decode('ascii')}"
+
+
 def profile_label() -> str:
     """A non-generic profile id, or ``""``.
 
@@ -365,16 +428,15 @@ def profile_label() -> str:
 
 
 def identity_from_hermes() -> tuple[str, str]:
-    """``(name, source)`` for the serving bot/profile, without renaming anything in Hermes."""
+    """``(name, source)`` for the serving bot/profile, without renaming anything in Hermes.
+
+    The bot's name is configured on the default profile (``~/.hermes/profile.yaml``), so that
+    is read first; a named serving profile may carry its own title.
+    """
+    title = bot_title(default_hermes_home()) or bot_title(hermes_home())
+    if title:
+        return title, "bot_title"
     meta = profile_meta()
-    bot_title = ""
-    ui_meta = meta.get("ui_meta")
-    if isinstance(ui_meta, dict):
-        bots = ui_meta.get("hermes-bots")
-        if isinstance(bots, dict):
-            bot_title = clean_name(bots.get("title"))
-    if bot_title:
-        return bot_title, "bot_title"
     display = clean_name(meta.get("display_name"))
     if display:
         return display, "display_name"
@@ -387,15 +449,11 @@ def identity_from_hermes() -> tuple[str, str]:
 def agent_identity() -> dict[str, str]:
     """The name and avatar for user-facing text and images.
 
-    Priority: an explicit saved app override, then the selected Hermes bot's title, then the
-    profile's display name, then a named profile id, then ``Mini``.
+    The name is always the Hermes bot's (default profile first, then the serving profile), then
+    the display name, a named profile id, and finally ``Mini``. There is no app-level override.
     """
     settings = load_settings()
-    saved = settings["agent"]["name"]
-    if saved:
-        name, source = saved, "app"
-    else:
-        name, source = identity_from_hermes()
+    name, source = identity_from_hermes()
     return {
         "name": name,
         "source": source,

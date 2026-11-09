@@ -147,18 +147,78 @@ class NotificationTest(HookTestCase):
 
 
 class InstructionsTest(HookTestCase):
-    def test_no_instructions_by_default(self):
+    def test_default_rule_applies_only_in_app_chats(self):
         self.add_session("s1", title="Hermes Mini")
-        self.assertIsNone(self.hooks._pre_llm_call(session_id="s1"))
+        self.add_session("s9", title="CLI", source="cli")
+        self.assertEqual(
+            self.hooks._pre_llm_call(session_id="s1"),
+            {"context": self.hooks._DEFAULT_APP_INSTRUCTIONS},
+        )
+        self.assertIsNone(self.hooks._pre_llm_call(session_id="s9"))
 
-    def test_optional_instructions_apply_only_in_app_chats(self):
+    def test_optional_instructions_are_appended_in_app_chats(self):
         self.add_session("s1", title="Hermes Mini")
         self.add_session("s9", title="CLI", source="cli")
         path = self.core.instructions_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("Be brief.", encoding="utf-8")
-        self.assertEqual(self.hooks._pre_llm_call(session_id="s1"), {"context": "Be brief."})
+        expected = self.hooks._DEFAULT_APP_INSTRUCTIONS + "\n\n" + "Be brief."
+        self.assertEqual(self.hooks._pre_llm_call(session_id="s1"), {"context": expected})
         self.assertIsNone(self.hooks._pre_llm_call(session_id="s9"))
+
+
+class ProgressNudgeTest(HookTestCase):
+    def test_nudges_only_in_app_chats(self):
+        self.add_session("s1", title="Hermes Mini")
+        self.add_session("s9", title="CLI", source="cli")
+        with mock.patch.object(self.hooks.time, "monotonic", return_value=0.0):
+            self.assertIsNone(
+                self.hooks._transform_tool_result(session_id="s1", turn_id="t1", result="x")
+            )
+            self.assertIsNone(
+                self.hooks._transform_tool_result(session_id="s9", turn_id="t9", result="x")
+            )
+
+    def test_tenth_tool_call_nudges(self):
+        self.add_session("s1", title="Hermes Mini")
+        with mock.patch.object(self.hooks.time, "monotonic", return_value=0.0):
+            for _ in range(9):
+                self.assertIsNone(
+                    self.hooks._transform_tool_result(session_id="s1", turn_id="t2", result="x")
+                )
+            out = self.hooks._transform_tool_result(session_id="s1", turn_id="t2", result="x")
+        self.assertIsNotNone(out)
+        self.assertTrue(out.startswith("x"))
+        self.assertIn("PROGRESS UPDATE", out)
+
+    def test_four_minutes_nudges(self):
+        self.add_session("s1", title="Hermes Mini")
+        with mock.patch.object(self.hooks.time, "monotonic", side_effect=[0.0, 241.0]):
+            self.assertIsNone(
+                self.hooks._transform_tool_result(session_id="s1", turn_id="t3", result="x")
+            )
+            out = self.hooks._transform_tool_result(session_id="s1", turn_id="t3", result="x")
+        self.assertIsNotNone(out)
+        self.assertIn("~4 minutes", out)
+
+    def test_subagent_is_skipped(self):
+        self.add_session("s1", title="Hermes Mini")
+        with mock.patch.object(self.hooks.time, "monotonic", return_value=0.0):
+            for _ in range(10):
+                self.assertIsNone(self.hooks._transform_tool_result(
+                    session_id="s1", turn_id="t4", platform="subagent", result="x",
+                ))
+
+    def test_finished_turn_clears_the_tracker(self):
+        self.add_session("s1", title="Hermes Mini")
+        self.notified()
+        with mock.patch.object(self.hooks.time, "monotonic", return_value=0.0):
+            self.hooks._transform_tool_result(session_id="s1", turn_id="t5", result="x")
+        self.assertIn("t5", self.hooks._TURN_TRACKER)
+        self.hooks._post_llm_call(
+            session_id="s1", turn_id="t5", assistant_response="Done.", finish_reason="stop",
+        )
+        self.assertNotIn("t5", self.hooks._TURN_TRACKER)
 
 
 class GuardTest(HookTestCase):
@@ -223,7 +283,7 @@ class RegistrationTest(HookTestCase):
 
         self.hooks.register(Ctx())
         for hook in ("pre_tool_call", "pre_approval_request", "on_human_input_request",
-                     "post_llm_call", "pre_llm_call"):
+                     "post_llm_call", "pre_llm_call", "transform_tool_result"):
             self.assertIn(hook, calls)
         self.assertIn("aux:hermes_mini_narration", calls)
         self.assertIn("platform", calls)
