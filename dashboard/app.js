@@ -14,6 +14,7 @@ import { createTodo } from "./todo.js";
 import { createInbox } from "./inbox.js";
 import { showToast } from "./toast.js";
 import * as identityApi from "./identity.js";
+import { stripCronWrapper } from "./jobtext.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "saved override, then bot title, then display name, then named
@@ -576,7 +577,7 @@ function chatEntries(messages, { notices = false } = {}) {
     if (kind === "job_delivery") {
       // A scheduled job's output, stored by the bridge (bridge.py) as a labelled user-role row so the model
       // keeps strict alternation. Drawn on the agent's side, marked as a job.
-      const body = raw.replace(JOB_PREFIX, "").trim();
+      const body = stripCronWrapper(raw.replace(JOB_PREFIX, "").trim()).trim();
       if (body && !LIFECYCLE_NOTICE.test(body)) entries.push({ message: { ...message, role: "assistant" }, text: body, images: [], files: [], kind: "job" });
       continue;
     }

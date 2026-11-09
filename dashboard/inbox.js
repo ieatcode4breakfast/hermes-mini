@@ -5,6 +5,8 @@
 // The panel mirrors To-do (todo.js): one history entry per open, the same centred card on a desktop and the same
 // full-screen presentation with the active button on the left on a phone.
 
+import { stripCronWrapper } from "./jobtext.js";
+
 const INBOX_API = "/api/plugins/hermes-mini/inbox";
 const PAGE = 50;
 const TOP_PX = 4; // "at the top" is a few pixels: touch scrolls settle just off 0
@@ -102,7 +104,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
       time.dateTime = new Date(item.ts * 1000).toISOString();
       top.append(time);
     }
-    row.append(top, el("div", "inbox-text", item.text));
+    row.append(top, el("div", "inbox-text", stripCronWrapper(item.text)));
     row.addEventListener("click", () => void activate(item));
     return row;
   }

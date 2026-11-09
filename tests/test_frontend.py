@@ -143,5 +143,21 @@ class NotificationBellTest(unittest.TestCase):
         self.assertIn("if (detail.push === false) pushBtn.hidden = true;", app)
 
 
+class JobWrapperTest(unittest.TestCase):
+    def test_chat_and_inbox_apply_the_wrapper_strip(self):
+        helper = (DASHBOARD / "jobtext.js").read_text(encoding="utf-8")
+        self.assertIn("export function stripCronWrapper", helper)
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn('from "./jobtext.js"', app)
+        self.assertIn("stripCronWrapper(raw.replace(JOB_PREFIX", app)
+        inbox = (DASHBOARD / "inbox.js").read_text(encoding="utf-8")
+        self.assertIn('from "./jobtext.js"', inbox)
+        self.assertIn("stripCronWrapper(item.text)", inbox)
+
+    def test_the_helper_is_precached(self):
+        sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")
+        self.assertIn('"jobtext.js"', sw)
+
+
 if __name__ == "__main__":
     unittest.main()
