@@ -34,8 +34,12 @@ def hermes_agent_root() -> Path | None:
     candidates = [Path(configured)] if configured else []
     candidates += [Path("/root/.hermes/hermes-agent")]
     for candidate in candidates:
-        if (candidate / "tools" / "transcription_tools.py").is_file():
-            return candidate
+        try:
+            if (candidate / "tools" / "transcription_tools.py").is_file():
+                return candidate
+        except OSError:
+            # An unreadable path (another user's home, a restricted mount) is simply not a checkout.
+            continue
     return None
 
 
