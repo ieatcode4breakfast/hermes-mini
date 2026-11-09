@@ -179,11 +179,13 @@ class InstructionsTest(HookTestCase):
 
 
 class SystemPromptSectionTest(HookTestCase):
-    def test_section_is_for_app_chats_only(self):
+    def test_sections_are_for_app_chats_only(self):
         self.add_session("s1", title="Hermes Mini")
         self.add_session("s9", title="CLI", source="cli")
         self.assertIn("Hermes Mini app", self.hooks._app_system_prompt({"session_id": "s1"}))
+        self.assertIn("Talking here", self.hooks._app_style_prompt({"session_id": "s1"}))
         self.assertEqual(self.hooks._app_system_prompt({"session_id": "s9"}), "")
+        self.assertEqual(self.hooks._app_style_prompt({"session_id": "s9"}), "")
 
     def test_section_covers_jobs_images_and_silence(self):
         text = self.hooks._APP_SYSTEM_PROMPT
@@ -198,18 +200,22 @@ class SystemPromptSectionTest(HookTestCase):
         ):
             self.assertIn(phrase, text)
 
-
-class DefaultInstructionStyleTest(HookTestCase):
-    def test_builtin_rule_keeps_replies_plain(self):
-        text = self.hooks._DEFAULT_APP_INSTRUCTIONS
+    def test_style_section_keeps_replies_plain(self):
+        text = self.hooks._APP_STYLE_PROMPT
         for phrase in (
-            "[TURN RULE]",
-            "[STYLE]",
-            "Assume they do not read code or paths.",
+            "## Talking here",
+            "do not read code or paths",
             "permission to answer, not permission to dump jargon",
-            "Never show a path or command they did not ask for.",
+            "command they did not ask for",
         ):
             self.assertIn(phrase, text)
+
+
+class DefaultInstructionTest(HookTestCase):
+    def test_turn_rule_stays_small(self):
+        text = self.hooks._DEFAULT_APP_INSTRUCTIONS
+        self.assertTrue(text.startswith("[TURN RULE]"))
+        self.assertNotIn("[STYLE]", text)
 
 
 class ProgressNudgeTest(HookTestCase):

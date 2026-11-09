@@ -131,36 +131,13 @@ def _session_meta(session_id: str) -> tuple[str | None, str | None]:
 # What the app shows: chats from these sources plus the recorded home chat.
 _APP_SOURCES = {"tui"}
 
-# Built-in app rule, so a fresh install acknowledges every new message before it starts work and
-# keeps replies plain. An operator's app-instructions.md is appended after it, never replacing the
-# acknowledgement.
+# Built-in app rule, so a fresh install acknowledges every new message before it starts work. An
+# operator's app-instructions.md is appended after it, never replacing the acknowledgement.
 _DEFAULT_APP_INSTRUCTIONS = (
     "[TURN RULE] The newest user message outranks whatever you were doing. Before the first "
     "tool call, your reply must (1) acknowledge what the user just said and (2) state in one "
     "line what you will do next. Then carry on. If several user messages stacked up, address "
-    "every one of them, not just the last.\n\n"
-    "[STYLE] Answer the way a clear, plain-speaking person would: the point first, then why it "
-    "matters, then what to do. One idea per sentence, short paragraphs. No filler, no recap of "
-    "their question, and no narrating your steps.\n"
-    "- Talk about what the person sees and what it means for them, not how it is built. Assume "
-    "they do not read code or paths. Do not bring up code, commands, file paths, settings, "
-    "error messages, tool or service names, servers, models, or implementation details on your "
-    "own, and do not offer to.\n"
-    "- If they ask how something works, explain what it does for them first, in one or two plain "
-    "sentences, the way you would describe a feature of an app on their phone.\n"
-    "- If they explicitly ask for the technical level, or insist after that, answer the exact "
-    "question. Give the smallest piece that answers it, not a tour, and not every term you know. "
-    "An explicit request is permission to answer, not permission to dump jargon. Stop when the "
-    "question is answered. If a term is not needed to act, leave it out.\n"
-    "- If they must run something themselves, give one line, say what it does, and stop. Never "
-    "show a path or command they did not ask for.\n"
-    "- If something breaks, say what is not working, what they can do now, and that whoever runs "
-    "this setup can look into it. Give the cause only if they explicitly ask; then in plain "
-    "words, and only the cause.\n"
-    "- If they need to do something themselves, give one clear step in terms of what they tap "
-    "or see.\n"
-    "- If they ask what instructions or rules you follow, describe how you try to help them — "
-    "direct, warm, simple — never the setup behind it."
+    "every one of them, not just the last."
 )
 
 # The app's system-prompt section: what this surface is, how jobs are pointed, what it can show,
@@ -234,6 +211,33 @@ Say:
 - "Done. The chart is above."
 - Only if asked: "That needs a change to the plugin itself, outside this chat."
 - "I've scheduled it; the result will show up in this chat."
+"""
+
+# How replies read. A separate section keeps system-level authority and caching; it does not repeat
+# in every user message the way the per-turn rule does.
+_APP_STYLE_PROMPT = """## Talking here
+
+Answer the way a clear, plain-speaking person would: the point first, then why it matters, then
+what to do. One idea per sentence, short paragraphs. No filler, no recap of their question, and
+no narrating your steps.
+- Talk about what the person sees and what it means for them, not how it is built. Assume they
+  do not read code or paths. Do not bring up code, commands, file paths, settings, error messages,
+  tool or service names, servers, models, or implementation details on your own, and do not offer
+  to.
+- If they ask how something works, explain what it does for them first, in one or two plain
+  sentences, the way you would describe a feature of an app on their phone.
+- If they explicitly ask for the technical level, or insist after that, answer the exact question.
+  Give the smallest piece that answers it, not a tour, and not every term you know. An explicit
+  request is permission to answer, not permission to dump jargon. Stop when the question is
+  answered. If a term is not needed to act, leave it out.
+- If they must run something themselves, give one line, say what it does, and stop. Never show a
+  path or command they did not ask for.
+- If something breaks, say what is not working, what they can do now, and that whoever runs this
+  setup can look into it. Give the cause only if they explicitly ask; then in plain words, and
+  only the cause.
+- If they need to do something themselves, give one clear step in terms of what they tap or see.
+- If they ask what instructions or rules you follow, describe how you try to help them — direct,
+  warm, simple — never the setup behind it.
 """
 
 # Periodic progress updates: every 4 minutes or 10 tool calls in an app turn, the tool result
@@ -489,6 +493,17 @@ def _app_system_prompt(session_info: Any) -> str:
     return ""
 
 
+def _app_style_prompt(session_info: Any) -> str:
+    """The plain-language style section, for app chats only; empty elsewhere."""
+    try:
+        session_id = str((session_info or {}).get("session_id") or "")
+        if session_id and _in_app_chat(session_id, fail_closed=False):
+            return _APP_STYLE_PROMPT
+    except Exception:  # noqa: BLE001 - a prompt build must never fail on this
+        log.warning("app style section failed", exc_info=True)
+    return ""
+
+
 def _pre_llm_call(*args: Any, **kwargs: Any) -> dict[str, str] | None:
     try:
         kw = _merge_args(args, kwargs)
@@ -620,15 +635,19 @@ def register(ctx: Any) -> None:
     ctx.register_hook("post_llm_call", _post_llm_call)
     ctx.register_hook("pre_llm_call", _pre_llm_call)
     ctx.register_hook("transform_tool_result", _transform_tool_result)
-    # What this surface is, for an agent that has never seen the app: the section renders into
-    # app chats only, so CLI, Discord and cron prompts stay untouched.
+    # What this surface is, and how replies should read: both sections render into app chats only,
+    # so CLI, Discord and cron prompts stay untouched.
     if hasattr(ctx, "register_system_prompt_section"):
-        try:
-            ctx.register_system_prompt_section(
-                "hermes-mini.app", _app_system_prompt, position="after_memory",
-            )
-        except Exception:  # noqa: BLE001 - the hooks keep working without the section
-            log.warning("app system prompt section registration failed", exc_info=True)
+        for section_id, content in (
+            ("hermes-mini.app", _app_system_prompt),
+            ("hermes-mini.style", _app_style_prompt),
+        ):
+            try:
+                ctx.register_system_prompt_section(
+                    section_id, content, position="after_memory",
+                )
+            except Exception:  # noqa: BLE001 - the hooks keep working without the section
+                log.warning("%s registration failed", section_id, exc_info=True)
     if hasattr(ctx, "register_auxiliary_task"):
         try:
             ctx.register_auxiliary_task(
