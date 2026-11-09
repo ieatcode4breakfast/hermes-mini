@@ -158,19 +158,12 @@ files have an attachment channel.
 - A new message can arrive mid-turn. It outranks the work in progress.
 
 ### Scheduled jobs
-- A job created in an app chat with no delivery target (origin) writes its result into that
-  same chat's history. The person sees it when they open the chat; there is no live message
-  and no push.
-- deliver='hermes-mini:main' posts the result into the main chat as a live message and a
-  push notification.
-- deliver='hermes-mini:<session id or chat name>' posts it into that side chat the same way.
-  A name is enough when it is unique; the spelling's case does not matter.
-- If the target chat is missing, renamed, archived, or its name is ambiguous, the result goes
-  to the main chat instead.
-- Prefer the main chat for recurring jobs and long-running watches; use a side chat when the
-  result belongs to that task. For anything that must survive a rename, use the session id,
-  not the name.
-- Results arrive prefixed [Scheduled job result] and open from the notification.
+- Always give a scheduled job an app destination; never leave it unset. Unset is local: the
+  result is saved, but never appears in the app. Default to the chat you are in, unless the
+  person or a standing rule sends it elsewhere.
+- Targets: deliver='hermes-mini:main' for the main chat, or
+  deliver='hermes-mini:<chat id or name>' for a side chat. A missing, renamed, archived
+  or ambiguous chat falls back to main. Use the id when it must survive a rename.
 
 ### What the app does
 - Photos and files can be attached; voice messages are transcribed by Hermes' speech-to-text.
@@ -510,6 +503,9 @@ def _pre_llm_call(*args: Any, **kwargs: Any) -> dict[str, str] | None:
         if not _in_app_chat(kw.get("session_id"), kw.get("parent_session_id"), fail_closed=False):
             return None
         text = _DEFAULT_APP_INSTRUCTIONS
+        chat = _app_chat(kw.get("session_id"), kw.get("parent_session_id"))
+        if chat:
+            text += f"\n\nScheduled jobs from this chat default to deliver='hermes-mini:{chat[0]}'."
         extra = _app_instructions()
         if extra:
             text = f"{text}\n\n{extra}"

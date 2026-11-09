@@ -161,10 +161,11 @@ class InstructionsTest(HookTestCase):
     def test_default_rule_applies_only_in_app_chats(self):
         self.add_session("s1", title="Hermes Mini")
         self.add_session("s9", title="CLI", source="cli")
-        self.assertEqual(
-            self.hooks._pre_llm_call(session_id="s1"),
-            {"context": self.hooks._DEFAULT_APP_INSTRUCTIONS},
+        expected = (
+            self.hooks._DEFAULT_APP_INSTRUCTIONS
+            + "\n\nScheduled jobs from this chat default to deliver='hermes-mini:s1'."
         )
+        self.assertEqual(self.hooks._pre_llm_call(session_id="s1"), {"context": expected})
         self.assertIsNone(self.hooks._pre_llm_call(session_id="s9"))
 
     def test_optional_instructions_are_appended_in_app_chats(self):
@@ -173,7 +174,11 @@ class InstructionsTest(HookTestCase):
         path = self.core.instructions_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("Be brief.", encoding="utf-8")
-        expected = self.hooks._DEFAULT_APP_INSTRUCTIONS + "\n\n" + "Be brief."
+        expected = (
+            self.hooks._DEFAULT_APP_INSTRUCTIONS
+            + "\n\nScheduled jobs from this chat default to deliver='hermes-mini:s1'."
+            + "\n\nBe brief."
+        )
         self.assertEqual(self.hooks._pre_llm_call(session_id="s1"), {"context": expected})
         self.assertIsNone(self.hooks._pre_llm_call(session_id="s9"))
 
@@ -191,9 +196,11 @@ class SystemPromptSectionTest(HookTestCase):
         text = self.hooks._APP_SYSTEM_PROMPT
         for phrase in (
             "deliver='hermes-mini:main'",
-            "deliver='hermes-mini:<session id or chat name>'",
+            "deliver='hermes-mini:<chat id or name>'",
+            "never leave it unset",
+            "Default to the chat you are in",
             "missing, renamed, archived",
-            "use the session id",
+            "Use the id when it must survive a rename",
             "MEDIA:",
             "![description](https://",
             "Silent rules",
