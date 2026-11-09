@@ -67,6 +67,7 @@ def _sibling(name: str, filename: str):
 
 
 core = _sibling("hermes_mini_core", "mini_core.py")
+_policy = _sibling("hermes_mini_message_policy", "message_policy.py")
 
 MAX_BODY_BYTES = 8 * 1024
 MAX_EVENTS = 12
@@ -622,6 +623,7 @@ def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | No
         if kind != "job_delivery":
             return None
         body = core.strip_cron_wrapper(JOB_PREFIX.sub("", _row_text(row), count=1).strip())
+        body = _policy.display_text(body, notice=True)
         if not body or LIFECYCLE_NOTICE.match(body):
             return None
         text = body
@@ -636,7 +638,7 @@ def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | No
             tc = row["tool_calls"]
             if tc and str(tc) not in ("", "[]"):
                 return None
-        text = _row_text(row)
+        text = _policy.display_text(_row_text(row))
         if not text or _is_silence_marker(text):
             return None
     else:

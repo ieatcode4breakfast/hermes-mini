@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = PROJECT_ROOT / "dashboard"
 
 # Fixed module names the two halves of the plugin use to share implementations.
-SHARED_MODULES = ("hermes_mini_core", "hermes_mini_push", "hermes_mini_app_chats", "hermes_mini_bridge")
+SHARED_MODULES = ("hermes_mini_core", "hermes_mini_push", "hermes_mini_app_chats", "hermes_mini_bridge", "hermes_mini_message_policy")
 
 
 def hermes_agent_root() -> Path | None:

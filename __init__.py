@@ -43,6 +43,7 @@ def _sibling(name: str, filename: str):
 
 
 mini_core = _sibling("hermes_mini_core", "mini_core.py")
+_policy = _sibling("hermes_mini_message_policy", "message_policy.py")
 
 log = logging.getLogger("hermes_mini.hooks")
 
@@ -138,6 +139,18 @@ _DEFAULT_APP_INSTRUCTIONS = (
     "tool call, your reply must (1) acknowledge what the user just said and (2) state in one "
     "line what you will do next. Then carry on. If several user messages stacked up, address "
     "every one of them, not just the last."
+)
+
+_DEFAULT_APP_INSTRUCTIONS += (
+    "\n[APP PRESENTATION] Do not append first-contact introductions, /help suggestions, "
+    "profile-building offers or onboarding tips to a task reply, even if a first-contact "
+    "note asks you to. This app already presents your identity. Normal greetings and "
+    "answers to explicit questions about your identity or profile are welcome. "
+    "This app has no slash-command interface: never recommend /help, /busy, /verbose, "
+    "/model, /retry, /compress, /logs or other slash commands unless the user explicitly "
+    "asks about using another Hermes interface. For a failed reply, explain what failed "
+    "briefly in ordinary language; suggest sending the message again or starting a new "
+    "chat from the menu when appropriate. Do not volunteer configuration or repair commands."
 )
 
 # The app's system-prompt section: what this surface is, how jobs are pointed, what it can show,
@@ -397,7 +410,8 @@ def _post_llm_call(*args: Any, **kwargs: Any) -> None:
                     return None
         except Exception:
             pass
-        body = _clip(_plain(response))
+        shown = _policy.display_text(response)
+        body = _clip(_plain(shown))
         if not body:
             return None
         # Hermes hands this hook no row id, so the notification carries the reply's opening instead:

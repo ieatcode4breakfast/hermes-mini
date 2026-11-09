@@ -51,6 +51,7 @@ def _sibling(name: str, filename: str):
 
 
 mini_core = _sibling("hermes_mini_core", "mini_core.py")
+_policy = _sibling("hermes_mini_message_policy", "message_policy.py")
 
 log = logging.getLogger("hermes_mini.bridge")
 
@@ -177,10 +178,11 @@ def deliver_text(content: str, target: str = "main") -> dict[str, Any]:
     text = mini_core.strip_cron_wrapper((content or "").strip())
     if not text:
         return {"error": "bridge: empty message"}
-    if _LIFECYCLE_NOTICE.match(text):
+    if _LIFECYCLE_NOTICE.match(text) or not _policy.display_text(text, notice=True):
         # Gateway shutdown/restart notices are machinery, not news: never stored in the app.
         log.info("bridge: dropped a gateway lifecycle notice")
         return {"success": True, "message_id": "suppressed-lifecycle-notice"}
+    text = _policy.display_text(text, notice=True)
     try:
         from hermes_state import SessionDB
 

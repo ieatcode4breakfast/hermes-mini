@@ -12,6 +12,16 @@ desktop.
   the serving profile's — with **Hermes** as the fallback when none is set.
 - **One plugin**: settings and state live outside the plugin, so updating the code never touches them.
 
+## Automatic messages
+
+Mini suppresses routine gateway lifecycle notices and first-time command tips delivered through
+its bridge. App-only turn instructions discourage unsolicited introductions and profile offers
+in existing and new chats. The known legacy introduction is hidden in live replies, history,
+inbox and push previews. This is a narrow compatibility filter, not a general classifier of
+model-written introductions. Failure templates retain a short explanation without unsupported
+slash commands. Original assistant transcripts remain unchanged; filtered bridge deliveries are
+not stored. Quoted examples and code are preserved. Other Hermes interfaces are unaffected.
+
 ## Requirements
 
 | | |

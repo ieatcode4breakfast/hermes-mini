@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Added app-scoped onboarding guidance and presentation filters for known introductions, routine
+  gateway notices, command tips and canned failure instructions. Covers streaming, transcript
+  display, inbox and push previews. Offline parity and integration tests exercise these paths;
+  real phone/PWA and live gateway delivery verification still require a manual check.
+
+
 - App chats now receive a separate style section: the point first, no code or file paths, no jargon
   unless explicitly asked, and then only the smallest piece that answers the question.
 - The app instructions now tell the agent to use a session id for long-lived jobs and that a missing

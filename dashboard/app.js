@@ -7,6 +7,7 @@
 //  - after gateway.ready the client advertises client.capabilities {server_requests: true}, otherwise the
 //    backend treats it as an old client and fails approvals and clarify immediately
 
+import { displayText, failureText } from "./message-policy.js";
 import { render as renderMarkdown, enhance, copyText, makeCopyButton, COPY_ICON } from "./md.js";
 import { createDrawer, sourceLabel } from "./drawer.js";
 import { confirmDialog } from "./confirm.js";
@@ -571,20 +572,20 @@ function chatEntries(messages, { notices = false } = {}) {
     const raw = typeof message.display_content === "string" ? message.display_content.trim() : messageText(message);
     if (kind === "failed_turn") {
       // Hermes closing a failed turn, not the agent speaking: a small muted line.
-      if (notices && raw) entries.push({ message, text: raw, images: [], files: [], kind: "fail" });
+      if (notices && raw) entries.push({ message, text: failureText(raw), images: [], files: [], kind: "fail" });
       continue;
     }
     if (kind === "job_delivery") {
       // A scheduled job's output, stored by the bridge (bridge.py) as a labelled user-role row so the model
       // keeps strict alternation. Drawn on the agent's side, marked as a job.
-      const body = stripCronWrapper(raw.replace(JOB_PREFIX, "").trim()).trim();
+      const body = displayText(stripCronWrapper(raw.replace(JOB_PREFIX, "").trim()), { notice: true });
       if (body && !LIFECYCLE_NOTICE.test(body)) entries.push({ message: { ...message, role: "assistant" }, text: body, images: [], files: [], kind: "job" });
       continue;
     }
     if (message.role === "user" && LEGACY_HEARTBEAT.test(raw)) continue;
     const images = [];
     const files = [];
-    let text = raw;
+    let text = message.role === "assistant" ? displayText(raw) : raw;
     if (message.role === "user") {
       text = text.replace(ATTACHED_CONTEXT_TAIL, "").replace(CONTEXT_WARNINGS_TAIL, "");
       // The server appends an internal @image: reference to a prompt that carried an image (rendered as a thumbnail) and
@@ -2908,7 +2909,7 @@ function paintTurn(turn) {
   const near = nearBottom();
   turn.content.textContent = "";
   if (turn.text) {
-    turn.content.insertAdjacentHTML("beforeend", renderMarkdown(turn.text));
+    turn.content.insertAdjacentHTML("beforeend", renderMarkdown(displayText(turn.text, { streaming: state.streaming })));
     enhance(turn.content);
   }
   turn.status.hidden = !state.streaming;
@@ -2955,6 +2956,7 @@ function finishTurn() {
     if (turn.timer) clearTimeout(turn.timer);
     turn.raf = 0;
     turn.timer = 0;
+    turn.text = displayText(turn.text);
     paintTurn(turn);
     turn.status.remove(); // the finished reply keeps only its text
     if (turn.text) {
@@ -3203,13 +3205,13 @@ function onEvent(event) {
         const turn = ensureTurn();
         turn.text = turn.prefix && turn.prefix.trim() !== text.trim() ? turn.prefix + text : text;
       }
-      if (typeof payload.warning === "string" && payload.warning) sysLine(payload.warning);
+      if (typeof payload.warning === "string" && payload.warning) sysLine(failureText(payload.warning));
       finishTurn();
       inbox.messageComplete(); // refresh the Inbox head and badge
       break;
     }
     case "error": {
-      sysLine(payload.message || "Something went wrong.");
+      sysLine(failureText(payload.message || "Something went wrong."));
       finishTurn();
       break;
     }
