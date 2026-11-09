@@ -124,7 +124,6 @@ const state = {
   switching: false, // a chat switch is in flight
   liveSid: null,
   viewedEmpty: false, // the chat on screen has no messages yet (a New chat that is not sent)
-  creatingChat: null, // the in-flight New chat request, so a double press makes one chat
   pending: new Map(),
   reqSeq: 0,
   pingTimer: null,
@@ -982,16 +981,15 @@ function persistView() {
   safeStorageSet(VIEW_KEY, state.viewedUnsent ? NEW_VIEW : state.viewedId);
 }
 
-// Starts an untitled chat on the server and shows it: empty log, greeting, composer ready. Used by New chat and,
-// silently, when an unsent chat is no longer live after a reload or reconnect. RPC errors are thrown to the caller.
-async function openFreshChat(opts = {}) {
-  const created = await rpc("session.create", {});
-  registerAppChat(created.stored_session_id);
-  state.viewedId = created.stored_session_id;
+// A New chat is a local draft: no server session and no registry tag until the first message. It is shown at once,
+// keeps the greeting and the composer, and is remembered as NEW_VIEW so a reload starts another draft.
+function openDraft(opts = {}) {
+  // The chat being left was on screen until now, so everything in it so far was seen.
+  if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
+  state.viewedId = null;
   state.viewedUnsent = true;
-  persistView();
-  state.storedId = created.stored_session_id;
-  state.liveSid = created.session_id;
+  state.storedId = null;
+  state.liveSid = null;
   state.viewedTitle = "";
   state.streaming = false;
   state.turn = null;
@@ -1003,36 +1001,27 @@ async function openFreshChat(opts = {}) {
   state.composerLocked = false;
   state.ready = true;
   updateComposer();
+  persistView();
+  refreshDockedDrawer();
 }
 
-// The New chat that was never sent has no saved row, so it can be resumed only while its runtime is still live.
-// If it is still live and still empty, it stays on screen. Otherwise a fresh New chat opens silently. No note either way.
+// Creates the real chat for the first message. The draft view is already on screen, so this only adds the session and
+// its id; the composer keeps what the person typed. RPC errors are thrown to the caller.
+async function openFreshChat() {
+  const created = await rpc("session.create", {});
+  state.viewedId = created.stored_session_id;
+  state.viewedUnsent = true;
+  state.storedId = created.stored_session_id;
+  state.liveSid = created.session_id;
+  state.viewedTitle = "";
+  state.ready = true;
+  persistView();
+  updateCaption();
+}
+
+// A New chat has no server id now: on boot or a reconnect it is simply a fresh draft.
 async function attachUnsent() {
-  if (state.viewedId) {
-    try {
-      const resumed = await rpc("session.resume", { session_id: state.viewedId });
-      if (Number(resumed.message_count) === 0) {
-        state.liveSid = resumed.session_id;
-        state.storedId = state.viewedId;
-        state.viewedTitle = "";
-        state.streaming = false;
-        state.turn = null;
-        for (const id of [...state.cards.keys()]) removeCard(id);
-        clearLog();
-        setEmptyState(true);
-        setReadOnly(false);
-        updateCaption();
-        state.composerLocked = false;
-        state.ready = true;
-        updateComposer();
-        return;
-      }
-    } catch (error) {
-      if (error instanceof AuthRedirect || isConnectionError(error)) throw error;
-      // Not found (the chat was never saved) or any other refusal: open a fresh New chat below.
-    }
-  }
-  await openFreshChat();
+  openDraft();
 }
 
 // Attaches the chat on screen: the one remembered in state.viewedId, or the home thread. A chat that no longer
@@ -1177,21 +1166,22 @@ function restoreScroll(id) {
 // Switches the chat on screen (drawer selection, Delete of the open chat). Chats get a live runtime like the home
 // thread.
 async function switchSession(id) {
-  if (!id || id === state.viewedId || state.switching || state.resettingMain) return;
+  if (!id || id === state.viewedId || state.switching || state.sending || state.resettingMain) return;
   if (!state.wsReady) {
     sysLine("Not connected yet. Try again in a moment.");
     return;
   }
   state.switching = true;
   rememberScroll();
-  state.viewedUnsent = false;
   const leaving = state.viewedId;
+  const leavingUnsent = state.viewedUnsent;
+  state.viewedUnsent = false;
   state.viewedId = id;
   persistView();
   drawerApi.markSeen(id); // opening a chat is what clears its unread dot
   // The chat being left was on screen until now, so everything in it so far was seen: a job result or background
   // follow-up that landed while it was open must not come back as a dot (ghost-dot fix, 7 Nov 2026).
-  if (leaving) drawerApi.markSeen(leaving);
+  if (leaving && !leavingUnsent) drawerApi.markSeen(leaving);
   state.viewedTitle = "";
   state.ready = false;
   state.streaming = false;
@@ -1384,6 +1374,7 @@ function newRequestId() {
 // Whether a server request (approval, clarify) belongs to the chat on screen.
 function belongsToView(params) {
   if (state.readOnly) return false; // a read-only chat has no live runtime here, so nothing is asked of it
+  if (state.viewedUnsent && !state.liveSid) return false; // a draft has no runtime to ask anything of
   return !state.liveSid || !params.session_id || params.session_id === state.liveSid;
 }
 
@@ -2976,7 +2967,7 @@ function finishTurn() {
   }
   state.turn = null;
   updateComposer();
-  drawerApi.markSeen(state.viewedId); // a reply that finished on screen is read
+  if (!state.viewedUnsent) drawerApi.markSeen(state.viewedId); // a reply that finished on screen is read
   refreshDockedDrawer(); // a finished reply may have set the chat's title
 }
 
@@ -3156,6 +3147,8 @@ function onEvent(event) {
   }
   // A read-only chat has no live runtime here: any event on this socket belongs to another chat.
   if (state.readOnly) return;
+  // A draft has no runtime either: ignore every chat event, including un-keyed ones.
+  if (state.viewedUnsent && !state.liveSid) return;
   if (event.session_id && state.liveSid && event.session_id !== state.liveSid) return;
 
   switch (type) {
@@ -3867,10 +3860,26 @@ async function send() {
   if (state.editing) return submitEdit();
   const text = expandPastes(els.input.value).trim();
   const attachments = state.attachments.slice();
+  const saved = { text: els.input.value, attachments, pastes: state.pastes.slice() };
   if (!text && !attachments.length) return;
-  if (!state.ready || !state.liveSid) {
+  if (!state.ready) {
     sysLine("Not connected yet. Try again in a moment.");
     return;
+  }
+  if (!state.liveSid) {
+    if (!state.viewedUnsent) {
+      sysLine("Not connected yet. Try again in a moment.");
+      return;
+    }
+    // A New chat is a draft: the first message is what creates the real chat.
+    state.sending = true;
+    try {
+      await openFreshChat();
+    } catch (error) {
+      state.sending = false;
+      sysLine(`Could not start the chat: ${errorText(error)}`);
+      return;
+    }
   }
 
   // No turn is running but a card is still open (edge case): closing it first releases the tool, then the text goes
@@ -3879,9 +3888,9 @@ async function send() {
 
   state.sending = true;
   state.narration.request = text;
-  const saved = { text: els.input.value, attachments, pastes: state.pastes.slice() };
   clearComposer();
   addUserBubble(text, attachments, true);
+  const userRow = els.log.lastElementChild; // the optimistic bubble, removed if a first send fails
   state.streaming = true;
   scheduleTurnPaint(ensureTurn());
   updateComposer();
@@ -3916,6 +3925,7 @@ async function send() {
       // The first message saves the chat on the server, so from now on its real id is remembered for a reload.
       state.viewedUnsent = false;
       persistView();
+      refreshDockedDrawer();
     }
   } catch (error) {
     // Nothing was submitted: give the text and attachments back so the user can retry.
@@ -3926,6 +3936,11 @@ async function send() {
     state.pastes = saved.pastes;
     renderTray();
     finishTurn();
+    if (state.viewedUnsent) {
+      // The first send failed: the chat never became real, so leave no bubble or empty turn behind.
+      userRow?.remove();
+      setEmptyState(true);
+    }
   } finally {
     state.sending = false;
   }
@@ -4015,12 +4030,10 @@ function autosize() {
   el.style.overflowY = want > max ? "auto" : "hidden";
 }
 
-// New chat starts a brand-new, untitled chat (Hermes titles it after the first message) and shows it at once. The
-// main chat (state.homeId) is never renamed or replaced. Pressing New chat on an empty chat that was never sent keeps
-// that chat and creates nothing.
+// New chat opens a local draft, titled after the first message. The main chat (state.homeId) is never renamed or
+// replaced. Pressing New chat on an empty draft keeps it and creates nothing.
 function newChat() {
-  if (state.resettingMain) return Promise.resolve(); // the reset owns the view and the next home thread
-  if (state.creatingChat) return state.creatingChat;
+  if (state.resettingMain || state.sending || state.switching) return Promise.resolve(); // never move the view mid-send
   if (!state.ready && !state.readOnly) {
     sysLine("Not connected yet. Try again in a moment.");
     return Promise.resolve();
@@ -4029,23 +4042,10 @@ function newChat() {
     els.input.focus();
     return Promise.resolve();
   }
-  state.creatingChat = (async () => {
-    const wasReady = state.ready;
-    state.switching = true;
-    state.ready = false;
-    rememberScroll();
-    try {
-      await openFreshChat({ lower: true });
-      els.input.focus();
-    } catch (error) {
-      state.ready = wasReady;
-      sysLine(`Could not start a new chat: ${errorText(error)}`);
-    } finally {
-      state.switching = false;
-      state.creatingChat = null;
-    }
-  })();
-  return state.creatingChat;
+  rememberScroll();
+  openDraft({ lower: true });
+  els.input.focus();
+  return Promise.resolve();
 }
 
 // ---------- Voice dictation (Hermes' configured speech-to-text provider) ----------
@@ -5194,12 +5194,12 @@ applyDockedLayout();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") {
     // Leaving the app: what was on screen up to now was seen, wherever it came from (ghost-dot fix, 7 Nov 2026).
-    if (state.viewedId) drawerApi.markSeen(state.viewedId);
+    if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
     return;
   }
   // Back on the page: the chat on screen is read, and the list picks up activity that arrived meanwhile
   //.
-  if (state.viewedId) drawerApi.markSeen(state.viewedId);
+  if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
   refreshDrawerActivity();
   void todo.refresh(); // to-dos may have changed on another device while the app was away
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {

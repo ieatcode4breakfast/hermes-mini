@@ -91,6 +91,7 @@ function normalize(raw) {
     title: String(raw.title || "").trim(),
     preview,
     source: raw.source || "",
+    messageCount: Number(raw.message_count || 0),
     last_active: Number(raw.last_active || raw.session_started || raw.started_at || 0),
     pinned: Boolean(raw.pinned),
     archived: Boolean(raw.archived), // the pin back-fill can return an archived pinned row; the list never shows one
@@ -102,7 +103,10 @@ function normalize(raw) {
 // dashboard-page chat with the same source stays out. Until it loads, or if it cannot, the
 // source rule stands in, so the list is never empty because of it.
 function isListed(item, homeId, appChats, viewedId) {
-  if (item.id === homeId || item.id === viewedId) return true;
+  if (item.id === homeId) return true;
+  // A zero-message chat is a draft or an abandoned launch, not a conversation yet.
+  if (item.messageCount === 0) return false;
+  if (item.id === viewedId) return true;
   if (!REPLYABLE_SOURCES.has(item.source)) return false;
   return !appChats || appChats.has(item.id);
 }
