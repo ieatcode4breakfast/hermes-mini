@@ -166,7 +166,9 @@ The app's own registry, `$HERMES_HOME/data/hermes-mini/app-chats.json`, also rec
 id. That id, not the chat's name, is how the app and scheduled-job delivery find the home.
 
 Every app chat carries a built-in turn rule: acknowledge the newest message and say in one line
-what happens next before starting work. It rides along with every user message **in an app chat
+what happens next before starting work. A style rule follows it: plain answers, no code or file
+paths, no jargon unless the person explicitly asks for the technical level, and then only the
+smallest piece that answers the question. Both ride along with every user message **in an app chat
 only** (and its subagents), never in Discord, cron, or another channel.
 
 The plugin also contributes a system-prompt section (`hermes-mini.app`) to app chats only,

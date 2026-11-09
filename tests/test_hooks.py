@@ -199,6 +199,19 @@ class SystemPromptSectionTest(HookTestCase):
             self.assertIn(phrase, text)
 
 
+class DefaultInstructionStyleTest(HookTestCase):
+    def test_builtin_rule_keeps_replies_plain(self):
+        text = self.hooks._DEFAULT_APP_INSTRUCTIONS
+        for phrase in (
+            "[TURN RULE]",
+            "[STYLE]",
+            "Assume they do not read code or paths.",
+            "permission to answer, not permission to dump jargon",
+            "Never show a path or command they did not ask for.",
+        ):
+            self.assertIn(phrase, text)
+
+
 class ProgressNudgeTest(HookTestCase):
     def test_nudges_only_in_app_chats(self):
         self.add_session("s1", title="Hermes Mini")

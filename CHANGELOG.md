@@ -17,6 +17,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- App chats now carry a plain-language style rule: the point first, no code or file paths, no
+  jargon unless explicitly asked, and then only the smallest piece that answers the question.
 - The app instructions now tell the agent to use a session id for long-lived jobs and that a missing
   or renamed chat falls back to the main chat.
 - App chats now ship with the acknowledgment rule built in: the agent acknowledges a new message
