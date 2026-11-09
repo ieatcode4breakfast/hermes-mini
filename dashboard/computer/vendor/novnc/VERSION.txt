@@ -1,0 +1,7 @@
+noVNC 1.7.0 browser modules for the bundled computer viewer.
+Source: npm @novnc/novnc@1.7.0 (package tarball novnc-novnc-1.7.0.tgz).
+Vendored unmodified: core/ and vendor/pako/ (ES modules, no build step). The npm package is
+browser-ready: rfb.js uses relative imports only and has no Node dependencies.
+Licence: MPL-2.0 for core/ (see LICENSE.txt); pako is MIT (see vendor/pako/LICENSE).
+Re-vendor: npm pack @novnc/novnc@1.7.0 && tar xzf novnc-novnc-1.7.0.tgz && copy package/core,
+package/vendor and package/LICENSE.txt here.

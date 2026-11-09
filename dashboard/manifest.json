@@ -1,0 +1,12 @@
+{
+  "name": "hermes-mini",
+  "label": "Hermes Mini",
+  "description": "Mobile-first chat app for your Hermes agent",
+  "icon": "MessageSquare",
+  "version": "0.1.0",
+  "tab": {
+    "hidden": true
+  },
+  "entry": "noop.js",
+  "api": "plugin_api.py"
+}

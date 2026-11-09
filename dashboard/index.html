@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <!-- The product name is fixed. The agent name is the user's own, filled in from /identity after first paint. -->
+  <title>Hermes Mini</title>
+  <meta name="application-name" content="Hermes Mini">
+  <meta name="agent-name" content="">
+  <meta name="home-label" content="">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+  <script>
+    // Appearance chosen in the chats panel (System / Light / Dark), applied before first paint so there is no flash.
+    try {
+      var savedTheme = localStorage.getItem("hermesMiniTheme");
+      if (savedTheme === "light" || savedTheme === "dark") {
+        document.documentElement.dataset.theme = savedTheme;
+        var barColor = savedTheme === "dark" ? "#111214" : "#f5f5f7";
+        document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.content = barColor; });
+      }
+    } catch (e) {}
+  </script>
+  <script>
+    // Input modality: hover effects and touch behaviour follow the LAST input, not the device type, so a
+    // tablet with a trackpad gets hover while the mouse is in use and touch behaviour once tapped.
+    // style.css keys off :root[data-input="mouse" | "touch"].
+    (function () {
+      var root = document.documentElement;
+      var set = function (mode) { if (root.dataset.input !== mode) root.dataset.input = mode; };
+      try { set(window.matchMedia("(hover: hover)").matches ? "mouse" : "touch"); } catch (e) { set("touch"); }
+      var fromEvent = function (event) { set(event.pointerType === "mouse" ? "mouse" : "touch"); };
+      window.addEventListener("pointerdown", fromEvent, { capture: true, passive: true });
+      window.addEventListener("pointermove", function (event) {
+        if (event.pointerType === "mouse") set("mouse");
+      }, { capture: true, passive: true });
+    })();
+  </script>
+  <!-- use-credentials: Chrome fetches the manifest without cookies by default, so a reverse proxy in front
+       of the dashboard would answer its login page and the console showed a CORS error. -->
+  <link rel="manifest" href="pwa.json" crossorigin="use-credentials">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="computer/screen.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Floating header over the chat: chats menu (left), the agent's picture with a name pill (centre),
+         the computer and to-do buttons (right). -->
+    <header class="topbar">
+      <button id="menuBtn" class="fab fab-menu" type="button" aria-label="Chats" aria-controls="drawer" aria-expanded="false" title="Chats">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <!-- Tapping the agent's picture or name opens the Inbox; the unread count sits on the picture. -->
+      <div class="identity" id="inboxBtn" role="button" tabindex="0" aria-label="Inbox" aria-haspopup="dialog" aria-controls="inboxDialog" aria-expanded="false">
+        <img class="avatar" id="agentAvatar" src="avatar-placeholder.svg" alt="" width="64" height="64">
+        <span id="inboxCount" class="fab-count avatar-count" hidden></span>
+        <h1 class="name" id="agentName">&nbsp;</h1>
+        <p id="caption" class="caption" hidden></p>
+        <span id="status" class="status" aria-live="polite">Connecting…</span>
+      </div>
+      <!-- Opens the optional desktop viewer. Hidden when the capability probe says it is unavailable. -->
+      <button id="screenBtn" class="fab" type="button" aria-label="Computer" title="Computer">
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      </button>
+      <!-- To-do list, directly under the Computer button. The badge counts the open items. -->
+      <button id="todoBtn" class="fab fab-todo" type="button" aria-label="To-do list" title="To-do list" aria-haspopup="dialog" aria-controls="todoDialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M3 5l2 2 3-3"/><path d="M3 12l2 2 3-3"/><path d="M3 19l2 2 3-3"/><path d="M13 6h8"/><path d="M13 13h8"/><path d="M13 20h8"/></svg>
+        <span id="todoCount" class="fab-count" hidden></span>
+      </button>
+    </header>
+
+    <main id="log" class="log"></main>
+
+    <footer class="composer">
+      <div id="tray" class="tray" hidden></div>
+      <!-- Shown while a sent message is being edited (app.js beginEdit): names it, and Cancel puts the draft back. -->
+      <div id="editBar" class="edit-bar" role="status" hidden>
+        <span class="edit-label">Edit message</span>
+        <button id="editCancel" class="edit-cancel" type="button" aria-label="Cancel editing" title="Cancel">×</button>
+      </div>
+      <div class="row">
+        <div class="attach-wrap">
+          <button id="attach" class="icon-btn plus" type="button" aria-label="Add" aria-haspopup="menu" aria-expanded="false" aria-controls="attachMenu">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div id="attachMenu" class="attach-menu" role="menu" hidden>
+            <!-- Take a photo opens the camera directly (capture). Touch only: a computer has no capture. -->
+            <button id="takePhoto" class="menu-item" type="button" role="menuitem">
+              <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+              <span>Take a photo</span>
+            </button>
+            <button id="pickPhoto" class="menu-item" type="button" role="menuitem">
+              <span class="menu-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg></span>
+              <span>Photos</span>
+            </button>
+            <button id="pickFile" class="menu-item" type="button" role="menuitem">
+              <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M21.4 11.1l-8.5 8.5a5 5 0 0 1-7.1-7.1l8.5-8.5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-2.8-2.8l7.8-7.8"/></svg></span>
+              <span>Files</span>
+            </button>
+          </div>
+        </div>
+        <input id="photo" type="file" accept="image/*" multiple hidden>
+        <input id="camera" type="file" accept="image/*" capture="environment" hidden>
+        <!-- accept="application/octet-stream" is Chromium Android's generic type: the file manager opens
+             directly with every file type selectable, images and videos included. -->
+        <input id="file" type="file" accept="application/octet-stream" multiple hidden>
+        <textarea id="input" rows="1" placeholder="Message" enterkeyhint="enter"></textarea>
+        <div id="dictateHud" class="dictate-hud" hidden>
+          <div id="dictateViz" class="dictate-viz" aria-hidden="true">
+            <span class="vbar"></span>
+            <span class="vbar"></span>
+            <span class="vbar"></span>
+            <span class="vbar"></span>
+            <span class="vbar"></span>
+          </div>
+          <span id="dictateTimer" class="dictate-timer" aria-live="off">1:00</span>
+          <button id="dictateCancel" class="dictate-cancel" type="button" aria-label="Cancel dictation" title="Cancel recording">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <button id="micBtn" class="icon-btn mic-btn" type="button" aria-label="Dictate" title="Dictate" hidden>
+          <svg id="micIcon" class="mic-icon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4M8 23h8"/></svg>
+          <svg id="micStopIcon" class="mic-stop-icon" viewBox="0 0 24 24" hidden><rect x="6" y="6" width="12" height="12" rx="2" style="fill:currentColor;stroke:none"/></svg>
+        </button>
+        <button id="send" class="send" type="button" aria-label="Send">
+          <svg id="sendIcon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <svg id="stopIcon" viewBox="0 0 24 24" hidden><rect x="6" y="6" width="12" height="12" rx="2" style="fill:currentColor;stroke:none"/></svg>
+        </button>
+      </div>
+      <!-- Shown instead of the composer when the open chat belongs to another source (Discord, Desktop, ...). -->
+      <div id="readonlyBar" class="readonly-bar" role="status">
+        <span id="readonlyText">Read-only</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Chats drawer: slides in from the left over a scrim. Lives outside .app so the app can be made inert while open. -->
+  <div id="scrim" class="scrim" aria-hidden="true"></div>
+  <aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-label="Chats" tabindex="-1">
+    <button id="drawerNew" class="drawer-new" type="button">
+      <span>New chat</span>
+      <span class="drawer-new-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z"/></svg></span>
+    </button>
+    <p id="drawerNote" class="drawer-note" aria-live="polite"></p>
+    <div id="drawerList" class="drawer-list"></div>
+    <div class="drawer-foot">
+      <div class="theme-switch" role="radiogroup" aria-label="Appearance">
+        <button type="button" role="radio" data-theme-choice="system" aria-label="Match system" title="Match system">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </button>
+        <button type="button" role="radio" data-theme-choice="light" aria-label="Light" title="Light">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+        <button type="button" role="radio" data-theme-choice="dark" aria-label="Dark" title="Dark">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+      <!-- Notification bell, right of the appearance switch. Hidden where Web Push is unavailable. -->
+      <div class="foot-actions">
+      <button id="pushBtn" class="push-btn" type="button" aria-pressed="false" aria-label="Notifications off" title="Notifications off" hidden>
+        <svg class="bell-off" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        <svg class="bell-on" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none"/></svg>
+      </button>
+      <!-- Gateway restart: asks first, then the server restarts the gateway detached and the app watches
+           until it is back. -->
+      <button id="restartBtn" class="push-btn restart-btn" type="button" aria-label="Restart Hermes" title="Restart Hermes">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg>
+      </button>
+      <!-- Opens the identity and settings sheet (name, picture, home label, optional push contact). -->
+      <button id="settingsBtn" class="push-btn settings-btn" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Row menu for a chat (long press or right click on a row): Pin/Unpin, Rename, Delete chat. -->
+  <div id="rowMenuScrim" class="scrim row-menu-scrim" aria-hidden="true"></div>
+  <div id="rowMenu" class="row-menu" role="menu" aria-label="Chat actions">
+    <button id="rowMenuPin" class="row-menu-item" type="button" role="menuitem">
+      <span>Pin</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(45 12 12)"><path d="M8 3h8"/><path d="M9.5 3v7L7 13h10l-2.5-3V3"/><path d="M12 13v8"/></g></svg>
+    </button>
+    <button id="rowMenuMute" class="row-menu-item" type="button" role="menuitem" hidden>
+      <span>Mute notifications</span>
+      <svg class="bell-unmuted" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <svg class="bell-muted" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a6 6 0 0 1 .4-2"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+    </button>
+    <button id="rowMenuRename" class="row-menu-item" type="button" role="menuitem">
+      <span>Rename</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    </button>
+    <button id="rowMenuDelete" class="row-menu-item danger" type="button" role="menuitem">
+      <span>Delete chat</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>
+    </button>
+    <!-- The main chat's menu shows only this item. -->
+    <button id="rowMenuReset" class="row-menu-item danger" type="button" role="menuitem" hidden>
+      <span>Reset</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+  </div>
+
+  <!-- Message menu (long press on a message): filled in by app.js openMsgMenu. -->
+  <div id="msgMenuScrim" class="scrim msg-menu-scrim" aria-hidden="true"></div>
+  <div id="msgMenu" class="row-menu msg-menu" role="menu" aria-label="Message actions"></div>
+
+  <!-- Rename dialog for a chat (opened from the row menu). -->
+  <div id="renameScrim" class="scrim rename-scrim" aria-hidden="true"></div>
+  <div id="renameDialog" class="rename-dialog" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+    <h2 id="renameTitle" class="rename-title">Rename this chat</h2>
+    <input id="renameInput" class="rename-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="done" aria-label="Chat name">
+    <p id="renameError" class="rename-error" role="alert" hidden></p>
+    <div class="rename-actions">
+      <button id="renameCancel" class="rename-cancel" type="button">Cancel</button>
+      <button id="renameSubmit" class="rename-submit" type="button" disabled><span class="rename-label">Rename</span><span class="rename-spin" aria-hidden="true"></span></button>
+    </div>
+  </div>
+
+  <!-- Shared confirm dialog (confirm.js), outside .app like the others. -->
+  <div id="confirmScrim" class="scrim confirm-scrim" aria-hidden="true"></div>
+  <div id="confirmDialog" class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <h2 id="confirmTitle" class="rename-title confirm-title"></h2>
+    <p id="confirmMessage" class="confirm-message"></p>
+    <div class="rename-actions confirm-actions">
+      <button id="confirmCancel" class="rename-cancel confirm-cancel" type="button">Cancel</button>
+      <button id="confirmOk" class="rename-submit confirm-submit" type="button"></button>
+    </div>
+  </div>
+
+  <!-- To-do list panel, opened from the button under the Computer button. -->
+  <div id="todoScrim" class="scrim todo-scrim" aria-hidden="true"></div>
+  <div id="todoDialog" class="todo-dialog" role="dialog" aria-modal="true" aria-labelledby="todoTitle">
+    <div class="todo-head">
+      <button id="todoBack" class="todo-back" type="button" aria-label="Back to chat" title="Back to chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5l2 2 3-3"/><path d="M3 12l2 2 3-3"/><path d="M3 19l2 2 3-3"/><path d="M13 6h8"/><path d="M13 13h8"/><path d="M13 20h8"/></svg>
+      </button>
+      <h2 id="todoTitle" class="todo-title"><span>To-do</span></h2>
+      <button id="todoClose" class="todo-close" type="button" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="todoList" class="todo-list"></div>
+  </div>
+
+  <!-- Inbox: every agent message across the app's chats, newest first. It stores nothing: each open reads
+       the app's sessions through plugin_api.py /inbox, and inbox.js owns the list, read marks and history entry. -->
+  <div id="inboxScrim" class="scrim inbox-scrim" aria-hidden="true"></div>
+  <div id="inboxDialog" class="inbox-dialog" role="dialog" aria-modal="true" aria-labelledby="inboxTitle">
+    <div class="inbox-head">
+      <h2 id="inboxTitle" class="inbox-title"><span>Inbox</span></h2>
+      <button id="inboxClose" class="inbox-close" type="button" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="inbox-tools">
+      <div class="inbox-tabs" role="tablist" aria-label="Show">
+        <button id="inboxTabAll" class="inbox-tab active" type="button" role="tab" aria-selected="true">All</button>
+        <button id="inboxTabUnread" class="inbox-tab" type="button" role="tab" aria-selected="false">Unread</button>
+      </div>
+      <button id="inboxMarkAll" class="inbox-markall" type="button" disabled>Mark all as read</button>
+    </div>
+    <div class="inbox-body">
+      <button id="inboxNew" class="inbox-new" type="button" hidden>New</button>
+      <div id="inboxList" class="inbox-list"></div>
+      <p id="inboxEmpty" class="inbox-empty" hidden>No messages yet</p>
+    </div>
+  </div>
+
+  <!-- Drag handle on the invisible seam between the chat and the docked computer (wide windows only). -->
+  <div id="paneSplit" class="pane-split" role="separator" aria-orientation="vertical" aria-label="Resize chat and computer" tabindex="-1"></div>
+
+  <!-- First-run setup / identity editor. Shown on top of everything until the person confirms a name and
+       uploads a picture. Nothing is written until Save. Also reachable later from the settings button. -->
+  <div id="setupScrim" class="scrim setup-scrim" aria-hidden="true"></div>
+  <div id="setupDialog" class="setup-dialog" role="dialog" aria-modal="true" aria-labelledby="setupTitle" aria-describedby="setupIntro" hidden>
+    <h2 id="setupTitle" class="setup-title">Welcome to Hermes Mini</h2>
+    <p id="setupIntro" class="setup-intro">
+      Give your agent a name and a picture. Both are stored on this Hermes install, outside the app
+      itself, so a later update keeps them.
+    </p>
+    <div class="setup-photo-row">
+      <img id="setupPreview" class="setup-preview" src="avatar-placeholder.svg" alt="Profile picture preview" width="88" height="88">
+      <div class="setup-photo-actions">
+        <button id="setupPick" class="setup-button secondary" type="button">Upload a picture</button>
+        <p class="setup-hint">PNG, JPEG or WebP, up to 4 MB.</p>
+      </div>
+      <input id="setupFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+    </div>
+    <label class="setup-label" for="setupName">Your agent's name</label>
+    <input id="setupName" class="setup-input" type="text" maxlength="60" autocomplete="off" spellcheck="false" enterkeyhint="done">
+    <label class="setup-label" for="setupHomeLabel">Name of the main chat <span class="setup-optional">(optional)</span></label>
+    <input id="setupHomeLabel" class="setup-input" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Same as the agent's name">
+    <p id="setupError" class="setup-error" role="alert" hidden></p>
+    <p id="setupProviderNote" class="setup-provider-note" hidden></p>
+    <div class="setup-actions">
+      <button id="setupCancel" class="setup-button secondary" type="button" hidden>Cancel</button>
+      <button id="setupSave" class="setup-button primary" type="button">Save</button>
+    </div>
+  </div>
+
+  <script>
+    // App height from the real window height, not 100dvh. After the app reloads itself on an update,
+    // Chrome on Android (installed app) can report 100dvh as the full screen including the system
+    // navigation bar, which hid the composer behind the back/home buttons until something resized.
+    (function () {
+      var root = document.documentElement;
+      function setH() { root.style.setProperty("--app-h", window.innerHeight + "px"); }
+      setH();
+      window.addEventListener("resize", setH);
+      window.addEventListener("orientationchange", setH);
+      window.addEventListener("pageshow", setH);
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", setH);
+      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") setH(); });
+      [50, 200, 500, 1000, 2000].forEach(function (ms) { setTimeout(setH, ms); });
+    })();
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      // When a new version's service worker takes over, reload once so the page uses the new files.
+      var hadController = !!navigator.serviceWorker.controller;
+      var reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        if (!hadController || reloaded) return;
+        reloaded = true;
+        location.reload();
+      });
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js", { scope: "./" }).then(function (reg) {
+          document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === "visible") reg.update().catch(function () {});
+          });
+        }).catch(function () {});
+      });
+    }
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

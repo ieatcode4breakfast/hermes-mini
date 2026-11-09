@@ -1,0 +1,30 @@
+{
+  "name": "Hermes Mini",
+  "short_name": "Hermes Mini",
+  "description": "A mobile-first app for your Hermes agent.",
+  "start_url": "/dashboard-plugins/hermes-mini/index.html",
+  "scope": "/dashboard-plugins/hermes-mini/",
+  "display": "standalone",
+  "background_color": "#111214",
+  "theme_color": "#111214",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

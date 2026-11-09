@@ -1,0 +1,1470 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5f7;
+  --fg: #15161a;
+  --muted: #6b6e78;
+  --line: #dcdde3;
+  --surface: #ffffff;
+  --user-bg: #3b2f9e;
+  --user-fg: #ffffff;
+  --assistant-bg: #ffffff;
+  --assistant-fg: #15161a;
+  --accent: #3b2f9e;
+  --danger: #c62828;
+  --code-bg: #eceef3;
+  --radius: 18px;
+  --col: 820px; /* reading column on wide screens: header, log and composer are centred at this width */
+  --line-strong: #c4c7d0;
+  --zebra: rgba(20, 22, 30, 0.035);
+  --hl-kw: #7b3fe4;
+  --hl-str: #0f7a4a;
+  --hl-num: #b35400;
+  --hl-fn: #1d5fd1;
+  --hl-type: #0b7285;
+  --hl-attr: #a4411b;
+  --hl-com: #6b6e78;
+  --hl-del: #b42318;
+  --hl-add-bg: rgba(46, 160, 67, 0.16);
+  --hl-del-bg: rgba(248, 81, 73, 0.16);
+  --scrim: rgba(12, 13, 18, 0.36); /* dims the page behind the chats drawer and the row menu */
+  --raised: #ffffff; /* the pressed row's highlight and the row menu card: lighter than the drawer */
+  --sb-thumb: #c4c7d0; /* slim scrollbar thumb: a little darker than the surface */
+  --sb-thumb-hover: #a9adb8;
+}
+/* No Android tap flash on tapped elements; keyboard focus rings only (not after a tap). */
+* { -webkit-tap-highlight-color: transparent; }
+:focus:not(:focus-visible) { outline: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111214;
+    --fg: #ececf1;
+    --muted: #8e919c;
+    --line: #2a2c33;
+    --surface: #1b1d22;
+    --user-bg: #4b3fc4;
+    --user-fg: #ffffff;
+    --assistant-bg: #1b1d22;
+    --assistant-fg: #ececf1;
+    --accent: #8a7cff;
+    --danger: #ff6b6b;
+    --code-bg: #0c0d10;
+    --line-strong: #3b3e48;
+    --zebra: rgba(255, 255, 255, 0.035);
+    --hl-kw: #b197fc;
+    --hl-str: #8ce99a;
+    --hl-num: #ffb36b;
+    --hl-fn: #74c0fc;
+    --hl-type: #66d9e8;
+    --hl-attr: #ffa8a8;
+    --hl-com: #8e919c;
+    --hl-del: #ff8787;
+    --hl-add-bg: rgba(46, 160, 67, 0.24);
+    --hl-del-bg: rgba(248, 81, 73, 0.24);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --raised: #2a2c32;
+    --sb-thumb: #3b3e48; /* slim scrollbar thumb: a little lighter than the surface */
+    --sb-thumb-hover: #4f5360;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111214;
+  --fg: #ececf1;
+  --muted: #8e919c;
+  --line: #2a2c33;
+  --surface: #1b1d22;
+  --user-bg: #4b3fc4;
+  --user-fg: #ffffff;
+  --assistant-bg: #1b1d22;
+  --assistant-fg: #ececf1;
+  --accent: #8a7cff;
+  --danger: #ff6b6b;
+  --code-bg: #0c0d10;
+  --line-strong: #3b3e48;
+  --zebra: rgba(255, 255, 255, 0.035);
+  --hl-kw: #b197fc;
+  --hl-str: #8ce99a;
+  --hl-num: #ffb36b;
+  --hl-fn: #74c0fc;
+  --hl-type: #66d9e8;
+  --hl-attr: #ffa8a8;
+  --hl-com: #8e919c;
+  --hl-del: #ff8787;
+  --hl-add-bg: rgba(46, 160, 67, 0.24);
+  --hl-del-bg: rgba(248, 81, 73, 0.24);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --raised: #2a2c32;
+  --sb-thumb: #3b3e48;
+  --sb-thumb-hover: #4f5360;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+button { font: inherit; cursor: pointer; }
+input, textarea, select { font-family: inherit; }
+/* Phone-width screens: 14px base text. */
+@media (max-width: 600px) { body { font-size: 14px; } }
+
+/* Slim scrollbars (PC Chrome) on every scrollable area: the chat log, the drawer list, the to-do list, the Inbox list, code blocks, wide tables and the
+   attachment tray. A 10px lane with a transparent track and no arrows; the thumb is a 6px pill, because its 2px
+   transparent border is kept out of the paint by background-clip, so it floats inside the lane. Do not set
+   scrollbar-width or scrollbar-color on these: Chrome 121+ uses those instead of ::-webkit-scrollbar. The composer
+   textarea keeps its scrollbar hidden (it is an auto-growing pill). Android uses native overlay bars and ignores this. */
+.log::-webkit-scrollbar, .drawer-list::-webkit-scrollbar, .bubble pre::-webkit-scrollbar, .card pre::-webkit-scrollbar,
+.bubble .table-wrap::-webkit-scrollbar, .tray::-webkit-scrollbar, .todo-list::-webkit-scrollbar, .inbox-list::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+.log::-webkit-scrollbar-track, .drawer-list::-webkit-scrollbar-track, .bubble pre::-webkit-scrollbar-track,
+.card pre::-webkit-scrollbar-track, .bubble .table-wrap::-webkit-scrollbar-track, .tray::-webkit-scrollbar-track, .todo-list::-webkit-scrollbar-track, .inbox-list::-webkit-scrollbar-track { background: transparent; }
+.log::-webkit-scrollbar-thumb, .drawer-list::-webkit-scrollbar-thumb, .bubble pre::-webkit-scrollbar-thumb,
+.card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
+}
+.log::-webkit-scrollbar-thumb:hover, .drawer-list::-webkit-scrollbar-thumb:hover, .bubble pre::-webkit-scrollbar-thumb:hover,
+.card pre::-webkit-scrollbar-thumb:hover, .bubble .table-wrap::-webkit-scrollbar-thumb:hover, .tray::-webkit-scrollbar-thumb:hover, .todo-list::-webkit-scrollbar-thumb:hover, .inbox-list::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover); background-clip: padding-box;
+}
+.log::-webkit-scrollbar-corner, .drawer-list::-webkit-scrollbar-corner, .bubble pre::-webkit-scrollbar-corner,
+.card pre::-webkit-scrollbar-corner, .bubble .table-wrap::-webkit-scrollbar-corner, .tray::-webkit-scrollbar-corner, .todo-list::-webkit-scrollbar-corner, .inbox-list::-webkit-scrollbar-corner { background: transparent; }
+.log::-webkit-scrollbar-button, .drawer-list::-webkit-scrollbar-button, .bubble pre::-webkit-scrollbar-button,
+.card pre::-webkit-scrollbar-button, .bubble .table-wrap::-webkit-scrollbar-button, .tray::-webkit-scrollbar-button, .todo-list::-webkit-scrollbar-button, .inbox-list::-webkit-scrollbar-button { display: none; }
+
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); }
+
+/* Side padding is the phone gutter, or the space that centres a --col wide column on larger screens. */
+/* Floating header: overlays the top of the chat (messages scroll underneath and fade out behind it).
+   Centre: round photo with the name in a pill overlapping its bottom edge; right: round New chat button. */
+.app { position: relative; --head-h: calc(env(safe-area-inset-top) + 107px); /* floating header bottom (topbar height, safe area included): the greeting centres between it and the composer */ }
+.topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 10; pointer-events: none;
+  display: flex; justify-content: center;
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+  padding-bottom: 18px;
+  padding-left: max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2));
+  padding-right: max(calc(env(safe-area-inset-right) + 16px), calc((100% - var(--col)) / 2));
+  background: transparent; /* messages stay fully visible behind the floating photo and button */
+}
+.topbar > * { pointer-events: auto; }
+/* Thin fade at the very top edge only (status-bar area + a little): messages dissolve into the border
+   instead of being cut off; everything lower stays fully visible behind the photo and button. */
+.topbar::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; z-index: -1; pointer-events: none;
+  height: calc(env(safe-area-inset-top) + 36px);
+  background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) calc(env(safe-area-inset-top) + 4px), transparent 100%);
+}
+.identity { display: flex; flex-direction: column; align-items: center; transform-origin: 50% 50%; }
+.identity.centred { transform: translate(var(--id-dx, 0px), var(--id-dy, 0px)); pointer-events: none; }
+.identity.centred .avatar { transform: scale(1.5); }
+.identity.centred .name { transform: translateY(9px); }
+.identity.flying { transition: transform 650ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; pointer-events: none; }
+.identity.flying .avatar, .identity.flying .name { transition: transform 650ms cubic-bezier(0.22, 1, 0.36, 1); }
+.identity.lowering { transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; pointer-events: none; }
+.identity.lowering .avatar, .identity.lowering .name { transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1); }
+.avatar {
+  width: 64px; height: 64px; border-radius: 50%; object-fit: cover; display: block;
+  border: 0; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  background: var(--surface);
+}
+/* Home icon after the name on the main chat: same glyph, size and accent colour as the drawer's main-chat row. */
+.topbar .name { display: inline-flex; align-items: center; gap: 6px; }
+.name-home { width: 14px; height: 14px; flex: none; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.topbar .name {
+  margin: -14px 0 0; position: relative; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; line-height: 1;
+  padding: 7px 16px; border-radius: 999px; color: var(--fg); white-space: nowrap;
+  background: var(--surface); border: 0; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.status { display: block; font-size: 12px; color: var(--muted); min-height: 1em; margin-top: 4px; text-align: center; }
+.status:empty { min-height: 0; margin: 0; }
+.fab {
+  /* 19px = 10px topbar padding + (64px avatar - 46px button) / 2, so the button centres on the avatar.
+     The extra 6px is the composer pill's inset, so the button's right edge lines up with the send button. */
+  position: absolute; top: calc(env(safe-area-inset-top) + 19px);
+  right: calc(max(calc(env(safe-area-inset-right) + 16px), calc((100% - var(--col)) / 2)) + 6px);
+  width: 46px; height: 46px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--fg); background: var(--surface); border: 0; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+}
+.fab:active { transform: scale(0.96); }
+.fab svg { width: 20px; height: 20px; }
+/* Chats menu: the mirror of New chat on the left, same size and surface, no border. */
+.fab.fab-menu {
+  right: auto;
+  left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
+}
+/* To-do list: a second 46px button directly under the computer, same right edge, 10px gap. */
+.fab.fab-todo { top: calc(env(safe-area-inset-top) + 19px + 46px + 10px); }
+/* Number of open to-dos on the button's top-right corner; hidden when there are none (todo.js sets both). */
+.fab-count {
+  position: absolute; top: -2px; right: -2px; box-sizing: border-box; min-width: 18px; height: 18px;
+  padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+}
+.fab-count[hidden] { display: none; }
+/* Names the chat on screen when it is not the home thread: one muted, truncated line under the name pill. */
+/* A soft pill like the name pill, so messages scrolling underneath never show through the caption. */
+.caption {
+  margin: 4px 0 0; max-width: min(56vw, 260px); padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; line-height: 1.4; color: var(--muted);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+}
+.caption[hidden] { display: none; }
+.app.has-caption .log { padding-top: calc(env(safe-area-inset-top) + 150px); }
+.ghost { background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+
+.log {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px;
+  position: relative;
+  padding-top: calc(env(safe-area-inset-top) + 132px); /* clears the floating header, including the "Connecting…" line under the name (header is 130px then) */
+  padding-bottom: 16px;
+  padding-left: max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2));
+  padding-right: max(calc(env(safe-area-inset-right) + 16px), calc((100% - var(--col)) / 2));
+}
+.msg { display: flex; }
+/* A user row stacks its bubble over the action row, right-aligned. */
+.msg.user { flex-direction: column; align-items: flex-end; }
+/* Assistant rows stack the reply over its action row, which sits under the reply. */
+.msg.assistant { flex-direction: column; align-items: stretch; }
+.msg.system { justify-content: center; }
+.bubble { max-width: 85%; padding: 10px 14px; border-radius: var(--radius); overflow-wrap: anywhere; }
+.msg.user .bubble { background: var(--user-bg); color: var(--user-fg); white-space: pre-wrap; border-bottom-right-radius: 6px; }
+/* Assistant replies are not bubbles: plain text across the full column width, like typical AI chat apps.
+   The .bubble class stays as the content container so the markdown styles keep applying. */
+.msg.assistant .bubble { max-width: 100%; padding: 2px 0; border-radius: 0; background: none; border: 0; color: var(--fg); line-height: 1.55; }
+.msg.user + .msg.assistant, .msg.assistant + .msg.user { margin-top: 8px; }
+/* A notification tap or an Inbox row opened on this message (openTarget in app.js): a highlighter band behind the
+   whole message that fades, like jumping to a message in Telegram or Slack. Background plus a same-colour spread
+   shadow, so the band reaches a little past the text without moving anything. */
+:root { --msg-highlight: rgba(255, 200, 40, 0.30); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --msg-highlight: rgba(255, 200, 40, 0.16); } }
+:root[data-theme="dark"] { --msg-highlight: rgba(255, 200, 40, 0.16); }
+.msg.flash { border-radius: 8px; animation: msg-flash 1600ms ease-out; }
+@keyframes msg-flash {
+  0%, 45% { background-color: var(--msg-highlight); box-shadow: 0 0 0 8px var(--msg-highlight); }
+  100% { background-color: transparent; box-shadow: 0 0 0 8px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No fade: the band simply stays for the 1.6 s the class is on. */
+  .msg.flash { animation: none; background-color: var(--msg-highlight); box-shadow: 0 0 0 8px var(--msg-highlight); }
+}
+/* the person's own pictures sit above the purple bubble, right-aligned, as the same .media block replies use. */
+.msg.user > .media { align-self: flex-end; margin: 0 0 6px; }
+.msg.user > .media:last-child { margin-bottom: 0; }
+
+/* ---------- chat markdown (md.js) ---------- */
+.bubble > :first-child { margin-top: 0; }
+.bubble > :last-child { margin-bottom: 0; }
+.bubble p { margin: 0 0 0.6em; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 { line-height: 1.3; font-weight: 650; margin: 0.9em 0 0.35em; }
+.bubble h1 { font-size: 1.25em; }
+.bubble h2 { font-size: 1.15em; }
+.bubble h3 { font-size: 1.07em; }
+.bubble h4 { font-size: 1em; }
+.bubble h5 { font-size: 0.97em; }
+.bubble h6 { font-size: 0.95em; color: var(--muted); }
+.bubble blockquote { margin: 0.5em 0; padding: 0 0 0 12px; border-left: 3px solid var(--line-strong); color: var(--muted); }
+.bubble blockquote > :last-child { margin-bottom: 0; }
+.bubble hr { border: 0; border-top: 1px solid var(--line); margin: 0.9em 0; }
+.bubble ul, .bubble ol { margin: 0.4em 0; padding-left: 1.4em; }
+.bubble li { margin: 0.15em 0; }
+.bubble li > ul, .bubble li > ol { margin: 0.15em 0; }
+.bubble li > p { margin: 0 0 0.3em; }
+.bubble li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.2em; }
+.bubble input[type="checkbox"] { margin: 0 0.45em 0 0; vertical-align: -0.12em; accent-color: var(--accent); }
+.bubble a { color: var(--accent); text-decoration: none; } /* accent colour marks links; no underline */
+.bubble del { color: var(--muted); }
+.bubble mark { background: rgba(255, 200, 0, 0.28); color: inherit; border-radius: 3px; padding: 0 2px; }
+.bubble kbd { font: 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 4px; background: var(--surface); }
+.bubble img.md-img { display: block; max-width: 100%; max-height: 320px; height: auto; border-radius: 10px; margin: 0.4em 0; cursor: zoom-in; }
+.bubble code, .bubble pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
+.bubble code { background: var(--code-bg); padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+.bubble pre { background: var(--code-bg); padding: 10px; border-radius: 10px; overflow-x: auto; white-space: pre; }
+.bubble pre code { background: none; padding: 0; border-radius: 0; overflow-wrap: normal; }
+
+/* Fenced code: a header with the language and a Copy button (added by enhance() in md.js). */
+.bubble .code-block { margin: 0.5em 0; border: 1px solid var(--line); border-radius: 10px; background: var(--code-bg); overflow: hidden; }
+.bubble .code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 2px 10px; min-height: 28px; border-bottom: 1px solid var(--line); font: 11.5px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--muted); }
+.bubble .code-lang { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Icon-only copy buttons (makeCopyButton in md.js): 32px hit area around a 16px icon, muted like the old text.
+   The negative vertical margins keep the code header and reply action row at their previous heights. */
+.bubble .code-copy { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; margin: -5px 0; padding: 0; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.bubble .code-copy:hover, .bubble .code-copy:focus-visible { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.bubble .code-copy:active { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.bubble .code-block pre { margin: 0; padding: 10px 12px; border-radius: 0; background: none; }
+
+/* Tables: scroll sideways inside .table-wrap; numeric columns are right-aligned (align attribute set in md.js). */
+.bubble .table-wrap { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.5em 0; border: 1px solid var(--line); border-radius: 10px; }
+.bubble table { width: 100%; border-collapse: collapse; font-size: 13.5px; line-height: 1.35; }
+.bubble th, .bubble td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: break-word; }
+.bubble th { font-weight: 600; border-bottom-color: var(--line-strong); }
+.bubble tbody tr:last-child > * { border-bottom: 0; }
+.bubble tbody tr:nth-child(even) > * { background: var(--zebra); }
+.bubble th[align="right"], .bubble td[align="right"] { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bubble th[align="center"], .bubble td[align="center"] { text-align: center; }
+.bubble th:first-child, .bubble td:first-child { padding-left: 12px; }
+.bubble th:last-child, .bubble td:last-child { padding-right: 12px; }
+
+/* Syntax colours for highlight.js tokens, both themes through the variables above. */
+.bubble .hljs-comment, .bubble .hljs-quote { color: var(--hl-com); font-style: italic; }
+.bubble .hljs-keyword, .bubble .hljs-selector-tag, .bubble .hljs-literal { color: var(--hl-kw); }
+.bubble .hljs-string, .bubble .hljs-regexp, .bubble .hljs-doctag { color: var(--hl-str); }
+.bubble .hljs-number, .bubble .hljs-symbol, .bubble .hljs-bullet { color: var(--hl-num); }
+.bubble .hljs-title, .bubble .hljs-section, .bubble .hljs-name { color: var(--hl-fn); }
+.bubble .hljs-title.class_, .bubble .hljs-type, .bubble .hljs-built_in { color: var(--hl-type); }
+.bubble .hljs-attr, .bubble .hljs-attribute, .bubble .hljs-property, .bubble .hljs-variable, .bubble .hljs-template-variable, .bubble .hljs-params { color: var(--hl-attr); }
+.bubble .hljs-meta, .bubble .hljs-meta .hljs-keyword { color: var(--hl-com); }
+.bubble .hljs-addition { color: var(--hl-str); background: var(--hl-add-bg); }
+.bubble .hljs-deletion { color: var(--hl-del); background: var(--hl-del-bg); }
+.bubble .hljs-emphasis { font-style: italic; }
+.bubble .hljs-strong { font-weight: 700; }
+.bubble .hljs-link { color: var(--hl-fn); text-decoration: underline; }
+
+/* Action row under a message: icon buttons (Copy, then Edit or Branch) and the time. Both layouts always keep the
+   row's 28px height and 2px gap, so nothing moves when the icons appear. The time is always visible; on a mouse layout
+   the icons fade in on hover or keyboard focus, and on a touch layout a tap on the message reveals them (app.js). */
+.msg-actions { display: flex; align-items: center; gap: 2px; min-height: 28px; margin-top: 2px; }
+.msg.user .msg-actions { justify-content: flex-end; }
+.msg.assistant .msg-actions { justify-content: flex-start; margin-left: -6px; }
+.msg-act { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; margin: 0; padding: 0; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.msg-act:hover, .msg-act:focus-visible { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.msg-act:active { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.msg-act:disabled { opacity: 0.35; cursor: default; background: none; color: var(--muted); }
+.msg-act svg, .code-copy svg { width: 16px; height: 16px; }
+.msg-time { margin: 0 6px; font-size: 12px; line-height: 1; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* was @media (hover: hover): follows the last input (data-input, index.html) */
+  /* Hidden icons keep their slots (opacity, not display), so the time does not move when they fade in. An invisible
+     button takes no pointer click; tabbing to one still reveals it for keyboard use. */
+  :where(:root[data-input="mouse"]) .msg-act { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+  :where(:root[data-input="mouse"]) .msg:hover .msg-act:not(:disabled), :where(:root[data-input="mouse"]) .msg-act:focus-visible, :where(:root[data-input="mouse"]) .msg-actions:focus-within .msg-act:not(:disabled) { opacity: 1; pointer-events: auto; }
+  :where(:root[data-input="mouse"]) .msg-act:disabled { opacity: 0; }
+
+/* Touch: no hover, so the icons show only after a tap on the message (app.js). They keep their slots in the
+   28px row while hidden (visibility, not display), so the time never moves when they appear; hidden buttons take
+   no pointer or keyboard focus. */
+/* was @media (hover: none): follows the last input (data-input, index.html) */
+  :where(:root[data-input="touch"]) .msg-act { visibility: hidden; }
+  :where(:root[data-input="touch"]) .msg.time-open .msg-act { visibility: visible; }
+  :where(:root[data-input="touch"]) .msg.assistant .msg-actions { margin-left: 0; }
+  :where(:root[data-input="touch"]) .msg-time { margin: 0 2px; }
+  /* Long press opens the message menu, so the native menu and selection are suppressed by default. A message in
+     select mode restores them (see .selecting below). */
+  :where(:root[data-input="touch"]) .msg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  :where(:root[data-input="touch"]) .msg.selecting { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+/* Edit mode: the message being edited is ringed, and a bar above the composer names it. */
+.msg.user.editing .bubble { box-shadow: 0 0 0 2px var(--accent); }
+.edit-bar {
+  display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; padding: 4px 4px 4px 14px; border-radius: 16px;
+  background: var(--surface); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14); font-size: 13px; color: var(--muted);
+}
+.edit-bar[hidden] { display: none; }
+.edit-label { flex: 1; min-width: 0; color: var(--fg); font-weight: 600; }
+.edit-cancel {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+}
+.edit-cancel:hover, .edit-cancel:focus-visible { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.note { color: var(--danger); font-size: 13px; text-align: center; }
+.empty-state {
+  margin: 0; /* the <p> default margin would shift the centred greeting down by one em */
+  position: absolute; left: 50%; top: calc(50% + var(--head-h) / 2);
+  transform: translateX(-50%); width: min(calc(100% - 32px), var(--col));
+  pointer-events: none;
+  font-size: 22px; font-weight: 500; line-height: 1.3; text-align: center; color: var(--fg);
+  text-wrap: balance; animation: empty-in 200ms ease-out both;
+}
+@media (min-width: 600px) { .empty-state { font-size: 24px; } }
+@keyframes empty-in { from { opacity: 0; } to { opacity: 1; } }
+.empty-state.leaving { animation: empty-out 250ms ease-out both; }
+@keyframes empty-out { to { opacity: 0; transform: translate(-50%, 12px); } }
+.msg.first-in { animation: first-in 400ms ease-out both; }
+.notice { margin: 10px 0; text-align: center; }
+.notice-toggle { display: inline-block; max-width: 100%; padding: 4px 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 12px; line-height: 1.4; color: var(--muted); cursor: pointer; }
+.notice-toggle:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+.notice-body { margin: 6px auto 0; max-width: min(calc(100% - 32px), var(--col)); font-size: 12px; line-height: 1.45; color: var(--muted); text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notice-body[hidden] { display: none; }
+@keyframes first-in { from { opacity: 0; } to { opacity: 1; } }
+
+.turn-status { display: flex; align-items: center; min-width: 0; }
+.turn-content:not(:empty) + .turn-status { margin-top: 6px; }
+.turn-status[hidden], .narration[hidden] { display: none; }
+.typing { display: inline-flex; gap: 4px; padding: 4px 0; vertical-align: middle; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
+.typing i:nth-child(2) { animation-delay: 0.2s; }
+.typing i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.narration {
+  display: inline-block; margin-left: 8px; max-width: calc(100% - 44px);
+  font-size: 13.5px; line-height: 1.4; color: var(--muted); vertical-align: middle;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: opacity 0.1s linear;
+}
+.narration.fading { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .narration { transition: none; } }
+/* Phones: let narration wrap onto as many lines as it needs instead of clipping it with an ellipsis. */
+@media (max-width: 600px) {
+  /* The dots centre on the whole wrapped line, however many lines it takes. */
+  .turn-status { align-items: center; }
+  .narration {
+    white-space: normal; overflow: visible; text-overflow: clip;
+    overflow-wrap: anywhere; vertical-align: middle;
+  }
+}
+
+.card { align-self: center; width: min(100%, 560px); border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 12px; }
+.card h2 { font-size: 15px; margin: 0 0 6px; }
+.card p { margin: 0 0 8px; font-size: 14px; }
+.card pre { margin: 0 0 8px; background: var(--code-bg); padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font: 13px ui-monospace, Menlo, monospace; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.btn { border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 8px 14px; font-size: 14px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--danger); }
+.answer-row { display: flex; gap: 8px; margin-top: 8px; }
+.answer-row input { flex: 1; min-width: 0; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+/* An answered card stays as a compact record: muted surface, no controls, no hover. */
+.card.resolved {
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+  border-color: color-mix(in srgb, var(--line) 65%, transparent);
+  cursor: default;
+}
+.card.resolved h2 { font-size: 14px; margin-bottom: 4px; }
+.resolved-question { margin: 0 0 2px; font-size: 13.5px; }
+.resolved-answer { display: flex; flex-wrap: wrap; gap: 0 6px; margin: 0 0 8px; font-size: 13.5px; line-height: 1.4; }
+.resolved-answer:last-child { margin-bottom: 0; }
+.resolved-label { color: var(--muted); }
+.resolved-value, .resolved-outcome { color: var(--fg); }
+.resolved-note { color: var(--muted); }
+.card.resolved .resolved-outcome { margin: 0; font-size: 13.5px; line-height: 1.4; }
+
+.composer {
+  border-top: 1px solid var(--line); background: var(--bg);
+  padding-top: 8px;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
+  padding-left: max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2));
+  padding-right: max(calc(env(safe-area-inset-right) + 16px), calc((100% - var(--col)) / 2));
+}
+.tray { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.tray[hidden] { display: none; }
+/* Drop target while files are dragged over the chat or composer: a tint, no border line. */
+.app.drop-target .log { box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--accent) 7%, transparent); }
+.app.drop-target .composer .row { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.tray .item { position: relative; flex: 0 0 auto; width: 56px; height: 56px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 11px; padding: 2px; text-align: center; word-break: break-all; }
+.tray .item img { width: 100%; height: 100%; object-fit: cover; }
+/* The picture is a native button so tapping/keyboard opens the same full-size viewer as a sent image. Reset so the
+   tray keeps its 56px footprint; the × stays a separate sibling above it. */
+.tray .item-view { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; appearance: none; -webkit-appearance: none; cursor: zoom-in; }
+.tray .item-view:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tray .x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 14px; line-height: 20px; padding: 0; }
+.row { display: flex; align-items: flex-end; gap: 8px; }
+/* "+" attach menu: a small popover above the button with Photos and Files. */
+.attach-wrap { position: relative; flex: 0 0 auto; }
+.icon-btn.plus svg { transition: transform 0.18s ease; }
+.icon-btn.plus.open svg { transform: rotate(45deg); }
+.attach-menu {
+  position: absolute; bottom: calc(100% + 14px); left: 0; z-index: 20; min-width: 168px;
+  display: flex; flex-direction: column; padding: 6px; gap: 2px;
+  background: var(--surface); border: 0; border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); transform-origin: bottom left; animation: menu-in 0.14s ease-out;
+}
+.attach-menu[hidden] { display: none; }
+@keyframes menu-in { from { opacity: 0; transform: scale(0.94) translateY(4px); } to { opacity: 1; transform: none; } }
+.menu-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--fg); font: inherit; font-size: 15px; text-align: left; cursor: pointer;
+}
+.menu-item:hover, .menu-item:active { background: var(--code-bg); }
+.menu-icon { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; flex: 0 0 auto; }
+.menu-icon svg { width: 18px; height: 18px; }
+textarea {
+  flex: 1; min-width: 0; resize: none; font: inherit; color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 21px; padding: 10px 16px; line-height: 20px;
+  height: 42px; min-height: 42px; max-height: 162px; /* 1 line .. 7 lines */
+  outline: none; overflow-y: hidden; scrollbar-width: none; display: block;
+}
+textarea::-webkit-scrollbar { display: none; }
+
+/* Floating composer: "+", the input and send share one rounded container that floats above the bottom edge
+   (no divider line). The textarea loses its own border/background and grows inside the pill (42px → 162px). */
+.composer { border-top: 0; background: transparent; padding-top: 4px; position: relative; }
+.composer::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 16px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+}
+/* Down-arrow that jumps to the latest message: centred just above the composer, below the drawers/computer layers.
+   It fades in over ~170ms with a 4px lift; the exit keeps it in the DOM so the fade can play, but pointer-events and
+   the tab order are off throughout the exit. */
+.jump-latest {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%) translateY(4px);
+  width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg); background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24); cursor: pointer; z-index: 5;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 170ms ease, transform 170ms ease, visibility 0s linear 170ms;
+}
+.jump-latest.shown {
+  opacity: 1; visibility: visible; transform: translateX(-50%);
+  pointer-events: auto;
+  transition: opacity 170ms ease, transform 170ms ease, visibility 0s linear 0s;
+}
+.jump-latest[hidden] { display: none; }
+.jump-latest:active { transform: translateX(-50%) scale(0.96); }
+.jump-latest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.jump-latest svg { width: 20px; height: 20px; }
+@media (prefers-reduced-motion: reduce) {
+  .jump-latest, .jump-latest.shown { transition: none; }
+}
+.composer .row {
+  gap: 4px; padding: 5px; border-radius: 27px;
+  background: var(--surface); border: 0;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+/* The chat-title caption under the name pill is switched off by request. */
+#caption { display: none !important; }
+.composer .icon-btn { border: 0; background: transparent; }
+.composer .icon-btn:hover, .composer .icon-btn.open { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* scroll-padding keeps the caret line level with "+"/send when the input scrolls; the mask fades the clipped top line. */
+.composer textarea, .composer textarea:focus {
+  border: 0; background: transparent; border-radius: 0; padding: 11px 6px; scroll-padding-block: 11px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px); mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+}
+.composer .send { border: 0; }
+/* Voice dictation: recording UI for the configured speech-to-text provider. */
+.composer .mic-btn {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%;
+  border: 0; background: transparent; color: var(--fg);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+.composer .mic-btn:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.composer .mic-btn.recording {
+  color: var(--danger, #ef4444);
+  background: color-mix(in srgb, var(--danger, #ef4444) 16%, transparent);
+  animation: pulse-mic 1.2s ease-in-out infinite;
+}
+.composer .mic-btn.transcribing {
+  opacity: 0.55; pointer-events: none;
+  animation: pulse-transcribing 0.8s ease-in-out infinite;
+}
+.composer .row.dictating > textarea {
+  pointer-events: none; user-select: none; opacity: 0.55;
+}
+.composer .row.dictating:not(.wide) > textarea {
+  flex: 0 0 0; width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; overflow: hidden;
+}
+.dictate-hud {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1 1 auto; min-width: 0; height: 42px;
+  padding: 0 2px 0 8px;
+}
+.dictate-hud[hidden] { display: none !important; }
+.dictate-cancel {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.dictate-cancel svg { width: 18px; height: 18px; }
+:where(:root[data-input="mouse"]) .dictate-cancel:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg);
+}
+.dictate-viz {
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  flex: 1 1 auto; height: 24px;
+}
+.dictate-viz .vbar {
+  display: block; width: 3.5px; height: 4px; border-radius: 2px;
+  background: var(--accent, #3b82f6);
+  transition: height 55ms linear;
+}
+.dictate-hud.transcribing .dictate-viz .vbar {
+  animation: pulse-transcribing 0.7s ease-in-out infinite;
+  height: 10px !important;
+}
+.dictate-timer {
+  flex: 0 0 auto; min-width: 34px; text-align: right;
+  font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  transition: color 150ms ease;
+}
+.dictate-timer.warn { color: #f59e0b; }
+.dictate-timer.crit {
+  color: var(--danger, #ef4444);
+  animation: dictate-crit 0.6s ease-in-out infinite;
+}
+@keyframes pulse-mic {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+@keyframes pulse-transcribing {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+@keyframes dictate-crit {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.65; transform: scale(1.06); }
+}
+/* Two rows once the text wraps (app.js autosize, the person, 8 Nov 2026): the box spans the composer, "+" and Send sit
+   underneath at the left and right edges, like Gemini. */
+.composer .row.wide {
+  display: grid; grid-template-columns: auto 1fr auto auto; grid-template-areas: "input input input input" "attach hud mic send";
+  row-gap: 2px; border-radius: 24px;
+}
+.composer .row.wide > .attach-wrap { grid-area: attach; }
+.composer .row.wide > textarea { grid-area: input; padding-left: 12px; padding-right: 12px; }
+.composer .row.wide > .dictate-hud { grid-area: hud; }
+.composer .row.wide > .mic-btn { grid-area: mic; }
+.composer .row.wide > .send { grid-area: send; }
+.media { margin-top: 8px; }
+.media-img { display: block; max-width: 100%; max-height: 320px; border-radius: 12px; object-fit: contain; cursor: zoom-in; }
+/* Every inline picture is a small square thumbnail by default, even a single one: the same size as
+   a cell of the 2-up grid; tap opens the full-screen viewer. */
+.media:not(.grid) .media-img { width: 130px; height: 130px; max-width: 100%; max-height: none; object-fit: cover; border-radius: 8px; }
+/* 2+ images: square thumbnail grid (3 columns from 3 images up), tap to open the swipeable viewer. */
+.media.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: min(100%, 264px); }
+.media.grid.three { grid-template-columns: repeat(3, 1fr); width: min(100%, 420px); }
+.media.grid .media-img { width: 100%; height: auto; aspect-ratio: 1; max-height: none; object-fit: cover; border-radius: 8px; }
+.viewer .count { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; opacity: 0.8; }
+.viewer { position: fixed; inset: 0; z-index: 72; /* above the computer pane (70), below confirm (74) */ background: rgba(0, 0, 0, 0.92); display: flex; align-items: center; justify-content: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.viewer { touch-action: none; overscroll-behavior: contain; }
+.viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 44px; height: 44px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background 150ms ease, transform 150ms ease;
+}
+.viewer-arrow:hover { background: rgba(255, 255, 255, 0.28); }
+.viewer-arrow:active { transform: translateY(-50%) scale(0.92); }
+.viewer-arrow.prev { left: 16px; }
+.viewer-arrow.next { right: 16px; }
+.viewer-arrow svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 640px) {
+  .viewer-arrow { width: 38px; height: 38px; }
+  .viewer-arrow.prev { left: 8px; }
+  .viewer-arrow.next { right: 8px; }
+  .viewer-arrow svg { width: 20px; height: 20px; }
+}
+textarea:focus { border-color: var(--accent); }
+textarea::placeholder { color: var(--muted); }
+.icon-btn, .send { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--fg); display: flex; align-items: center; justify-content: center; padding: 0; }
+.send { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Stop while the agent works: red with a white square. */
+.send.stop { background: var(--danger); border-color: var(--danger); }
+/* Stop keeps the normal purple send look; only the icon changes to a square. */
+.send:disabled { opacity: 0.5; }
+svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- read-only chat: a slim muted bar in place of the composer ---------- */
+.readonly-bar {
+  display: none; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px;
+  border-radius: 21px; background: var(--surface); color: var(--muted); font-size: 13px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.app.read-only .readonly-bar { display: flex; }
+.app.read-only .composer .row, .app.read-only .tray { display: none; }
+
+/* ---------- chats drawer (drawer.js) ---------- */
+.scrim {
+  position: fixed; inset: 0; z-index: 40; background: var(--scrim); touch-action: none;
+  opacity: 0; visibility: hidden; transition: opacity 250ms ease-out, visibility 0s linear 250ms;
+}
+.scrim.open { opacity: 1; visibility: visible; transition: opacity 250ms ease-out, visibility 0s; }
+.drawer {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 41; width: min(86vw, 340px);
+  display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
+  padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left);
+  box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
+  transform: translateX(-102%); visibility: hidden; outline: none;
+  transition: transform 250ms ease-out, visibility 0s linear 250ms;
+  touch-action: pan-y; overscroll-behavior: contain;
+}
+.drawer.open { transform: none; visibility: visible; transition: transform 250ms ease-out, visibility 0s; }
+.drawer.dragging { transition: none; }
+/* One horizontal system. The gutter (8px) is the list's padding and the outer edge of every row, the computer,
+   New chat and the row menu. Inside each, content starts 12px in (x=20): the "+" circle, the row titles and the group
+   headers all share that line. There is no visible drawer title (the dialog is named by aria-label); --drawer-gap is
+   the small inset above the list. --drawer-sb is the list's scrollbar width (set by drawer.js), so New chat keeps the
+   same right edge as the rows when it scrolls. */
+.drawer { --drawer-gap: 10px; --drawer-sb: 0px; }
+/* New chat is a plain row in the list, directly under the computer and the home row (drawer.js moves the element
+   there on every render). It looks like the other rows: transparent, same 14px radius, same hover tint and press tint,
+   with a neutral pencil instead of the old accent pill. Its 8px list gutter plus 12px row padding put the content at
+   x = 20. */
+.drawer-new {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px;
+  border: 0; border-radius: 14px; background: transparent; color: var(--fg); font: inherit; font-size: 15px;
+  font-weight: 500; text-align: left;
+}
+/* The pencil icon, plain (no circle), at the end of the row. */
+.drawer-new { justify-content: space-between; }
+/* Home row and New chat: tighter vertically, with a gap between them. */
+.home-row-wrap .chat-row { min-height: 44px; padding-top: 5px; padding-bottom: 5px; }
+/* New chat matches the session rows: 14px title, 32px row, 14px icon centred where the pin and
+   the ⋮ sit (20px from the row edge). */
+.drawer-new { min-height: 32px; padding-top: 3px; padding-bottom: 3px; padding-right: 13px; margin-top: 6px; font-size: 14px; }
+.drawer-new-icon { display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+.drawer-new:hover .drawer-new-icon { color: var(--fg); }
+.drawer-new-icon svg { width: 14px; height: 14px; }
+.drawer-note { min-height: 0; margin: var(--drawer-gap) 20px 0; font-size: 12px; color: var(--danger); }
+.drawer-note:empty { display: none; }
+.drawer-list {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  margin-top: var(--drawer-gap); padding: 0 8px 8px; /* the appearance footer below takes the safe area */
+}
+.group-head {
+  position: sticky; top: 0; z-index: 1; margin: 0; padding: 14px 12px 6px; background: var(--bg);
+  font-size: 12px; font-weight: 600; color: var(--muted);
+}
+.home-slot { padding-top: 0; }
+/* Non-home rows are wrapped so the ⋮ menu button can sit beside the row button (buttons cannot nest). */
+.chat-row-wrap { position: relative; }
+.chat-row-wrap .chat-row { padding-right: 36px; }
+/* Session titles (not the agent name or New chat) at 14px, and no empty meta column stealing width. */
+.chat-row-wrap:not(.home-row-wrap) .chat-title { font-size: 14px; }
+/* Session rows sit tighter than the 56px home row. */
+.chat-row-wrap:not(.home-row-wrap) .chat-row { min-height: 32px; padding-top: 3px; padding-bottom: 3px; }
+.chat-meta:empty { display: none; }
+:where(:root[data-input="touch"]) .chat-row-wrap:not(.home-row-wrap) .chat-row { padding-right: 12px; }
+.chat-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; margin: 0; padding: 8px 12px;
+  border: 0; border-radius: 14px; background: transparent; color: var(--fg); font: inherit; text-align: left;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+.chat-row:active { background: var(--zebra); }
+.drawer-new:active { background: var(--zebra); }
+/* The ⋮ options button at the right end of a chat row. Sibling of the row button, absolutely placed inside the row's
+   right padding. Touch layouts keep the long press, so it is hidden there. */
+.chat-dots {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  width: 28px; height: 28px; margin: 0; padding: 0; border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted); cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.chat-dots svg { width: 16px; height: 16px; display: block; fill: currentColor; stroke: none; }
+.chat-dots:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.chat-dots:focus-visible { outline: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* was @media (hover: hover): follows the last input (data-input, index.html) */
+  :where(:root[data-input="mouse"]) .chat-dots { opacity: 0; transition: opacity 120ms ease-out; }
+  :where(:root[data-input="mouse"]) .chat-row-wrap:hover .chat-dots,
+:where(:root[data-input="mouse"]) .chat-row-wrap.menu-open .chat-dots,
+:where(:root[data-input="mouse"]) .chat-dots:focus-visible { opacity: 1; }
+  /* A soft tint on the row under the mouse, the same for the wrapped rows and for New chat. :not(:active) leaves the
+     pressed state above untouched. No border. */
+  :where(:root[data-input="mouse"]) .chat-row, :where(:root[data-input="mouse"]) .drawer-new { transition: background-color 120ms ease; }
+  :where(:root[data-input="mouse"]) .chat-row:hover:not(:active),
+:where(:root[data-input="mouse"]) .chat-row-wrap:hover > .chat-row:not(:active),
+:where(:root[data-input="mouse"]) .drawer-new:hover:not(:active) { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+
+/* was @media (hover: none): follows the last input (data-input, index.html) */
+  :where(:root[data-input="touch"]) .chat-dots { display: none; }
+
+/* The main chat's reset button: always visible at the trailing end of the home row, a sibling of the row button (never
+   nested). Grey circular arrow; a round 44px target on touch, a smaller one for a mouse. */
+.home-row-wrap .chat-row { padding-right: 36px; }
+.chat-reset {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  width: 32px; height: 32px; margin: 0; padding: 0; border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted); cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.chat-reset svg { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-reset:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.chat-reset:focus-visible { outline: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* On a computer the reset arrow shows only while the home row is hovered, like the ⋮ buttons. */
+/* was @media (hover: hover): follows the last input (data-input, index.html) */
+  :where(:root[data-input="mouse"]) .chat-reset { opacity: 0; transition: opacity 120ms ease-out; }
+  :where(:root[data-input="mouse"]) .home-row-wrap:hover .chat-reset,
+:where(:root[data-input="mouse"]) .chat-reset:focus-visible { opacity: 1; }
+
+/* Mobile: no reset button on the row; long press opens a menu with only Reset. */
+/* was @media (hover: none): follows the last input (data-input, index.html) */
+  :where(:root[data-input="touch"]) .home-row-wrap .chat-reset { display: none; }
+  :where(:root[data-input="touch"]) .home-row-wrap .chat-row { padding-right: 12px; }
+  /* Centre the 44px target 21px from the row edge, the same line as the New chat pencil and the Computer icon. */
+  :where(:root[data-input="touch"]) .chat-reset { width: 44px; height: 44px; right: -1px; }
+
+.chat-row.current { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.chat-row.current .chat-title { color: var(--accent); }
+/* The current chat keeps its accent tint under the mouse, only a touch stronger than at rest. */
+/* was @media (hover: hover): follows the last input (data-input, index.html) */
+  :where(:root[data-input="mouse"]) .chat-row.current:hover:not(:active) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+/* The row whose menu is open keeps its normal look: only the press highlight above shows. */
+.chat-main { flex: 1; min-width: 0; }
+.chat-title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.chat-title-line svg { width: 18px; height: 18px; flex: none; color: var(--accent); } /* 18px fits inside the 44px row without growing it */
+.chat-title {
+  min-width: 0; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Unread chat: an accent dot inside the row, before the title, which shifts right to make room.
+   Unread titles are bold. */
+.chat-unread {
+  flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); pointer-events: none;
+}
+.chat-row.unread .chat-title { font-weight: 700; }
+/* A chat the agent is working in: its title breathes until the turn ends. */
+.chat-row.working .chat-title { animation: chat-working 1.4s ease-in-out infinite; }
+@keyframes chat-working { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-row.working .chat-title { animation: none; opacity: 0.6; }
+}
+/* Title only in the chats drawer: no preview line, so rows are shorter. */
+.chat-preview { display: none !important; }
+.chat-row { min-height: 44px; }
+.chat-preview-unused {
+  margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chat-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; max-width: 42%; }
+.chat-stamp { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
+.chat-pin { width: 12px; height: 12px; flex: none; color: var(--muted); }
+/* The pin mark on a pinned row: at the row end where the ⋮ sits, not clickable. On a computer, hovering the row (or
+   its open menu) swaps it for the ⋮. Touch has no ⋮, so the mark stays. */
+.chat-pinmark {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  color: var(--muted); pointer-events: none; transition: opacity 120ms ease-out;
+}
+.chat-pinmark svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* was @media (hover: hover): follows the last input (data-input, index.html) */
+  :where(:root[data-input="mouse"]) .chat-row-wrap.has-pin:hover .chat-pinmark,
+:where(:root[data-input="mouse"]) .chat-row-wrap.has-pin.menu-open .chat-pinmark,
+:where(:root[data-input="mouse"]) .chat-row-wrap.has-pin:has(.chat-dots:focus-visible) .chat-pinmark { opacity: 0; }
+
+/* was @media (hover: none): follows the last input (data-input, index.html) */
+  :where(:root[data-input="touch"]) .chat-pinmark { right: 6px; }
+  :where(:root[data-input="touch"]) .chat-row-wrap.has-pin:not(.home-row-wrap) .chat-row { padding-right: 40px; }
+
+/* Pinned Sort mode: Sort/Done in the group header, a grip on each pinned row. */
+.pinned-head { display: flex; align-items: center; justify-content: space-between; }
+.group-action {
+  margin: -4px -6px -4px 0; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.group-action:hover, .group-action:focus-visible { outline: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.group-action[aria-pressed="true"] { color: var(--accent, var(--fg)); }
+.group-action.icon { margin: -5px -5px -5px 0; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: 999px; }
+.group-action.icon svg { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* On a computer the sort arrows show only while the Pinned heading or a pinned chat is hovered, or on keyboard focus;
+   Done (sort mode) always shows. Touch keeps them visible: no hover there. */
+/* was @media (hover: hover): follows the last input (data-input, index.html) */
+  :where(:root[data-input="mouse"]) .group-action.icon { opacity: 0; transition: opacity 120ms ease-out; }
+  :where(:root[data-input="mouse"]) section.pinned:hover .group-action.icon,
+:where(:root[data-input="mouse"]) .group-action.icon:focus-visible { opacity: 1; }
+
+.chat-row-wrap.sorting .chat-row { padding-right: 40px; cursor: default; }
+.chat-grip {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  color: var(--muted); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none;
+}
+.chat-grip svg { width: 18px; height: 18px; }
+.chat-row-wrap.dragging { position: relative; z-index: 2; }
+.chat-row-wrap.dragging .chat-row { background: var(--zebra); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); }
+.chat-row-wrap.dragging .chat-grip { cursor: grabbing; color: var(--fg); }
+.chat-badge {
+  max-width: 100%; padding: 1px 6px; border-radius: 6px; background: var(--code-bg); color: var(--muted);
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Rename dialog (drawer.js startRename) and the shared confirm dialog (confirm.js): a centred card over a scrim,
+   above the drawer and the row menu. The rename card is centred in JS in the visual viewport, so the on-screen
+   keyboard does not cover it; the confirm card is centred by CSS because it has no text field. */
+.rename-scrim { z-index: 62; }
+/* The confirm dialog sits above everything, including the rename dialog. */
+.confirm-scrim { z-index: 74; }
+.rename-dialog, .confirm-dialog {
+  position: fixed; left: 50%; top: 50%; z-index: 63; box-sizing: border-box;
+  width: min(calc(100vw - 32px), 480px); padding: 24px; border-radius: 28px;
+  background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  transform: translate(-50%, -50%) scale(0.97); opacity: 0; visibility: hidden;
+  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s linear 200ms;
+}
+.confirm-dialog { z-index: 75; width: min(calc(100vw - 32px), 400px); }
+.rename-dialog.open, .confirm-dialog.open {
+  transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible;
+  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s;
+}
+.rename-title, .confirm-title { margin: 0 0 20px; font-size: 20px; font-weight: 500; line-height: 1.3; color: var(--fg); }
+.confirm-title { margin-bottom: 8px; }
+.confirm-message { margin: 0; font-size: 15px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.rename-input {
+  display: block; box-sizing: border-box; width: 100%; height: 48px; margin: 0; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 12px; background: transparent; color: var(--fg);
+  font: inherit; font-size: 16px; font-weight: 400; line-height: 1.2; caret-color: var(--accent);
+  outline: none; -webkit-appearance: none; appearance: none;
+}
+.rename-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rename-input[aria-invalid="true"] { border-color: var(--danger); }
+.rename-input::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.rename-error { margin: 8px 2px 0; font-size: 13px; line-height: 1.35; color: var(--danger); overflow-wrap: anywhere; }
+.rename-actions, .confirm-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.confirm-actions { margin-top: 24px; }
+.rename-cancel, .confirm-cancel {
+  height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--fg);
+  font: inherit; font-size: 15px; font-weight: 500;
+}
+.rename-cancel:hover, .rename-cancel:focus-visible,
+.confirm-cancel:hover, .confirm-cancel:focus-visible { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.rename-submit, .confirm-submit {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 96px; height: 40px;
+  padding: 0 20px; border: 0; border-radius: 999px; background: var(--accent); color: #fff;
+  font: inherit; font-size: 15px; font-weight: 600;
+}
+.confirm-submit.danger { background: var(--danger); color: #fff; }
+.rename-submit:disabled, .confirm-submit:disabled { background: color-mix(in srgb, var(--fg) 12%, transparent); color: var(--muted); }
+.rename-label { display: inline-block; }
+.rename-spin {
+  display: none; position: absolute; box-sizing: border-box; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; animation: rename-spin 0.8s linear infinite;
+}
+.rename-dialog.busy .rename-label { visibility: hidden; }
+.rename-dialog.busy .rename-spin { display: block; }
+@keyframes rename-spin { to { transform: rotate(360deg); } }
+/* To-do panel (todo.js): the rename card's surface, radius and shadow, with a fixed header and only the rows scrolling
+   below it. Above the rename dialog (62/63), below the confirm dialog (74/75). */
+.todo-scrim { z-index: 63; }
+.todo-dialog {
+  position: fixed; left: 50%; top: 50%; z-index: 64; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  width: min(calc(100vw - 32px), 440px); max-height: min(80vh, 640px); padding: 20px;
+  border-radius: 28px; background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  transform: translate(-50%, -50%) scale(0.97); opacity: 0; visibility: hidden;
+  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s linear 200ms;
+}
+.todo-dialog.open {
+  transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible;
+  transition: transform 200ms ease-out, opacity 200ms ease-out, visibility 0s;
+}
+/* Title centred, close at the right; the empty left column balances it. */
+.todo-head { flex: none; display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: center; gap: 8px; margin: 0 0 14px; }
+.todo-head .todo-title { grid-column: 2; grid-row: 1; justify-content: center; }
+.todo-head .todo-close { grid-column: 3; grid-row: 1; margin: 0; }
+/* Title in the computer's style (screen.css .bs-title): 16px/650 with the button's icon after it, 15px on narrow
+   phones. Item text is the chat's 16px. */
+.todo-title { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: 16px; font-weight: 650; line-height: 1.3; }
+.todo-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-head .todo-back { display: none; } /* beats screen.css .bs-back, which loads later */
+.todo-close {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px;
+  margin: -4px -4px -4px 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer;
+}
+.todo-close svg { width: 18px; height: 18px; }
+:where(:root[data-input="mouse"]) .todo-close:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* "+ Add item": a new row is typed in the list itself, Keep-style, so this sits on the item rows'
+   grid - an empty grip slot, then the + in the checkbox's slot - directly after the last open item. */
+.todo-additem {
+  display: flex; align-items: flex-start; gap: 7px; width: 100%; margin: 0; padding: 9px 0;
+  border: 0; background: none; color: var(--muted); font: inherit; font-size: 16px; line-height: 1.4;
+  text-align: left; cursor: pointer;
+}
+.todo-additem-icon {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 16px; height: 16px;
+  margin: 3px 2px 0; /* the checkbox's slot, so the + lines up with the boxes */
+  color: var(--muted);
+}
+.todo-additem-icon svg { width: 16px; height: 16px; }
+.todo-additem-label { flex: 1 1 auto; min-width: 0; }
+:where(:root[data-input="mouse"]) .todo-additem:hover,
+:where(:root[data-input="mouse"]) .todo-additem:hover .todo-additem-icon { color: var(--fg); }
+.todo-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.todo-row { display: flex; align-items: flex-start; gap: 7px; padding: 9px 0; } /* tighter grip-box-text spacing */
+/* One level of nesting: an open child shifts right by one checkbox column and the row gap, so its
+   box sits under the parent's text. The grip moves with the row. Done rows (and the Done section) never show it. */
+.todo-row.indent { padding-left: 27px; }
+.todo-check {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 16px; height: 16px; margin: 3px 2px 0; padding: 0; border: 2px solid var(--muted); border-radius: 4px; /* a box, not a circle */
+  background: none; color: #fff; cursor: pointer;
+}
+.todo-check svg { display: none; width: 10px; height: 10px; stroke: #fff; stroke-width: 3; }
+.todo-check.checked { background: var(--accent); border-color: var(--accent); }
+.todo-check.checked svg { display: block; }
+.todo-text { flex: 1 1 auto; min-width: 0; font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; min-height: 1.4em; }
+/* A blank entry is allowed: an empty text span still takes one line's height and a little width,
+   so the row keeps its full height and the blank can be tapped to edit it. */
+.todo-text:empty { min-width: 1ch; }
+.todo-row.done .todo-text { color: var(--muted); text-decoration: line-through; }
+/* Delete is quiet on a computer until the row is hovered or the button focused; always visible on touch. */
+.todo-del {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px;
+  margin: -3px -4px -3px 0; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+  transition: opacity 120ms ease-out;
+}
+.todo-del svg { width: 15px; height: 15px; }
+:where(:root[data-input="mouse"]) .todo-del { opacity: 0; }
+:where(:root[data-input="mouse"]) .todo-row:hover .todo-del,
+:where(:root[data-input="mouse"]) .todo-del:focus-visible { opacity: 1; }
+:where(:root[data-input="mouse"]) .todo-del:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.todo-done { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--line); }
+.todo-done-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 0; }
+.todo-done-label { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.todo-clear {
+  height: 28px; padding: 0 8px; border: 0; border-radius: 999px; background: none; color: var(--muted);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+:where(:root[data-input="mouse"]) .todo-clear:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* Inline editing (todo.js startEdit): the text itself turns editable, so it never moves; just the caret shows. An empty
+   draft keeps the line's height, so its caret is visible. */
+.todo-text.editing { outline: none; caret-color: var(--accent); cursor: text; -webkit-user-select: text; user-select: text; min-height: 1.4em; }
+.todo-row.draft .todo-grip { cursor: default; } /* a draft is not a to-do yet: no drag, no tick */
+/* ...but it looks like any other row, empty or not: no dimmed circle. */
+.todo-row.draft .todo-check:disabled { opacity: 1; }
+.todo-check:disabled { cursor: default; opacity: 0.45; }
+/* Drag to sort (todo.js beginDrag): the open rows only. The dragged row follows the pointer with no highlight; the
+   neighbours slide with inline transforms. Computer: the grip left of the circle appears on row hover and is the only
+   mouse grab point. Touch: no grip, long press the row. */
+.todo-row { position: relative; }
+/* Inside the row, before the box; done rows keep an empty slot so the boxes stay aligned.
+   Always shown, on every device. Touch: a wider target, and touch-action none so pressing it drags
+   instead of scrolling the list. */
+.todo-grip {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 14px; height: 22px; margin-right: -4px;
+  color: var(--muted); cursor: grab; touch-action: none;
+}
+.todo-grip.slot { visibility: hidden; cursor: default; }
+:where(:root[data-input="touch"]) .todo-grip { width: 22px; height: 34px; margin: -6px -8px -6px -4px; }
+.todo-grip svg { width: 16px; height: 16px; stroke-width: 3; }
+:where(:root[data-input="mouse"]) .todo-text { cursor: text; }
+.todo-row.dragging { z-index: 3; touch-action: none; user-select: none; cursor: grabbing; }
+.todo-row.dragging .todo-text, .todo-row.dragging .todo-grip { cursor: grabbing; }
+body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: none; }
+@media (prefers-reduced-motion: reduce) { .todo-dialog, .todo-dialog.open { transition: none; } }
+.drawer-empty { margin: 36px 20px; text-align: center; font-size: 14px; color: var(--muted); }
+.list-more { padding: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+.list-sentinel { height: 1px; }
+.skel {
+  height: 56px; margin: 6px 0; border-radius: 14px;
+  background: linear-gradient(90deg, var(--zebra) 25%, color-mix(in srgb, var(--fg) 8%, transparent) 37%, var(--zebra) 63%);
+  background-size: 400% 100%; animation: shimmer 1.3s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* Row menu (long press or right click on a chat row): a small card anchored under the row, left edge on the row's
+   left edge, flipped above it near the bottom of the screen (drawer.js placeRowMenu). A transparent scrim behind it
+   takes the tap that closes it. No border; the elevation is the shadow. */
+.row-menu-scrim { z-index: 58; background: transparent; }
+.row-menu {
+  position: fixed; left: 0; top: 0; z-index: 59; box-sizing: border-box; width: auto; min-width: 168px; margin: 0; padding: 0;
+  border: 0; border-radius: 16px; background: var(--raised); color: var(--fg);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28); transform-origin: top left;
+  opacity: 0; visibility: hidden; transform: scale(0.97);
+  transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 0s linear 140ms;
+  overflow: hidden;
+}
+.row-menu.open {
+  opacity: 1; visibility: visible; transform: none;
+  transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 0s;
+}
+.row-menu-item {
+  display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: 48px;
+  margin: 0; padding: 0 16px; border: 0; border-radius: 0; background: transparent; color: var(--fg);
+  font: inherit; font-size: 15px; font-weight: 500; text-align: left; white-space: nowrap;
+}
+.row-menu-item[hidden] { display: none; }
+.row-menu-item:first-child { border-radius: 16px 16px 0 0; }
+.row-menu-item:last-child { border-radius: 0 0 16px 16px; }
+#rowMenuReset { border-radius: 16px; } /* the only item in the main chat's menu */
+#rowMenuMute[data-muted="true"] .bell-unmuted { display: none; }
+#rowMenuMute[data-muted="false"] .bell-muted { display: none; }
+#rowMenuMute:not([data-muted]) .bell-muted { display: none; }
+.row-menu-item:hover, .row-menu-item:focus-visible { background: var(--zebra); outline: none; }
+.row-menu-item svg { width: 18px; height: 18px; flex: none; order: -1; }
+.row-menu-item.danger { color: var(--danger); }
+
+/* Message menu (long press on a message, app.js openMsgMenu): the drawer's row-menu card, anchored at the press
+   point. Icon on the left, then the name. */
+.msg-menu-scrim { z-index: 58; background: transparent; }
+.msg-menu { z-index: 59; width: auto; min-width: 168px; }
+.msg-menu .row-menu-item { justify-content: flex-start; gap: 12px; }
+.msg-menu .row-menu-item svg { width: 18px; height: 18px; }
+/* No tint on the pressed message while its menu is open. */
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim, .scrim.open, .drawer, .drawer.open, .row-menu, .row-menu.open { transition: none; }
+  .rename-dialog, .rename-dialog.open, .confirm-dialog, .confirm-dialog.open { transition: none; }
+  .skel { animation: none; }
+  .empty-state { animation: none; }
+  .identity, .identity.flying, .identity.lowering, .identity.flying .avatar, .identity.flying .name, .identity.lowering .avatar, .identity.lowering .name { transition: none; }
+  .empty-state.leaving, .msg.first-in { animation: none; }
+}
+@media (min-width: 1024px) {
+  .drawer { width: min(86vw, 340px); }
+}
+
+/* A failed-turn notice from history: a small muted line, not a red error and not a agent bubble. */
+.fail-line .note { color: var(--muted); font-size: 12px; }
+/* Attached files on a user message: chips above the bubble, right-aligned like the picture thumbnails. */
+.file-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-bottom: 4px; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 6px 10px; border-radius: 10px;
+  background: var(--surface); color: var(--fg); font-size: 13px;
+}
+.file-chip svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.file-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- docked layout (wide window with a mouse; app.js toggles body.docked) ---------- */
+/* Chats become a permanent left column instead of an off-canvas drawer: no scrim, no hamburger, no slide. */
+body.docked .drawer {
+  transform: none;
+  visibility: visible;
+  width: 300px;
+  box-shadow: none;
+  transition: transform 250ms ease-out, visibility 0s;
+  border-right: 0; /* no divider */
+}
+/* Computer open: the chats panel tucks away to the left and the chat column slides over to the edge, so the computer
+   gets the room. Closing the computer brings the panel back. */
+body.docked.computer-docked .drawer {
+  transform: translateX(-102%); visibility: hidden;
+  transition: transform 250ms ease-out, visibility 0s linear 250ms;
+}
+body.docked .app { transition: margin-left 250ms ease-out; }
+body.docked.computer-docked .app { margin-left: 0; }
+@media (prefers-reduced-motion: reduce) {
+  body.docked .drawer, body.docked .app { transition: none; }
+}
+body.docked #scrim { display: none; }
+body.docked #menuBtn { display: none; }
+/* The chat column starts right of the sidebar and is 300px narrower, so the --col maths, the floating header buttons
+   and the composer still centre on the chat itself. */
+body.docked .app { margin-left: 300px; }
+/* Computer pane open: the chat narrows to a readable 440px column and the computer takes the rest. */
+body.docked.computer-docked .app { width: var(--chat-w, 440px); flex: none; }
+/* A docked pane must not lock the page behind it: the chat keeps scrolling as usual. */
+body.docked.bot-screen-open { overflow: auto; overscroll-behavior: auto; }
+/* The Computer button looks pressed while the computer is open: a light accent tint. */
+body.bot-screen-open #screenBtn {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  /* The icon keeps its normal colour (white in dark mode); only the button's fill changes. */
+}
+/* The to-do button looks pressed the same way while its panel is open. */
+body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+
+/* Appearance switch at the bottom of the chats panel: System / Light / Dark as one small segmented pill. */
+.drawer-foot {
+  flex: none; display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 16px calc(env(safe-area-inset-bottom) + 12px);
+}
+.theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface); }
+.theme-switch button {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 30px; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer;
+}
+.theme-switch button svg { width: 16px; height: 16px; }
+.theme-switch button:hover { color: var(--fg); }
+.theme-switch button[aria-checked="true"] { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--fg); }
+
+/* Notification bell at the right of the appearance switch: the same pill and 30px height, quiet while off and
+   accent-tinted while on. app.js toggles aria-pressed and hides the button without Web Push. */
+.push-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 30px; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: var(--surface); color: var(--muted); cursor: pointer;
+}
+.push-btn svg { width: 16px; height: 16px; }
+.foot-actions { display: inline-flex; align-items: center; gap: 6px; }
+.restart-btn.busy svg { animation: restart-pulse 1.2s ease-in-out infinite; }
+@keyframes restart-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .restart-btn.busy svg { animation: none; } }
+.push-btn:hover { color: var(--fg); }
+.push-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--fg); }
+.push-btn[aria-pressed="true"] .bell-off { display: none; }
+.push-btn[aria-pressed="false"] .bell-on { display: none; }
+
+/* Computer open on a wide window: the hamburger is back and opens the chats panel over the chat, with the scrim, the
+   same as on a phone. Both sit above the computer pane so a tap anywhere outside closes the panel. */
+body.docked.computer-docked #menuBtn { display: flex; }
+body.docked.computer-docked #scrim { display: block; z-index: 71; }
+body.docked.computer-docked .drawer.open {
+  transform: none; visibility: visible; z-index: 72; box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
+  transition: transform 250ms ease-out, visibility 0s;
+}
+/* The panel's own pop-ups (the row menu and the rename card) follow it above the computer pane; at their usual 58-63
+   they opened under the raised panel. Still below the confirm dialog (74/75). Same z for scrim
+   and card: the card comes later in the page, so it paints on top. */
+body.docked.computer-docked .row-menu-scrim, body.docked.computer-docked .row-menu,
+body.docked.computer-docked .msg-menu-scrim, /* the message menu shares .row-menu, so its scrim rises with it */
+body.docked.computer-docked .rename-scrim, body.docked.computer-docked .rename-dialog { z-index: 73; }
+
+/* Resizable seam between the chat and the docked computer. Invisible until hovered or dragged,
+   then a thin grey line. --chat-w is the chat column's width (app.js, remembered per device). */
+.pane-split { display: none; }
+body.docked.computer-docked .pane-split {
+  display: block; position: fixed; top: 0; bottom: 0; left: calc(var(--chat-w, 440px) - 5px); width: 10px;
+  z-index: 71; cursor: col-resize; touch-action: none; /* above the computer pane (70) */
+}
+body.docked.computer-docked .pane-split::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: var(--muted); /* grey, not purple */
+  opacity: 0; transition: opacity 120ms ease-out;
+}
+body.docked.computer-docked .pane-split:hover::after,
+body.pane-resizing .pane-split::after { opacity: 0.55; }
+/* While dragging: no easing on the chat, and the computer does not take the pointer. */
+body.pane-resizing { cursor: col-resize; user-select: none; -webkit-user-select: none; }
+body.pane-resizing .app { transition: none; }
+body.pane-resizing .bot-screen { pointer-events: none; }
+
+/* Long messages of yours fold to FOLD_LINES lines (app.js fitLongBubble) with a chevron at the bottom right. Folded, the
+   last line fades out towards the chevron; unfolded, the bubble keeps a strip at the bottom for it. */
+.bubble-text { display: block; }
+.msg.user .bubble.long { position: relative; }
+.msg.user .bubble.long.collapsed .bubble-text {
+  max-height: var(--fold-h, 7.25em); overflow: hidden;
+  -webkit-mask: linear-gradient(#000, #000) top / 100% calc(100% - 1.45em) no-repeat,
+    linear-gradient(to right, #000 55%, transparent 88%) bottom / 100% 1.45em no-repeat;
+  mask: linear-gradient(#000, #000) top / 100% calc(100% - 1.45em) no-repeat,
+    linear-gradient(to right, #000 55%, transparent 88%) bottom / 100% 1.45em no-repeat;
+}
+.msg.user .bubble.long:not(.collapsed) { padding-bottom: 40px; }
+.bubble-toggle {
+  position: absolute; right: 8px; bottom: 7px; width: 28px; height: 28px; margin: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--user-fg) 16%, transparent); color: var(--user-fg); cursor: pointer;
+}
+.bubble-toggle:hover { background: color-mix(in srgb, var(--user-fg) 24%, transparent); }
+.bubble-toggle svg { width: 16px; height: 16px; transition: transform 180ms ease; }
+.bubble.long:not(.collapsed) .bubble-toggle svg { transform: rotate(180deg); }
+
+
+/* A scheduled job's result in the main chat (the bridge, the person 6 Nov 2026): the agent's bubble with a small label. */
+
+/* Take a photo is a phone/tablet item: with a mouse it would only reopen the photo picker. */
+:where(:root[data-input="mouse"]) #takePhoto { display: none; }
+/* A to-do still being saved: shown at once, its buttons wait for the server's id (todo.js add). */
+.todo-row.pending { opacity: 0.6; }
+.todo-row.pending button { pointer-events: none; }
+
+/* Phones: the to-do list takes the whole screen like the computer (screen.css .bot-screen): page background,
+   no card, slides in from the right, Back arrow + centred title bar. */
+@media (max-width: 640px) {
+  .todo-dialog, .todo-dialog.open {
+    left: 0 !important; top: var(--todo-vt, 0px) !important; width: 100%; height: var(--todo-vh, 100%); max-height: none;
+    padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 8px);
+    border-radius: 0; background: var(--bg); box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35);
+  }
+  .todo-dialog { transform: translateX(100%); }
+  .todo-dialog.open { transform: none; }
+  /* Same bar as the full-screen computer (screen.css body:not(.docked) .bs-bar / #bsBack). */
+  .todo-head {
+    display: grid; grid-template-columns: 46px minmax(0, 1fr) 46px; gap: 2px; min-height: 84px;
+    margin: 0 -16px 8px; padding: 0 calc(env(safe-area-inset-right) + 22px) 0 calc(env(safe-area-inset-left) + 22px);
+  }
+  .todo-head .todo-back {
+    display: flex; align-items: center; justify-content: center; grid-column: 1; grid-row: 1;
+    width: 46px; height: 46px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+    background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--fg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+  }
+  .todo-head .todo-back svg { width: 20px; height: 20px; }
+  .todo-head .todo-back:active { transform: scale(0.96); }
+  .todo-title { grid-column: 2; grid-row: 1; }
+  .todo-title { justify-content: center; }
+  .todo-close { display: none; }
+}
+@media (max-width: 420px) {
+  .todo-title { font-size: 15px; }
+}
+.todo-dialog:focus { outline: none; } /* focused on open only to hold keyboard focus; no ring (todo.js) */
+
+/* ---------- Inbox ---------- */
+/* the agent's photo and name open the Inbox: the unread count sits on the photo's top-right like the
+   other buttons' counts, and the whole identity reads as tappable. Hidden while the identity sits centred over an
+   empty chat, where the photo is scaled and not tappable. */
+.identity[role="button"] { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.identity[role="button"]:focus { outline: none; }
+.identity[role="button"]:focus-visible .avatar { outline: 2px solid var(--accent); outline-offset: 3px; }
+.identity[role="button"]:active .avatar { transform: scale(0.97); }
+.avatar-count { top: -2px; right: auto; left: calc(50% + 17px); }
+/* Centred over an empty chat the photo is scaled 1.5x (64px to 96px around its centre): the count follows it there.
+   It still opens the Inbox; only the moves themselves (flying, lowering) are untappable. */
+.identity.centred[role="button"]:not(.flying):not(.lowering) { pointer-events: auto; }
+.identity.centred .avatar-count { top: -18px; left: calc(50% + 26px); }
+.identity.flying .avatar-count, .identity.lowering .avatar-count { display: none; }
+/* While the Inbox is open, only the photo and name stay above the dimmed page; the other round buttons step back. */
+body.inbox-open .topbar { z-index: 67; }
+body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
+body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 16px rgba(0, 0, 0, 0.28); }
+
+/* The To-do panel's surface, radius and shadow, one step above it; above the rename dialog, below the confirm card. */
+.inbox-scrim { z-index: 65; }
+/* A card hanging from the agent's photo (inbox.js place() sets left/top/width/height and --caret-x): fades and drops in
+   a few pixels; the pointer is a small rotated square on the top edge under the photo. */
+.inbox-dialog {
+  --tab-strip: color-mix(in srgb, var(--bg) 55%, var(--surface));
+  position: fixed; left: 0; top: 0; z-index: 66; box-sizing: border-box;
+  display: flex; flex-direction: column; padding: 16px 16px 12px;
+  border-radius: 20px; background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  transform: translateY(-6px); opacity: 0; visibility: hidden;
+  transition: transform 180ms ease-out, opacity 180ms ease-out, visibility 0s linear 180ms;
+}
+.inbox-dialog::before {
+  content: ""; position: absolute; top: -7px; left: calc(var(--caret-x, 50%) - 8px); width: 16px; height: 16px;
+  background: var(--tab-strip); /* the frame's colour, like the title row it sits on */ border-radius: 3px; transform: rotate(45deg); pointer-events: none;
+}
+.inbox-dialog.open {
+  transform: none; opacity: 1; visibility: visible;
+  transition: transform 180ms ease-out, opacity 180ms ease-out, visibility 0s;
+}
+.inbox-dialog:focus { outline: none; } /* focused on open only to hold keyboard focus; no ring (inbox.js) */
+/* Chrome's frame: the title row and the tab strip are
+   one darker block across the top of the card, the active tab and the list below share the lighter page colour. */
+.inbox-head {
+  flex: none; display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: center; gap: 8px;
+  margin: -16px -16px 0; padding: 14px 16px 2px; background: var(--tab-strip); border-radius: inherit;
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+.inbox-head .inbox-title { grid-column: 2; grid-row: 1; justify-content: center; }
+.inbox-head .inbox-close { grid-column: 3; grid-row: 1; margin: 0; }
+.inbox-title { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: 16px; font-weight: 650; line-height: 1.3; }
+.inbox-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-close {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px;
+  margin: -4px -4px -4px 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer;
+}
+.inbox-close svg { width: 18px; height: 18px; }
+:where(:root[data-input="mouse"]) .inbox-close:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* The tab strip: Chrome-like. A darker strip across the card; the active tab is the list's own
+   colour, joined to it, with rounded top corners and Chrome's outward curves where it meets the list (the ::before /
+   ::after radial gradients). Mark all as read sits on the strip's right. */
+.inbox-tools {
+  flex: none; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px;
+  margin: 0 -16px 8px; padding: 6px 12px 0 18px; background: var(--tab-strip);
+}
+.inbox-tabs { display: flex; align-items: flex-end; gap: 2px; }
+.inbox-tab {
+  position: relative; height: 32px; padding: 0 16px; border: 0; border-radius: 10px 10px 0 0;
+  background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+:where(:root[data-input="mouse"]) .inbox-tab:not(.active):hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.inbox-tab.active { background: var(--surface); color: var(--fg); }
+.inbox-tab.active::before, .inbox-tab.active::after {
+  content: ""; position: absolute; bottom: 0; width: 10px; height: 10px; pointer-events: none;
+}
+.inbox-tab.active::before { left: -10px; background: radial-gradient(circle at 0 0, transparent 9.5px, var(--surface) 10px); }
+.inbox-tab.active::after { right: -10px; background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--surface) 10px); }
+.inbox-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.inbox-tools .inbox-markall { margin-bottom: 1px; }
+.inbox-markall {
+  height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--accent);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+:where(:root[data-input="mouse"]) .inbox-markall:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.inbox-markall:disabled { color: var(--muted); background: none; cursor: default; }
+.inbox-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* Rows run edge to edge across the card, so an unread row's tint fills the whole width; the text
+   keeps the card's 16px margins through --inbox-gutter (wider on a phone with side safe areas). */
+.inbox-list { --inbox-gutter: 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -16px; padding: 0; }
+.inbox-list[hidden] { display: none; }
+/* Today / Yesterday / "Mon 3 Nov". */
+.inbox-date { padding: 14px var(--inbox-gutter) 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+.inbox-date:first-child { padding-top: 2px; }
+/* One row: thread name, then the chat's own timestamp, then the message, clamped to two lines. No labels or icons. */
+.inbox-row {
+  display: block; width: 100%; margin: 0; padding: 11px var(--inbox-gutter); border: 0; /* no dividers between rows */
+  border-radius: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+:where(:root[data-input="mouse"]) .inbox-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.inbox-row:last-of-type { border-bottom: 0; }
+.inbox-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.inbox-thread {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 14px; font-weight: 650; line-height: 1.3;
+}
+.inbox-time { margin-left: auto; flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.inbox-text {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+  margin-top: 2px; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere;
+}
+/* Unread: stronger text on a soft accent tint, so it reads at a glance. Read: muted, no tint. Still no badges or dots (the spec keeps those to the drawer). */
+.inbox-row.unread { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+:where(:root[data-input="mouse"]) .inbox-row.unread:hover { background: color-mix(in srgb, var(--accent) 17%, transparent); }
+.inbox-row.unread .inbox-text { color: var(--fg); font-weight: 500; }
+/* Inbox button and the panel's back button: open tray when all is read, closed envelope while anything is unread. */
+.inbox-icon-unread { display: none; }
+.has-unread .inbox-icon-read { display: none; }
+.has-unread .inbox-icon-unread { display: block; }
+.inbox-row.read .inbox-text { color: var(--muted); }
+.inbox-empty { margin: 6px 0; color: var(--muted); font-size: 15px; }
+.inbox-empty[hidden] { display: none; }
+/* New items arrived while scrolled away from the top: jump back instead of moving the list under the finger. */
+.inbox-new {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 2;
+  height: 30px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--accent); color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28); cursor: pointer;
+}
+.inbox-new[hidden] { display: none; }
+.inbox-sentinel { height: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .inbox-dialog, .inbox-dialog.open { transition: none; }
+}
+
+/* Phones: full width, square bottom corners down to the screen's edge, still hanging from the photo with its pointer. */
+@media (max-width: 640px) {
+  .inbox-dialog { border-radius: 20px 20px 0 0; padding: 16px calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 16px); }
+  .inbox-tools { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); }
+  .inbox-list { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); --inbox-gutter: calc(16px + max(env(safe-area-inset-left), env(safe-area-inset-right))); }
+  .inbox-head { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+}
+@media (max-width: 420px) {
+  .inbox-title { font-size: 15px; }
+}
+
+/* ---------- First-run setup and identity editor (identity.js) ---------- */
+/* A centred card over its own scrim, above every other overlay: setup is the one thing that must be answered
+   before the app looks like someone's app. It is never shown once the profile has completed setup. */
+.setup-scrim { z-index: 86; }
+.setup-dialog {
+  position: fixed; left: 50%; top: 50%; z-index: 87; box-sizing: border-box;
+  width: min(calc(100vw - 32px), 460px); max-height: min(86vh, 720px); overflow-y: auto;
+  padding: 24px; border-radius: 28px; background: var(--surface); color: var(--fg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32); transform: translate(-50%, -50%) scale(0.97);
+  animation: setup-in 200ms ease-out forwards;
+}
+.setup-dialog[hidden] { display: none; }
+@keyframes setup-in { to { transform: translate(-50%, -50%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .setup-dialog { animation: none; transform: translate(-50%, -50%); } }
+.setup-title { margin: 0 0 8px; font-size: 22px; font-weight: 600; line-height: 1.25; }
+.setup-intro { margin: 0 0 20px; font-size: 14px; line-height: 1.55; color: var(--muted); }
+.setup-photo-row { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; }
+.setup-preview {
+  width: 88px; height: 88px; flex: none; border-radius: 24px; object-fit: cover;
+  background: var(--bg); border: 1px solid var(--line);
+}
+.setup-photo-actions { min-width: 0; }
+.setup-hint { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.setup-label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.setup-optional { font-weight: 400; text-transform: none; }
+.setup-input {
+  display: block; box-sizing: border-box; width: 100%; height: 48px; margin: 0 0 16px; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 12px; background: transparent; color: var(--fg);
+  font: inherit; font-size: 16px; line-height: 1.2; caret-color: var(--accent); outline: none;
+  -webkit-appearance: none; appearance: none;
+}
+.setup-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.setup-error { margin: 0 0 12px; font-size: 14px; line-height: 1.4; color: var(--danger, #d1424b); }
+.setup-provider-note {
+  margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; background: var(--bg);
+  font-size: 13px; line-height: 1.5; color: var(--muted);
+}
+.setup-provider-note a { color: var(--accent); }
+.setup-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.setup-button {
+  height: 44px; padding: 0 20px; border-radius: 999px; border: 1px solid transparent;
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.setup-button.primary { background: var(--accent); color: #fff; }
+.setup-button.primary:disabled { opacity: 0.6; cursor: default; }
+.setup-button.secondary { background: none; border-color: var(--line-strong); color: var(--fg); }
+body.setup-open { overflow: hidden; }
+@media (max-width: 640px) {
+  .setup-dialog {
+    top: auto; bottom: 0; left: 0; transform: none; width: 100%;
+    max-height: 92vh; border-radius: 24px 24px 0 0;
+    padding: 20px calc(env(safe-area-inset-right) + 20px) calc(env(safe-area-inset-bottom) + 20px) calc(env(safe-area-inset-left) + 20px);
+    animation: setup-in-mobile 220ms ease-out forwards;
+  }
+  @keyframes setup-in-mobile { from { transform: translateY(16px); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } }
+}

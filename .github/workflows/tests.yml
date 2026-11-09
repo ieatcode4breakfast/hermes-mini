@@ -1,0 +1,118 @@
+name: tests
+
+# Static and unit checks only: no credentials, no network services, no Hermes install required.
+# The suite uses a disposable HERMES_HOME and mocks every external provider.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Byte-compile the plugin
+        run: |
+          python -m compileall -q __init__.py mini_core.py push_store.py app_chats.py bridge.py \
+            dashboard/plugin_api.py dashboard/computer_api.py
+
+      - name: Byte-compile the tests
+        run: python -m compileall -q tests
+
+      # FastAPI-backed route tests need fastapi/starlette; optional-feature tests skip themselves
+      # when a module is absent, so this job is meaningful without Hermes or a model.
+      - name: Install route-test dependency
+        run: python -m pip install --disable-pip-version-check "fastapi>=0.110" "httpx>=0.27"
+
+      - name: Run the test suite
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-mini-ci-home
+        run: |
+          mkdir -p "$HERMES_HOME"
+          python -m unittest discover -s tests -t . -v
+
+  javascript:
+    name: javascript syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node --check every app module
+        run: |
+          set -e
+          find dashboard -name '*.js' -not -path '*/vendor/*' -print0 \
+            | xargs -0 -n1 node --check
+      - name: Service worker and manifest presence
+        run: |
+          set -e
+          test -f dashboard/index.html
+          test -f dashboard/sw.js
+          test -f dashboard/pwa.json
+          python3 - <<'PY'
+          import json, pathlib
+          root = pathlib.Path("dashboard")
+          pwa = json.loads((root / "pwa.json").read_text())
+          assert pwa["name"] == "Hermes Mini", pwa["name"]
+          for icon in pwa["icons"]:
+              assert (root / icon["src"]).is_file(), icon["src"]
+          print("PWA manifest OK")
+          PY
+
+  plugin-manifest:
+    name: plugin manifest and assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Manifest parses and required files exist
+        run: |
+          set -e
+          python3 - <<'PY'
+          import pathlib, re
+          text = pathlib.Path("plugin.yaml").read_text()
+          for field in ("name: hermes-mini", "version:", "description:", "kind: standalone"):
+              assert field in text, field
+          for path in ("__init__.py", "dashboard/manifest.json", "dashboard/index.html",
+                       "dashboard/plugin_api.py", "LICENSE", "README.md"):
+              assert pathlib.Path(path).is_file(), path
+          print("plugin.yaml and required files OK")
+          PY
+      - name: No legacy branding or fixed paths
+        run: |
+          set -e
+          python3 - <<'PY'
+          import pathlib
+          needles = ("Vesper", "vesper", "/root/.hermes", "/root/.local/bin")
+          bad = []
+          for path in pathlib.Path(".").rglob("*"):
+              if not path.is_file() or any(p in path.parts for p in ("vendor", ".git", "tests")):
+                  continue
+              if path.suffix not in {".py", ".js", ".html", ".css", ".json", ".yaml", ".md", ".svg"}:
+                  continue
+              if path.name in {"THIRD_PARTY_NOTICES.md", "CHANGELOG.md"}:
+                  continue
+              text = path.read_text(encoding="utf-8", errors="replace")
+              for needle in needles:
+                  if needle in text:
+                      bad.append(f"{path}: {needle}")
+          assert not bad, "\n".join(bad)
+          print("no personal material in shipped files")
+          PY

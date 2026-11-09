@@ -1,0 +1,450 @@
+/* the computer: full-viewport noVNC viewer. Its own file so the chat shell stays readable. */
+
+.bot-screen {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--bs-vt, 0px);
+  height: var(--bs-vh, 100%);
+  z-index: 70; /* below the shared confirm dialog (74/75), above the drawer and message menus */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  /* Shows the page's leading edge while it slides in from the right; off screen once it is fully open. */
+  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35);
+}
+body.bot-screen-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.bs-bar {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 4px max(4px, env(safe-area-inset-left), env(safe-area-inset-right));
+  background: transparent; /* takes on the page background */
+  flex: 0 0 auto;
+}
+.bs-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--fg); /* white in dark mode, not purple */
+  font: inherit;
+  cursor: pointer;
+}
+.bs-back svg { width: 24px; height: 24px; }
+.bs-back:active { background: var(--zebra); }
+/* Title with the monitor icon after it, same glyph as the top-right button. */
+.bs-title { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.bs-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bs-title-icon { flex: none; width: 18px; height: 18px; color: var(--muted); }
+.bs-title {
+  margin: 0;
+  text-align: center;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 650;
+}
+/* Ownership label and actions float over the remote desktop inside #bsStage: one absolute row, so the
+   header keeps only Back + title. screen.js anchors it to the rendered noVNC canvas, not to the stage:
+   the row's bottom sits ~7px above the image and its sides line up with the image's 8px inset. The
+   translate lifts the row by its own height, so the gap stays exact if the buttons wrap. */
+.bs-float {
+  position: absolute;
+  top: var(--bs-float-top, 8px);
+  left: var(--bs-float-left, max(8px, env(safe-area-inset-left)));
+  right: var(--bs-float-right, max(8px, env(safe-area-inset-right)));
+  z-index: 3; /* above .bs-overlay (2), so refresh/start stay clickable in stopped/error states */
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none; /* every pixel that is not a button belongs to the remote desktop */
+  /* Below the picture: screen.js puts the row's top ~7px under the image's bottom edge. */
+}
+/* No canvas to measure yet (loading, stopped, error, reconnect): park the row at the stage's 8px spot
+   above the overlay, so Refresh/Start stay reachable instead of being lifted off the top edge. */
+.bs-float.bs-float-fallback {
+  top: 8px;
+  left: max(8px, env(safe-area-inset-left));
+  right: max(8px, env(safe-area-inset-right));
+  transform: none;
+}
+.bs-badge {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  height: 26px;
+  line-height: 26px;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  pointer-events: none;
+}
+/* Ownership is plain text: no pill background, radius or container padding, in every state. */
+.bs-badge[data-owner="you"] { color: #c62828; }
+.bs-badge[data-owner="other"] { color: var(--muted); }
+.bs-badge[data-owner="agent"] { color: var(--fg); } /* black in light mode, white in dark; no shadow */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bs-badge[data-owner="you"] { color: #ff8b8b; }
+}
+:root[data-theme="dark"] .bs-badge[data-owner="you"] { color: #ff8b8b; }
+
+/* Ownership label + Hand Back on the left of the floating row. Click-through like the row; the
+   button itself takes taps (.bs-btn). */
+.bs-lease-group { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; pointer-events: none; }
+.bs-lease-group .bs-btn { flex: none; }
+
+/* Actions hug their buttons on the right of the floating row; the label truncates with an ellipsis
+   and the group only wraps inside itself if a very narrow screen forces it. */
+.bs-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+  pointer-events: none;
+}
+.bs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bs-btn:active { background: var(--zebra); }
+.bs-btn:disabled { opacity: 0.42; cursor: default; }
+.bs-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bs-btn.danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); color: var(--danger); }
+
+/* Reuse the chat bubble purple and foreground tokens for a clear, theme-aware button surface. */
+.bs-controls .bs-btn, .bs-lease-group .bs-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  /* Neutral grey pills, not the chat purple: a light grey in dark mode, a soft grey in light. */
+  background: color-mix(in srgb, var(--fg) 14%, var(--bg));
+  color: var(--fg);
+  font-size: 14px; /* regular text size, was 11px bold */
+  font-weight: 500;
+  pointer-events: auto; /* the only hit targets in the floating row */
+}
+.bs-controls .bs-btn:active, .bs-lease-group .bs-btn:active { filter: brightness(0.9); }
+.bs-controls .bs-btn:hover, .bs-lease-group .bs-btn:hover { background: color-mix(in srgb, var(--fg) 22%, var(--bg)); }
+#bsHandback { background: var(--danger); color: #fff; }
+/* Auto hand-back: the last 5 s before control goes back are drawn as a ring inside the Hand Back
+   pill, so the release is never a surprise. --bs-count runs 1 -> 0 over the countdown; @property lets the conic
+   gradient actually interpolate it. */
+@property --bs-count {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+#bsHandback { position: relative; }
+#bsHandback.counting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  pointer-events: none;
+  background: conic-gradient(rgba(255, 255, 255, 0.95) calc(var(--bs-count, 1) * 360deg), transparent 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: bs-countdown 5s linear forwards;
+}
+@keyframes bs-countdown {
+  from { --bs-count: 1; }
+  to { --bs-count: 0; }
+}
+/* Reduced motion: no sweeping animation, just a still ring for the whole countdown. */
+@media (prefers-reduced-motion: reduce) {
+  #bsHandback.counting::after { animation: none; }
+}
+
+/* Icon-only toolbar actions (remote keyboard, reconnect): the same compact purple pill, narrowed to an
+   icon target instead of text so the title keeps its room. */
+.bs-controls .bs-icon-btn {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  gap: 0;
+}
+.bs-controls .bs-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.bs-banner {
+  margin: 0;
+  padding: 7px 12px;
+  background: rgba(180, 120, 0, 0.16);
+  color: #8a5a00;
+  font-size: 12px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.bs-banner[hidden] { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bs-banner { background: rgba(255, 190, 60, 0.14); color: #ffd27a; }
+}
+:root[data-theme="dark"] .bs-banner { background: rgba(255, 190, 60, 0.14); color: #ffd27a; }
+
+.bs-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--bg); /* same as the rest of the app */
+  overflow: hidden;
+  touch-action: none;
+}
+.bs-host {
+  position: absolute;
+  /* When a live image is present screen.js reserves bands (--bs-host-top/--bs-host-bottom) above and below it: the title
+     sits in the top one and the floating control row in the bottom one, so the centred picture is never covered. */
+  top: var(--bs-host-top, 0px);
+  left: 0;
+  right: 0;
+  bottom: var(--bs-host-bottom, 0px);
+  overflow: hidden;
+  touch-action: none;
+}
+.bs-host > div { touch-action: none; }
+
+.bs-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  /* The app background, not black, so opening the viewer never flashes dark before the desktop arrives. Slightly see-through so a stopped desktop still shows faintly behind the message. */
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  color: var(--fg);
+}
+.bs-overlay[hidden] { display: none; }
+.bs-card {
+  width: min(92%, 380px);
+  text-align: center;
+}
+.bs-overlay h3 {
+  margin: 0 0 7px;
+  font-size: 16px;
+  font-weight: 650;
+}
+.bs-overlay p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.bs-overlay .bs-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.bs-kbd {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  z-index: 3;
+  width: 2px;
+  height: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0.02;
+  resize: none;
+  font-size: 16px; /* stops iOS zoom-on-focus */
+  pointer-events: none;
+}
+
+/* The phone's image picker never shows on the page: Paste opens it, and its change event uploads the picture. Kept in the layout rather than display:none so a programmatic click opens the picker. */
+.bs-image-pick {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Narrow phones: the arrow stays 44px tall, and the action group wraps inside itself. */
+@media (max-width: 420px) {
+  .bs-bar { min-height: 44px; padding-top: 0; padding-bottom: 0; }
+  .bs-title { font-size: 15px; }
+  .bs-badge { padding: 0; font-size: 10px; }
+  .bs-btn { min-height: 40px; padding: 0 9px; font-size: 11.5px; }
+  .bs-controls .bs-btn, .bs-lease-group .bs-btn { min-height: 30px; padding: 0 11px; font-size: 14px; }
+  .bs-controls .bs-icon-btn { padding: 0; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .bs-bar { min-height: 40px; }
+}
+
+/* On a computer the mouse pointer stays visible over the desktop. noVNC sets cursor:none inline on
+   the canvas to draw the remote cursor instead; !important overrides that inline style. */
+@media (hover: hover) and (pointer: fine) {
+  .bs-host canvas { cursor: default !important; }
+}
+
+/* Docked (wide window): the computer is a right-hand pane, not an overlay. The chat keeps a 440px column to its
+   left, so the divider is a hairline instead of a big shadow. Top/height still come from screen.js (--bs-vt/--bs-vh). */
+body.docked.computer-docked .bot-screen {
+  left: var(--chat-w, 440px); /* the chats panel collapses while the computer is open */
+  right: 0;
+  box-shadow: none;
+  border-left: 0; /* no divider */
+}
+
+/* The picture stays centred; the title rides down to sit just above it (screen.js sets the transform). Above the
+   stage's layers so it is never covered. */
+.bs-title { position: relative; z-index: 4; }
+/* Rounded corners on the desktop picture. The trackpad zoom crop uses the same radius. */
+.bs-host > div > canvas { border-radius: 18px; }
+/* Computer (mouse) layouts: breathing room on both sides of the picture. The control row and
+   the title follow the picture's edges, so they move in with it. Phones keep the full width. */
+@media (hover: hover) and (pointer: fine) {
+  .bs-host { left: 20px; right: 20px; }
+}
+/* Docked: no X on the pane. The monitor button beside the chat opens and closes it. Phones keep
+   the back arrow, since the computer covers the whole screen there. */
+body.docked #bsBack { visibility: hidden; }
+/* The picture comes first: the title and the control row wait (hidden) until the desktop image is on screen, then
+   fade in (screen.js toggles .bs-chrome-wait). */
+.bs-title, .bs-float { transition: opacity 220ms ease-out; }
+.bot-screen.bs-chrome-wait .bs-title,
+.bot-screen.bs-chrome-wait .bs-float { opacity: 0; visibility: hidden; }
+/* Closing while docked: the pane holds its slot (the body class is already gone) until the slide-out finishes. */
+body.docked .bot-screen.bs-leaving-docked { left: var(--chat-w, 440px); right: 0; box-shadow: none; }
+/* The still of the last frame shown while the pane slides out (screen.js freezeFrame). */
+.bs-frozen { position: absolute; border-radius: 18px; pointer-events: none; }
+/* Phones and narrow windows: no back arrow. The close control is the Computer button in its
+   "active" look (46px round, monitor icon), on the LEFT, 22px in; the title loses its own icon.
+   The header grows to hold it, and the title centres on the same line. */
+body:not(.docked) .bs-bar {
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
+  min-height: 84px;
+  padding: 0 calc(env(safe-area-inset-right) + 22px) 0 calc(env(safe-area-inset-left) + 22px);
+}
+body:not(.docked) #bsBack {
+  grid-column: 1; grid-row: 1;
+  width: 46px; min-width: 46px; height: 46px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  color: var(--fg); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+}
+body:not(.docked) #bsBack svg { width: 20px; height: 20px; }
+body:not(.docked) .bs-title { grid-column: 2; grid-row: 1; }
+body:not(.docked) .bs-title-icon { display: none; }
+
+/* Phones: the visible trackpad under the picture. screen.js sets its top and height. */
+.bs-pad {
+  /* Full width, edge to edge, keeping its rounded corners and border. */
+  position: absolute; left: 0; right: 0;
+  top: var(--bs-pad-top, 0px); height: var(--bs-pad-h, 0px); z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 22px; background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.bs-pad[hidden] { display: none; }
+.bs-pad-label { font-size: 13px; letter-spacing: 0.04em; color: var(--muted); opacity: 0.6; pointer-events: none; }
+.bot-screen.bs-chrome-wait .bs-pad, .bot-screen.bs-chrome-wait .bs-help-btn { opacity: 0; visibility: hidden; }
+.bs-pad, .bs-help-btn { transition: opacity 220ms ease-out; }
+/* The ? sits in the pad's top-right corner, but is its own element so its taps never reach the trackpad. */
+.bs-help-btn {
+  position: absolute; z-index: 3; top: calc(var(--bs-pad-top, 0px) + 10px); right: calc(max(12px, env(safe-area-inset-right)) + 10px);
+  width: 32px; height: 32px; margin: 0; padding: 0; border: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--muted);
+  font: inherit; font-size: 16px; font-weight: 600; line-height: 32px; text-align: center; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+}
+.bs-help-btn[hidden] { display: none; }
+.bs-help-scrim {
+  position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-end; justify-content: center;
+  padding: 16px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(0, 0, 0, 0.45);
+}
+.bs-help-scrim[hidden] { display: none; }
+.bs-help-card {
+  box-sizing: border-box; width: min(100%, 440px); max-height: 100%; overflow: auto; padding: 20px;
+  border-radius: 24px; background: var(--surface); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+}
+.bs-help-card h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+.bs-help-note { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+.bs-help-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 18px; font-size: 14px; }
+.bs-help-list dt { font-weight: 600; }
+.bs-help-list dd { margin: 0; color: var(--muted); }
+.bs-help-card .bs-btn { width: 100%; justify-content: center; }
+
+/* Keyboard button while the on-screen keyboard is up: the same accent tint as the active
+   computer button. */
+.bs-controls #bsKeyboard.active,
+.bs-controls #bsKeyboard.active:hover { background: color-mix(in srgb, var(--accent) 32%, var(--surface)); color: var(--fg); border-color: transparent; }
+/* The keyboard glyph is wide and short (12 of 24 units tall), so at 16px it reads smaller than Copy/Paste; a touch
+   larger balances it optically. The button itself stays 32px like the others. */
+.bs-controls #bsKeyboard svg { width: 19px; height: 19px; }
+
+/* Toast (toast.js): a small pill at the bottom centre, above the composer and above the computer pane (z 70-72). */
+.toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px); z-index: 90;
+  transform: translate(-50%, 8px); padding: 8px 16px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 88%, var(--bg)); color: var(--bg);
+  font-size: 14px; font-weight: 500; pointer-events: none;
+  opacity: 0; transition: opacity 160ms ease-out, transform 160ms ease-out;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.success { background: #2e7d32; color: #fff; }
+.toast.error { background: #c62828; color: #fff; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+/* Computers have a real keyboard: no on-screen keyboard button there. */
+@media (hover: hover) and (pointer: fine) {
+  .bs-controls #bsKeyboard { display: none; }
+}
+
+/* Toast text is centred, also when a longer message wraps. */
+.toast { text-align: center; }

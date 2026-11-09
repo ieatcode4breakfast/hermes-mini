@@ -1,0 +1,40 @@
+Vendored browser builds for dashboard/md.js (chat markdown rendering). Copied unmodified from the npm tarballs.
+Re-vendor: npm install marked@18.1.1 dompurify@3.4.17 highlight.js@11.12.0 @highlightjs/cdn-assets@11.12.0
+(copy lib/marked.esm.js, dist/purify.es.mjs, es/core.min.js and es/languages/<name>.min.js from the packages).
+For noVNC: npm pack @novnc/novnc@1.7.0 and copy package/core, package/vendor, LICENSE.txt and AUTHORS
+into vendor/novnc/ (see vendor/novnc/VERSION.txt).
+
+Package                 Version   Licence                     Files
+marked                  18.1.1    MIT                         marked.esm.js                    (from lib/marked.esm.js)
+DOMPurify               3.4.17    Apache-2.0 OR MPL-2.0       purify.es.mjs                    (from dist/purify.es.mjs)
+highlight.js            11.12.0   BSD-3-Clause                highlight/core.min.js            (from @highlightjs/cdn-assets/es/core.min.js)
+@highlightjs/cdn-assets 11.12.0   BSD-3-Clause                highlight/languages/*.min.js     (from @highlightjs/cdn-assets/es/languages/)
+@novnc/novnc            1.7.0     MPL-2.0 (pako: MIT)         novnc/core/**/*.js, novnc/vendor/pako/**/*.js  (from the npm tarball)
+  languages: bash shell python javascript typescript json yaml sql xml css diff markdown go rust
+  noVNC: 54 ES modules under vendor/novnc/ (core + pako), unmodified
+
+SHA-256 (as shipped):
+930457e5d55439f90465015cc507d3323366e80df5f7a701b61189d4e1046bda  marked.esm.js
+60c5d5ccbb466de3de3ba863461a92bf134f8c156cef7992da43e0f659bc5cbd  purify.es.mjs
+67a339aa68880a40c9803def9c8cebb2225dec76230382db86e349370dee70e9  highlight/core.min.js
+7db1758fe6f04cd410760c29879812a3774edc54edcc91323511a24efc0b9e61  highlight/languages/bash.min.js
+2f4264d9a07a4f5446e51e2d93b0c0e031b4fd910e8e44984cd17f996a990b99  highlight/languages/css.min.js
+cbd7cf3b49bee36d6a0cf97789a7c5e68fbfd4231e86a81966f9b78c7bc127d0  highlight/languages/diff.min.js
+05658f281f7f12233cd891e879c8b9ebfd5998f5dc3f1e80632889ce61178534  highlight/languages/go.min.js
+c3dbd515a79e2c00ff4535aa5ad2fe539fb2587d047f9ab826107d0784da7bb6  highlight/languages/javascript.min.js
+8f2343ffbcc4fdea4b336a4241d54d223d52f99b67729d2d6d3556bbf66908ae  highlight/languages/json.min.js
+73cb474b4687421a0949ded1ba8314ec74c26058688dc7f6154084240352cc79  highlight/languages/markdown.min.js
+fd5d479dcc9d07b957cf07b1df76d3d8fb6ee6f6d1437238d9530a9be724c046  highlight/languages/python.min.js
+fde151d2b246bef44c98da80e7cac3cbb05de794911305fe9a3adf6beff87659  highlight/languages/rust.min.js
+9176dabac68529c73ab23303cb2e73392603f85438f58368fe80ded798a526b7  highlight/languages/shell.min.js
+79bead5cf2bfa93d3982073d000a97802f394fe287736644bab30f40cb5c7380  highlight/languages/sql.min.js
+0e10ce9a81d42f8d43a54007ca7e31fe22ad801b2a2e1693d31736aa79fa5404  highlight/languages/typescript.min.js
+2e8c8ba1e7a200cd83dfbf9c746b8e00f7d7bad966dbfd83eca142cf2caa4dd7  highlight/languages/xml.min.js
+7010955f1f87aef1de085483d79d42817544aaf03c4f57a6fd4eb838f2cdf609  highlight/languages/yaml.min.js
+
+SHA-256 (noVNC runtime entry points):
+c46dfefbf869eda0c6d06c5dd86c42e96fc8a77c125e91599a2cdf3841261564  novnc/core/rfb.js
+d1a96fc1316eaab9badcba9b0f1a7a55d748a4d4d26dc0263cc179dba2131cf4  novnc/core/websock.js
+4ddf0e21f07328358974d91aa2d7f839ba2116688b28e43d3f6f4e2eae8c45cf  novnc/core/input/keysym.js
+
+Licence texts: LICENSES.txt in this folder. Each file also carries its own licence header.

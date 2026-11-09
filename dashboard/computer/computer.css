@@ -1,0 +1,112 @@
+/* the computer standalone page: colour tokens shared with the app shell, plus the page base. */
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5f7;
+  --fg: #15161a;
+  --muted: #6b6e78;
+  --line: #dcdde3;
+  --surface: #ffffff;
+  --user-bg: #3b2f9e;
+  --user-fg: #ffffff;
+  --assistant-bg: #ffffff;
+  --assistant-fg: #15161a;
+  --accent: #3b2f9e;
+  --danger: #c62828;
+  --code-bg: #eceef3;
+  --radius: 18px;
+  --col: 820px; /* reading column on wide screens: header, log and composer are centred at this width */
+  --line-strong: #c4c7d0;
+  --zebra: rgba(20, 22, 30, 0.035);
+  --hl-kw: #7b3fe4;
+  --hl-str: #0f7a4a;
+  --hl-num: #b35400;
+  --hl-fn: #1d5fd1;
+  --hl-type: #0b7285;
+  --hl-attr: #a4411b;
+  --hl-com: #6b6e78;
+  --hl-del: #b42318;
+  --hl-add-bg: rgba(46, 160, 67, 0.16);
+  --hl-del-bg: rgba(248, 81, 73, 0.16);
+  --scrim: rgba(12, 13, 18, 0.36); /* dims the page behind the chats drawer and the row menu */
+  --raised: #ffffff; /* the pressed row's highlight and the row menu card: lighter than the drawer */
+  --sb-thumb: #c4c7d0; /* slim scrollbar thumb: a little darker than the surface */
+  --sb-thumb-hover: #a9adb8;
+}
+/* No Android tap flash on tapped elements; keyboard focus rings only (not after a tap). */
+* { -webkit-tap-highlight-color: transparent; }
+:focus:not(:focus-visible) { outline: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111214;
+    --fg: #ececf1;
+    --muted: #8e919c;
+    --line: #2a2c33;
+    --surface: #1b1d22;
+    --user-bg: #4b3fc4;
+    --user-fg: #ffffff;
+    --assistant-bg: #1b1d22;
+    --assistant-fg: #ececf1;
+    --accent: #8a7cff;
+    --danger: #ff6b6b;
+    --code-bg: #0c0d10;
+    --line-strong: #3b3e48;
+    --zebra: rgba(255, 255, 255, 0.035);
+    --hl-kw: #b197fc;
+    --hl-str: #8ce99a;
+    --hl-num: #ffb36b;
+    --hl-fn: #74c0fc;
+    --hl-type: #66d9e8;
+    --hl-attr: #ffa8a8;
+    --hl-com: #8e919c;
+    --hl-del: #ff8787;
+    --hl-add-bg: rgba(46, 160, 67, 0.24);
+    --hl-del-bg: rgba(248, 81, 73, 0.24);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --raised: #2a2c32;
+    --sb-thumb: #3b3e48; /* slim scrollbar thumb: a little lighter than the surface */
+    --sb-thumb-hover: #4f5360;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111214;
+  --fg: #ececf1;
+  --muted: #8e919c;
+  --line: #2a2c33;
+  --surface: #1b1d22;
+  --user-bg: #4b3fc4;
+  --user-fg: #ffffff;
+  --assistant-bg: #1b1d22;
+  --assistant-fg: #ececf1;
+  --accent: #8a7cff;
+  --danger: #ff6b6b;
+  --code-bg: #0c0d10;
+  --line-strong: #3b3e48;
+  --zebra: rgba(255, 255, 255, 0.035);
+  --hl-kw: #b197fc;
+  --hl-str: #8ce99a;
+  --hl-num: #ffb36b;
+  --hl-fn: #74c0fc;
+  --hl-type: #66d9e8;
+  --hl-attr: #ffa8a8;
+  --hl-com: #8e919c;
+  --hl-del: #ff8787;
+  --hl-add-bg: rgba(46, 160, 67, 0.24);
+  --hl-del-bg: rgba(248, 81, 73, 0.24);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --raised: #2a2c32;
+  --sb-thumb: #3b3e48;
+  --sb-thumb-hover: #4f5360;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+
+/* The computer is the whole page: no close control, and no chat behind it. */
+body.computer-standalone { overflow: hidden; overscroll-behavior: none; }
+body.computer-standalone #bsBack { visibility: hidden; }
+.cs-boot { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+.cs-boot[hidden] { display: none; }
+/* Global icon style shared with the app shell, which the viewer's inline icons rely on. */
+svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

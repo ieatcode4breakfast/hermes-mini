@@ -1,0 +1,25 @@
+name: hermes-mini
+version: 0.1.0
+description: >-
+  Hermes Mini — a mobile-first chat app for your Hermes agent. Multi-chat inbox, to-dos, live
+  narration, steering, optional Web Push, dictation through Hermes' configured speech-to-text
+  provider, and an optional bundled desktop viewer. Settings and data live outside the package.
+author: Hermes Mini contributors
+license: MIT
+manifest_version: 2
+kind: standalone
+requires_hermes: ">=0.23.0"
+provides_hooks:
+  - pre_tool_call
+  - pre_approval_request
+  - on_human_input_request
+  - post_llm_call
+  - pre_llm_call
+provides_tools: []
+tags:
+  - chat
+  - web-app
+  - pwa
+  - notifications
+  - mobile
+python_dependencies: []
