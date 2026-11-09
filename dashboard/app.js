@@ -4426,6 +4426,7 @@ if (els.micBtn) {
   if (!isDictationSupported()) {
     els.micBtn.hidden = true;
   } else {
+    els.micBtn.hidden = false; // browser can record; a definite server "no" hides it again
     els.micBtn.addEventListener("pointerdown", (event) => {
       if (!state.dictating && !state.transcribing) {
         captureDictationCaret();

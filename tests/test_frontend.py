@@ -143,6 +143,22 @@ class NotificationBellTest(unittest.TestCase):
         self.assertIn("if (detail.push === false) pushBtn.hidden = true;", app)
 
 
+class DictationButtonTest(unittest.TestCase):
+    def test_mic_is_revealed_after_the_browser_support_check(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertRegex(html, r'id="micBtn"[^>]*\bhidden\b')
+        self.assertIn("els.micBtn.hidden = false;", app)
+        self.assertGreater(
+            app.index("els.micBtn.hidden = false;"),
+            app.index("!isDictationSupported()"),
+        )
+
+    def test_a_server_no_still_hides_the_mic(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn("if (detail.dictation === false", app)
+
+
 class JobWrapperTest(unittest.TestCase):
     def test_chat_and_inbox_apply_the_wrapper_strip(self):
         helper = (DASHBOARD / "jobtext.js").read_text(encoding="utf-8")
