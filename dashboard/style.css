@@ -971,7 +971,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .todo-additem-label { flex: 1 1 auto; min-width: 0; }
 :where(:root[data-input="mouse"]) .todo-additem:hover,
 :where(:root[data-input="mouse"]) .todo-additem:hover .todo-additem-icon { color: var(--fg); }
-.todo-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.todo-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px 0 -18px; padding: 0 4px 0 18px; }
 .todo-row { display: flex; align-items: flex-start; gap: 7px; padding: 9px 0; } /* tighter grip-box-text spacing */
 /* One level of nesting: an open child shifts right by one checkbox column and the row gap, so its
    box sits under the parent's text. The grip moves with the row. Done rows (and the Done section) never show it. */
@@ -1016,18 +1016,21 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .todo-row.draft .todo-check:disabled { opacity: 1; }
 .todo-check:disabled { cursor: default; opacity: 0.45; }
 /* Drag to sort (todo.js beginDrag): the open rows only. The dragged row follows the pointer with no highlight; the
-   neighbours slide with inline transforms. Computer: the grip left of the circle appears on row hover and is the only
-   mouse grab point. Touch: no grip, long press the row. */
+   neighbours slide with inline transforms. The grip left of the circle is the only drag handle, mouse and touch. */
 .todo-row { position: relative; }
 /* Inside the row, before the box; done rows keep an empty slot so the boxes stay aligned.
-   Always shown, on every device. Touch: a wider target, and touch-action none so pressing it drags
-   instead of scrolling the list. */
+   Always shown, on every device. A transparent 40x44 hit layer sits over it with touch-action none, so a
+   finger can press beside the dots as well as on them. */
 .todo-grip {
-  display: flex; align-items: center; justify-content: center; flex: none; width: 14px; height: 22px; margin-right: -4px;
-  color: var(--muted); cursor: grab; touch-action: none;
+  display: flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 34px; margin: -6px -8px -6px -4px;
+  color: var(--muted); cursor: grab; touch-action: none; position: relative;
 }
 .todo-grip.slot { visibility: hidden; cursor: default; }
-:where(:root[data-input="touch"]) .todo-grip { width: 22px; height: 34px; margin: -6px -8px -6px -4px; }
+.todo-grip-hit {
+  position: absolute; top: 50%; left: -18px; width: 40px; height: 44px; transform: translateY(-50%);
+  touch-action: none; pointer-events: auto;
+}
+.todo-row.grip-armed .todo-grip { color: var(--fg); }
 .todo-grip svg { width: 16px; height: 16px; stroke-width: 3; }
 :where(:root[data-input="mouse"]) .todo-text { cursor: text; }
 .todo-row.dragging { z-index: 3; touch-action: none; user-select: none; cursor: grabbing; }
@@ -1263,6 +1266,8 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
     padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 8px);
     border-radius: 0; background: var(--bg); box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35);
   }
+  /* Keep the drag grips clear of the phone's back-gesture edge. */
+  .todo-list { padding-left: calc(38px + env(safe-area-inset-left)); }
   .todo-dialog { transform: translateX(100%); }
   .todo-dialog.open { transform: none; }
   /* Same bar as the full-screen computer (screen.css body:not(.docked) .bs-bar / #bsBack). */

@@ -28,7 +28,10 @@
     (function () {
       var root = document.documentElement;
       var set = function (mode) { if (root.dataset.input !== mode) root.dataset.input = mode; };
-      try { set(window.matchMedia("(hover: hover)").matches ? "mouse" : "touch"); } catch (e) { set("touch"); }
+      try {
+        var coarse = window.matchMedia("(pointer: coarse)").matches;
+        set(coarse || !window.matchMedia("(hover: hover)").matches ? "touch" : "mouse");
+      } catch (e) { set("touch"); }
       var fromEvent = function (event) { set(event.pointerType === "mouse" ? "mouse" : "touch"); };
       window.addEventListener("pointerdown", fromEvent, { capture: true, passive: true });
       window.addEventListener("pointermove", function (event) {

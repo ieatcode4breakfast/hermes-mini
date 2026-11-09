@@ -124,6 +124,8 @@ export function createTodo({ api }) {
       return;
     }
     renderHeld = false;
+    // A render replaces every row, so a grip press still waiting for its first move must not outlive its row.
+    cancelPress();
     normaliseOpen();
     const active = blocksOf().filter((block) => !block.parent.done);
     const done = doneBlocks();
@@ -202,8 +204,7 @@ export function createTodo({ api }) {
     if (draft) check.disabled = true; // it is not a to-do until it is committed
     check.addEventListener("click", () => void toggle(item));
     const text = el("span", "todo-text", item.text);
-    // Tapping the text edits it in place; a press-and-move (mouse) or a long press (touch) sorts the open rows instead
-    //. The circle and the x are buttons, so they never start either.
+    // Tapping the text edits it in place; the circle and the x are buttons, so they never start either.
     text.addEventListener("pointerdown", (event) => {
       // Tapping another row while one edits: the blur commits that row and re-renders, which would eat the click. The
       // press is remembered and turned into the new edit after the commit.
@@ -240,6 +241,7 @@ export function createTodo({ api }) {
       const grip = el("span", "todo-grip");
       grip.setAttribute("aria-hidden", "true");
       grip.append(svgIcon(GRIP_ICON));
+      grip.append(el("span", "todo-grip-hit"));
       node.prepend(grip);
       if (!draft) armDrag(node);
     } else {
@@ -871,60 +873,115 @@ export function createTodo({ api }) {
   const DRAG_INDENT_PX = 24; // how far sideways of the press point a drop changes the indent
   const SCROLL_EDGE_PX = 48;
   let drag = null; // the drag in progress
+  let press = null; // the grip press being watched, before it becomes a drag
   let suppressClickUntil = 0; // a drag has just ended: the click that follows must not start an edit
 
   function armDrag(node) {
     node.addEventListener("pointerdown", (event) => {
-      if (!open || drag || node.classList.contains("pending")) return;
+      // One pending press at a time: a second finger, a non-primary pointer or another grip is ignored.
+      if (!open || drag || press || node.classList.contains("pending")) return;
+      if (event.isPrimary === false) return;
       if (event.button !== undefined && event.button !== 0) return;
       if (event.target.closest("button, input")) return; // the circle and the x keep their taps
       if (!event.target.closest(".todo-grip")) return; // the grip is the only drag handle, mouse and touch alike
       event.preventDefault(); // keep focus/caret stable until an actual drag begins
+      node.classList.add("grip-armed");
       armPress(event, node);
     });
   }
 
-  // Watches one press until it becomes a drag (or a plain tap / a scroll). Listeners are removed either way.
+  // Watches one press until it becomes a drag (or a plain tap / a scroll). Only one pending press exists at a time, and
+  // its cleanup is idempotent: release, cancel, lost capture, blur, a hidden tab and a panel close all land here safely.
   function armPress(event, node) {
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startY = event.clientY;
     const touch = event.pointerType !== "mouse";
-    let timer = 0;
-
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
-      timer = 0;
-      node.removeEventListener("pointermove", move);
-      node.removeEventListener("pointerup", stop);
-      node.removeEventListener("pointercancel", stop);
+    const state = { cancel: () => {} };
+    press = state;
+    node.classList.add("grip-armed");
+    const cleanup = ({ keepCapture = false } = {}) => {
+      if (state.cleaned) return;
+      state.cleaned = true;
+      if (press === state) press = null;
+      node.classList.remove("grip-armed");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+      node.removeEventListener("lostpointercapture", onLost);
+      // A drag about to start keeps the pointer; releasing it here would fire lostpointercapture and cancel that drag.
+      if (!keepCapture) {
+        try {
+          if (node.hasPointerCapture(pointerId)) node.releasePointerCapture(pointerId);
+        } catch {
+          /* the pointer may already be gone */
+        }
+      }
     };
+    state.cancel = () => cleanup();
     const stop = (ev) => {
       if (ev.pointerId !== pointerId) return;
       cleanup();
     };
+    const onBlur = () => cleanup();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") cleanup();
+    };
+    const onLost = (ev) => {
+      if (ev.pointerId === pointerId) cleanup();
+    };
     const move = (ev) => {
-      if (ev.pointerId !== pointerId || drag) return;
+      if (ev.pointerId !== pointerId || state.cleaned || drag) return;
+      // The panel may have closed or a render replaced the row while this press was pending: never start a drag then.
+      if (!open || !node.isConnected) {
+        cleanup();
+        return;
+      }
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       // Pressed on the grip: the drag starts on the first real move either way, since sideways travel now picks the
       // indent. The grip has touch-action: none, so the list never scrolls under the finger.
       if (Math.abs(dy) > DRAG_START_PX || Math.abs(dx) > DRAG_START_PX) {
-        cleanup();
+        cleanup({ keepCapture: true });
         beginDrag(node, pointerId, startX, ev.clientX, ev.clientY, touch);
       }
     };
-    node.addEventListener("pointermove", move);
-    node.addEventListener("pointerup", stop);
-    node.addEventListener("pointercancel", stop);
+    try {
+      node.setPointerCapture(pointerId);
+    } catch {
+      /* capture is best effort */
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
+    node.addEventListener("lostpointercapture", onLost);
   }
 
   // originX is the press point (sideways travel from it picks the indent); originY is where the pointer is once the
   // drag starts, so the row follows from there without a jump.
   function beginDrag(node, pointerId, pressX, originX, originY, touch) {
+    // The press left the pointer captured for this hand-off; if the drag cannot start, give it back.
+    const release = () => {
+      try {
+        if (node.hasPointerCapture(pointerId)) node.releasePointerCapture(pointerId);
+      } catch {
+        /* the pointer may already be gone */
+      }
+    };
+    if (!open || !node.isConnected) {
+      release();
+      return; // closed or re-rendered since the press began
+    }
     const rows = [...listEl.querySelectorAll(":scope > .todo-row")];
     const from = rows.indexOf(node);
-    if (from < 0) return;
+    if (from < 0) {
+      release();
+      return;
+    }
     const isIndented = (row) => row.classList.contains("indent");
     const fromIndent = isIndented(node) ? 1 : 0;
     // A parent takes its block with it: the children straight below it, one level only. A child
@@ -982,9 +1039,12 @@ export function createTodo({ api }) {
       /* capture is best effort */
     }
     if (touch) navigator.vibrate?.(10);
-    node.addEventListener("pointermove", dragMove);
-    node.addEventListener("pointerup", dragEnd);
-    node.addEventListener("pointercancel", dragCancel);
+    window.addEventListener("pointermove", dragMove);
+    window.addEventListener("pointerup", dragEnd);
+    window.addEventListener("pointercancel", dragCancel);
+    window.addEventListener("blur", dragBlur);
+    document.addEventListener("visibilitychange", dragVisibility);
+    node.addEventListener("lostpointercapture", dragLost);
     document.addEventListener("touchmove", blockTouch, { passive: false });
     document.addEventListener("contextmenu", blockMenu);
     drag.raf = requestAnimationFrame(tickDrag);
@@ -1075,6 +1135,25 @@ export function createTodo({ api }) {
     if (drag) finishDrag(false);
   }
 
+  // The window lost focus, the tab went hidden or the browser took the pointer: undo the drag and never save it.
+  function dragBlur() {
+    if (drag) finishDrag(false);
+  }
+
+  function dragVisibility() {
+    if (drag && document.visibilityState === "hidden") finishDrag(false);
+  }
+
+  function dragLost(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    finishDrag(false);
+  }
+
+  // A pending press is not a drag yet: a close, a render or a lost pointer just drops it without saving.
+  function cancelPress() {
+    if (press) press.cancel();
+  }
+
   function finishDrag(commit) {
     const state = drag;
     if (!state) return;
@@ -1082,9 +1161,12 @@ export function createTodo({ api }) {
     // The click the browser sends after the pointer is released must never start an edit, however long the drag was.
     suppressClickUntil = performance.now() + 400;
     if (state.raf) cancelAnimationFrame(state.raf);
-    state.node.removeEventListener("pointermove", dragMove);
-    state.node.removeEventListener("pointerup", dragEnd);
-    state.node.removeEventListener("pointercancel", dragCancel);
+    window.removeEventListener("pointermove", dragMove);
+    window.removeEventListener("pointerup", dragEnd);
+    window.removeEventListener("pointercancel", dragCancel);
+    window.removeEventListener("blur", dragBlur);
+    document.removeEventListener("visibilitychange", dragVisibility);
+    state.node.removeEventListener("lostpointercapture", dragLost);
     document.removeEventListener("touchmove", blockTouch);
     document.removeEventListener("contextmenu", blockMenu);
     try {
@@ -1209,6 +1291,7 @@ export function createTodo({ api }) {
   function closePanel({ viaPop = false } = {}) {
     if (!open) return Promise.resolve();
     if (drag) finishDrag(false);
+    cancelPress();
     if (editing) finishEdit(editing.span.textContent); // closing saves the text the same way leaving the field does
     open = false;
     scrim.classList.remove("open");
