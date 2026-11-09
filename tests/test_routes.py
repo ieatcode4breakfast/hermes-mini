@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import os
 import sqlite3
 import sys
 import types
@@ -45,6 +46,32 @@ class RouteTestCase(DisposableHome):
         super().setUp()
         self.app, self.api = build_app()
         self.client = TestClient(self.app, raise_server_exceptions=False)
+
+
+class RestartCommandTest(RouteTestCase):
+    def _argv(self, *extra):
+        return ["hermes", "dashboard", "--no-open", "--host", "127.0.0.1", "--port", "9119", *extra]
+
+    def test_restart_target_reads_the_dashboard_argv(self):
+        with mock.patch.object(sys, "argv", self._argv()):
+            self.assertEqual(self.api._restart_target(), ("127.0.0.1", "9119"))
+
+    def test_command_kills_this_process_and_keeps_skip_build(self):
+        with (
+            mock.patch.object(sys, "argv", self._argv("--skip-build")),
+            mock.patch.object(self.api.core, "find_hermes_executable", return_value="/usr/local/bin/hermes"),
+        ):
+            command = self.api._restart_all_command()
+        self.assertIn(f"kill {os.getpid()}", command)
+        self.assertIn("dashboard --no-open --port 9119 --host 127.0.0.1 --skip-build", command)
+
+    def test_command_does_not_add_skip_build_when_absent(self):
+        with (
+            mock.patch.object(sys, "argv", self._argv()),
+            mock.patch.object(self.api.core, "find_hermes_executable", return_value="/usr/local/bin/hermes"),
+        ):
+            command = self.api._restart_all_command()
+        self.assertNotIn("--skip-build", command)
 
 
 class IdentityRoutesTest(RouteTestCase):

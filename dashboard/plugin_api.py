@@ -24,6 +24,7 @@ import re
 import secrets
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -1369,6 +1370,11 @@ def _argv_option(flag: str) -> str | None:
     return None
 
 
+def _argv_flag(flag: str) -> bool:
+    """Whether this process was started with a bare ``--flag``."""
+    return flag in sys.argv[1:]
+
+
 def _restart_target() -> tuple[str, str]:
     """The dashboard's own bind address, so the relaunch matches how it was started."""
     host = _argv_option("--host") or "127.0.0.1"
@@ -1393,12 +1399,13 @@ def _restart_all_command() -> str:
     if not executable:
         raise RuntimeError("could not resolve the hermes executable")
     home = str(core.hermes_home())
+    # The dashboard is this process: killing its own pid avoids guessing at the launch arguments.
+    skip_build = " --skip-build" if _argv_flag("--skip-build") else ""
     return (
         "sleep 3; "
         f"{shlex.quote(executable)} gateway restart -y; "
-        f"pid=$(ps -eo pid,args | awk '/python3 -I -c/ && /dashboard --no-open --port {port}/ && !/awk/ {{print $1}}'); "
-        "[ -n \"$pid\" ] && kill $pid; sleep 3; "
-        f"exec {shlex.quote(executable)} dashboard --no-open --port {port} --host {host}"
+        f"kill {os.getpid()} 2>/dev/null; sleep 3; "
+        f"exec {shlex.quote(executable)} dashboard --no-open --port {port} --host {host}{skip_build}"
         # HERMES_HOME travels through the environment set below.
         if home else ""
     )
