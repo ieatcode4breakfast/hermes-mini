@@ -68,6 +68,37 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Scheduled-job result text
+# ---------------------------------------------------------------------------
+
+# The scheduler can wrap a job result in this header/footer (``cron.wrap_response``). The app
+# shows only the result body: the header carries an internal job id and the footer is a generic
+# management hint. The inbox's markdown stripping turns ``job_id`` into ``jobid``, so both forms
+# are accepted.
+_CRON_HEADER = "Cronjob Response: "
+_CRON_RULE = "-------------"
+_CRON_FOOTER = "To stop or manage this job, send me a new message"
+
+
+def strip_cron_wrapper(text: str) -> str:
+    """Remove the scheduler's job-result header/footer; unchanged when the shape does not match."""
+    value = str(text or "")
+    if not value.startswith(_CRON_HEADER):
+        return value
+    rule = value.find(_CRON_RULE)
+    if rule < 0:
+        return value
+    head = value[:rule]
+    if "(job_id: " not in head and "(jobid: " not in head and "(job id: " not in head:
+        return value
+    footer = value.rfind(_CRON_FOOTER)
+    if footer < rule + len(_CRON_RULE):
+        return value
+    body = value[rule + len(_CRON_RULE):footer].strip()
+    return body or value
+
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 

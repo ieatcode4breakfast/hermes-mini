@@ -75,6 +75,36 @@ class RestartCommandTest(RouteTestCase):
         self.assertNotIn("--skip-build", command)
 
 
+class InboxJobWrapperTest(RouteTestCase):
+    def test_a_wrapped_job_preview_shows_only_the_result(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE m (id INTEGER, role TEXT, display_kind TEXT, content TEXT, session_id TEXT, "
+            "timestamp REAL, display_metadata TEXT, finish_reason TEXT, tool_calls TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO m VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                1,
+                "user",
+                "job_delivery",
+                "[Scheduled job result]\nCronjob Response: Jump reminder\n(job_id: 2c5acc839c96)\n"
+                "-------------\n\nJump reminder — time to jump!\n\n"
+                'To stop or manage this job, send me a new message (e.g. "stop reminder Jump reminder").',
+                "home",
+                1.0,
+                None,
+                None,
+                None,
+            ),
+        )
+        item = self.api._inbox_item(conn.execute("SELECT * FROM m").fetchone(), {})
+        self.assertIsNotNone(item)
+        self.assertNotIn("Cronjob Response", item["text"])
+        self.assertEqual(item["text"], "Jump reminder — time to jump!")
+
+
 class IdentityRoutesTest(RouteTestCase):
     def test_get_identity_is_a_pure_read(self):
         before = self.snapshot_tree(self.home)

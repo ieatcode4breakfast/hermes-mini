@@ -167,5 +167,33 @@ class IdentityTest(DisposableHome):
         self.assertEqual(settings["agent"]["avatar"], first)
 
 
+class CronWrapperTest(DisposableHome):
+    def test_raw_wrapper_is_stripped(self):
+        raw = (
+            "Cronjob Response: Jump reminder\n"
+            "(job_id: 2c5acc839c96)\n"
+            "-------------\n\n"
+            "Jump reminder — time to jump!\n\n"
+            'To stop or manage this job, send me a new message (e.g. "stop reminder Jump reminder").'
+        )
+        self.assertEqual(self.core.strip_cron_wrapper(raw), "Jump reminder — time to jump!")
+
+    def test_flattened_inbox_preview_is_stripped(self):
+        flat = (
+            "Cronjob Response: Jump reminder (jobid: 2c5acc839c96) ------------- "
+            "Jump reminder — time to jump! To stop or manage this job, send me a new message "
+            '(e.g. "stop reminder Jump reminder").'
+        )
+        self.assertEqual(self.core.strip_cron_wrapper(flat), "Jump reminder — time to jump!")
+
+    def test_unwrapped_or_incomplete_text_is_unchanged(self):
+        for text in (
+            "Cronjob Response: ordinary text",
+            "Cronjob Response: x\n(job_id: 1)\n-------------\n\nbody without footer",
+            "Plain message",
+        ):
+            self.assertEqual(self.core.strip_cron_wrapper(text), text)
+
+
 if __name__ == "__main__":
     unittest.main()

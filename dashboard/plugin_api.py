@@ -620,7 +620,7 @@ def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | No
         # skipped. Every other user row is the person's own message (excluded).
         if kind != "job_delivery":
             return None
-        body = JOB_PREFIX.sub("", _row_text(row), count=1).strip()
+        body = core.strip_cron_wrapper(JOB_PREFIX.sub("", _row_text(row), count=1).strip())
         if not body or LIFECYCLE_NOTICE.match(body):
             return None
         text = body

@@ -174,7 +174,7 @@ def _resolve_session_id(db, target: str) -> tuple[Optional[str], str]:
 
 def deliver_text(content: str, target: str = "main") -> dict[str, Any]:
     """Store one job result in the target chat (or the main chat) and notify."""
-    text = (content or "").strip()
+    text = mini_core.strip_cron_wrapper((content or "").strip())
     if not text:
         return {"error": "bridge: empty message"}
     if _LIFECYCLE_NOTICE.match(text):
