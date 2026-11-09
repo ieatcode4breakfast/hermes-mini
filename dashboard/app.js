@@ -1303,12 +1303,8 @@ async function resetMainChat(item) {
     deleted = true;
     // Forget the recorded home before creating the replacement; the new one claims its own id.
     await api("/api/plugins/hermes-mini/app-chats/home", { method: "DELETE" }).catch(() => {});
-    // The old thread is gone: forget its ids before the fresh one is created, so nothing can select it again and the
-    // deleted transcript cannot stay on screen while the new main is being made.
-    if (state.homeId === item.id) {
-      state.homeId = null;
-      safeStorageSet(STORE_KEY, null);
-    }
+    // Keep the old home id while the replacement is created: the drawer draws the main row from it, and
+    // clearing it here made the row flash out during the reset. createThread replaces it with the new id.
     const wasViewing = state.viewedId === item.id;
     state.viewedId = null;
     state.viewedUnsent = false;

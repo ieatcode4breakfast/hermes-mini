@@ -424,13 +424,14 @@ export function createDrawer(deps) {
 
   function renderBrowse(now) {
     const home = homeId();
-    if (st.loading && !st.rows.length && !st.home) {
+    if (st.loading && !st.rows.length && !st.home && !home) {
       // Same row as a loaded list, so New chat stays reachable during the first fetch.
       list.append(newBtn);
       list.append(skeleton(7));
       return;
     }
-    const homeItem = st.rows.find((row) => row.id === home) || st.home;
+    const homeItem = st.rows.find((row) => row.id === home) || st.home
+      || (home ? normalize({ id: home, source: "tui" }) : null);
     const rest = st.rows.filter((row) => row.id !== home);
     if (homeItem) {
       const slot = el("div", "home-slot");
