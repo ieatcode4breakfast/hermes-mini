@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import sqlite3
 import sys
 import types
 import unittest
@@ -208,6 +209,37 @@ class DataRoutesTest(RouteTestCase):
         self.assertEqual(added.status_code, 200)
         self.assertTrue(added.json()["added"])
         self.assertEqual(self.client.get("/api/plugins/hermes-mini/app-chats").json()["ids"], ["abc123"])
+
+
+class AppChatsHomeRoutesTest(RouteTestCase):
+    def test_home_is_claimed_once_and_can_be_cleared(self):
+        url = "/api/plugins/hermes-mini/app-chats"
+        first = self.client.post(url, json={"id": "chat-a", "home": True}).json()
+        self.assertEqual(first["home"], "chat-a")
+        self.assertEqual(self.client.get(url).json()["home"], "chat-a")
+        second = self.client.post(url, json={"id": "chat-b", "home": True}).json()
+        self.assertEqual(second["home"], "chat-a")
+        self.assertEqual(self.client.get(url).json()["home"], "chat-a")
+        cleared = self.client.delete("/api/plugins/hermes-mini/app-chats/home")
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(self.client.get(url).json()["home"], "")
+
+    def test_inbox_scope_uses_the_recorded_home_not_the_title(self):
+        self.client.post(
+            "/api/plugins/hermes-mini/app-chats", json={"id": "home", "home": True},
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.executemany(
+            "INSERT INTO sessions VALUES (?, ?, ?)",
+            [
+                ("home", "Renamed home", 0),
+                ("thief", "Hermes Mini", 0),
+                ("side", "Side chat", 0),
+            ],
+        )
+        self.assertEqual(set(self.api._scope_titles(conn)), {"home"})
 
 
 class HomeTargetSeedTest(RouteTestCase):

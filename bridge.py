@@ -107,12 +107,37 @@ def _plain(text: str) -> str:
     return " ".join(value.split())
 
 
+def _app_chats():
+    """The app-chat registry, shared with the dashboard and hook halves."""
+    return _module("hermes_mini_app_chats", "app_chats.py")
+
+
 def _home_session_id(db) -> Optional[str]:
-    """The app's main chat right now: the newest session titled HOME_TITLE (else a legacy title)."""
+    """The app's main chat: the id it recorded, else a registered chat still holding HOME_TITLE.
+
+    Once an id is recorded, the title is irrelevant: a chat that later takes the title cannot capture
+    the home. A recorded id that is gone or archived returns None instead of following the name. With
+    no id yet (migration), only an app-registered title holder is accepted.
+    """
+    try:
+        chats = _app_chats()
+        recorded = chats.home()
+    except Exception:  # noqa: BLE001 - a missing registry must not crash delivery
+        log.warning("bridge: app-chat registry unavailable", exc_info=True)
+        return None
+    if recorded:
+        row = db.get_session(recorded)
+        if row is not None and not row.get("archived"):
+            return str(row["id"])
+        return None
+    try:
+        registered = chats.ids()
+    except Exception:  # noqa: BLE001
+        registered = frozenset()
     for title in (HOME_TITLE, *LEGACY_HOME_TITLES):
         row = db.get_session_by_title(title)  # documented read API
-        if row is not None:
-            return str(row.get("id") or "")
+        if row is not None and not row.get("archived") and str(row["id"]) in registered:
+            return str(row["id"])
     return None
 
 

@@ -21,10 +21,10 @@ import * as identityApi from "./identity.js";
 // tab title and the installed app carry, stays "Hermes Mini" and is separate from the agent name.
 let AGENT = "Hermes";
 
-// Internal stored title of the app's main chat (bridge.py HOME_TITLE). Only this app lists that row and it
-// displays the external home label, so this key is never shown to a person.
+// The old internal title of the main chat. It is read once, only to migrate an install whose registry
+// predates the recorded home id; the home itself is an id, never a name.
 const THREAD_TITLE = "Hermes Mini";
-const STORE_KEY = "hermesMiniStoredId"; // the home thread (the one titled exactly THREAD_TITLE), as a fallback only
+const STORE_KEY = "hermesMiniStoredId"; // the recorded home chat id, as a fallback only
 const VIEW_KEY = "hermesMiniViewedId"; // the chat on screen, so a reload comes back to it
 const NEW_VIEW = "new"; // VIEW_KEY value for a New chat that was never sent (its id is saved only with its first message)
 // Sources the PWA may resume and continue. Resuming writes to the session (it retires queued rows and can start an
@@ -857,67 +857,83 @@ async function connect() {
 // Thread attach: find or create the main chat thread, resume it, then load its history.
 
 // The SERVER decides which thread is current, so every device (phone, PC) shows the same conversation:
-// the current thread is the one session titled exactly THREAD_TITLE (titles are UNIQUE in state.db).
-// localStorage only remembers it as a fallback when the lookup fails.
+// the id the app recorded as home. The home title is read once, only to migrate an install that predates
+// the id. localStorage only remembers it as a fallback when the lookup fails.
 async function currentServerThreadId() {
   const row = await currentServerThreadRow();
   return row ? row.id : null;
 }
 
-// The same lookup as currentServerThreadId, but the whole session.list row (id, title, message_count, ...), or null.
+// The recorded home row, or null when there is none (or it is gone). The title is a migration fallback,
+// and only for a chat already in the app registry, so a terminal or Discord chat that takes the title
+// can never become home.
 async function currentServerThreadRow() {
-  const listed = await rpc("session.list", { title: THREAD_TITLE, limit: 20 });
-  return (
-    (listed.sessions || [])
-      .filter((row) => row.title === THREAD_TITLE)
-      .sort((a, b) => (b.started_at || 0) - (a.started_at || 0))[0] || null
-  );
-}
-
-// Give a just-created session its title NOW (session.title persists the row immediately), so other devices
-// find it before its first message. If another device won the race, adopt that thread instead.
-async function claimTitle(liveSid) {
-  try {
-    await rpc("session.title", { session_id: liveSid, title: THREAD_TITLE });
+  const registry = await api("/api/plugins/hermes-mini/app-chats");
+  const home = registry && typeof registry.home === "string" ? registry.home : "";
+  if (home) {
+    let row = null;
+    try {
+      row = await api(`/api/sessions/${encodeURIComponent(home)}`);
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+    }
+    if (row && !row.archived) return row;
+    // The recorded home is gone: forget it so ensureHome can create a fresh one. Never follow a title.
+    await api("/api/plugins/hermes-mini/app-chats/home", { method: "DELETE" }).catch(() => {});
     return null;
-  } catch (error) {
-    const owner = errorText(error).match(/already in use by session (\S+)/);
-    if (owner) return owner[1];
-    throw error;
   }
+  const listed = await rpc("session.list", { title: THREAD_TITLE, limit: 20 });
+  const registered = new Set((registry && registry.ids) || []);
+  const row = (listed.sessions || [])
+    .filter((item) => item.title === THREAD_TITLE && registered.has(item.id) && !item.archived)
+    .sort((a, b) => (b.started_at || 0) - (a.started_at || 0))[0] || null;
+  if (row) {
+    const winner = await registerAppChat(row.id, true); // record it once; the title stops mattering
+    if (winner && winner !== row.id) {
+      const adopted = await api(`/api/sessions/${encodeURIComponent(winner)}`).catch(() => null);
+      if (adopted && !adopted.archived) return adopted;
+    }
+  }
+  return row;
 }
 
 // Creates the home thread and makes it live here. Callers decide whether it is the chat on screen.
 async function createThread() {
-  const created = await rpc("session.create", { title: THREAD_TITLE });
-  const owner = await claimTitle(created.session_id);
-  if (owner) {
-    // Lost the race: hide the empty row this attempt left behind, then adopt the winner's thread.
-    await rpc("session.archive", { session_id: created.stored_session_id, archived: true }).catch(() => {});
-    state.homeId = owner;
-    safeStorageSet(STORE_KEY, owner);
-    return false; // resume the other device's thread
-  }
+  const created = await rpc("session.create", {});
   state.liveSid = created.session_id;
   state.homeId = created.stored_session_id;
   safeStorageSet(STORE_KEY, state.homeId);
-  registerAppChat(state.homeId);
+  const winner = await registerAppChat(state.homeId, true);
+  if (winner && winner !== state.homeId) {
+    // Another device claimed the home first: discard this empty row and adopt the winner.
+    await rpc("session.archive", { session_id: created.stored_session_id, archived: true }).catch(() => {});
+    state.homeId = winner;
+    state.liveSid = null;
+    safeStorageSet(STORE_KEY, winner);
+    return false; // resume the other device's thread
+  }
   return true;
 }
 
-// Tags a chat as started in the app (plugin_api.py /app-chats, the person 7 Nov 2026): the chat list and notifications
-// only cover tagged chats, so a terminal or dashboard-page chat never shows up here. Idempotent and fire-and-forget;
-// sending a message re-tags the chat, so one failed call heals itself.
-function registerAppChat(id) {
-  if (!id) return;
-  api("/api/plugins/hermes-mini/app-chats", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id }),
-  }).then((data) => { if (data && data.added) drawerApi.addAppChat(id); }).catch(() => {});
+// Tags a chat as started in the app (plugin_api.py /app-chats). The home flag claims the main-chat id
+// atomically and the response says which id won. Idempotent; sending a message re-tags the chat, so one
+// failed call heals itself.
+async function registerAppChat(id, home = false) {
+  if (!id) return "";
+  try {
+    const data = await api("/api/plugins/hermes-mini/app-chats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, home: Boolean(home) }),
+    });
+    if (data && data.added) drawerApi.addAppChat(id);
+    return data && typeof data.home === "string" ? data.home : "";
+  } catch {
+    return "";
+  }
 }
 
-// Finds the home thread on the server (the one titled THREAD_TITLE), or creates it. Returns true when created.
+// Finds the recorded home thread on the server, or creates one. Returns true when created.
 async function ensureHome() {
   let serverId;
   try {
@@ -1284,6 +1300,8 @@ async function resetMainChat(item) {
     }
     await deleteSessionFenced(item.id);
     deleted = true;
+    // Forget the recorded home before creating the replacement; the new one claims its own id.
+    await api("/api/plugins/hermes-mini/app-chats/home", { method: "DELETE" }).catch(() => {});
     // The old thread is gone: forget its ids before the fresh one is created, so nothing can select it again and the
     // deleted transcript cannot stay on screen while the new main is being made.
     if (state.homeId === item.id) {

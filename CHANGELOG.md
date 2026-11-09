@@ -50,6 +50,9 @@ All notable changes to this project are documented here. The format follows
 - Chat-name delivery matches case-insensitively when the name is unique, never delivers to an
   archived chat by id, and falls back to the main chat for a missing, renamed, archived or ambiguous
   target.
+- The home chat is now the id the app recorded, not whichever session carries the `Hermes Mini`
+  title. A terminal, desktop or Discord chat that takes the title can no longer capture the main
+  chat; resetting the main chat records the replacement id.
 
 ## [0.1.0] — first release
 

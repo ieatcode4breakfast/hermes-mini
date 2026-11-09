@@ -62,6 +62,9 @@ class HookTestCase(DisposableHome):
             "id": session_id, "title": title, "source": source,
             "parent_session_id": parent, "archived": archived,
         }
+        # The app's main chat is the id it recorded. Tests that name it the old way claim it here.
+        if title == "Hermes Mini":
+            self.chats.claim_home(session_id)
 
     def notified(self):
         """Capture what would be queued by patching the store's notify."""
@@ -78,9 +81,17 @@ class HookTestCase(DisposableHome):
 
 
 class AppChatScopingTest(HookTestCase):
-    def test_home_thread_is_always_an_app_chat(self):
+    def test_recorded_home_is_an_app_chat(self):
         self.add_session("s1", title="Hermes Mini")
         self.assertEqual(self.hooks._app_chat("s1"), ("s1", "Hermes Mini"))
+
+    def test_a_title_alone_is_not_the_home(self):
+        self.add_session("s1", title="Hermes Mini")
+        FakeSessionDB.rows["thief"] = {
+            "id": "thief", "title": "Hermes Mini", "source": "tui",
+            "parent_session_id": None, "archived": 0,
+        }
+        self.assertIsNone(self.hooks._app_chat("thief"))
 
     def test_registered_tui_chat_is_notified(self):
         self.add_session("s2", title="Groceries")

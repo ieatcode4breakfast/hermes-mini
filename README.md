@@ -151,7 +151,7 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 |---|---|
 | `$HERMES_HOME/hermes-mini/config.yaml` | Your agent name, home label, uploaded picture's filename, first-run completion, optional public URL and push contact. |
 | `$HERMES_HOME/hermes-mini/assets/` | Your uploaded picture. |
-| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen markers, inbox read state, app-chat registry, push key and subscriptions. |
+| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen markers, inbox read state, the app-chat registry and recorded main-chat id, push key and subscriptions. |
 
 `config.yaml` is written atomically with mode `0600`, and unknown keys are dropped. Everything is
 per profile: a second Hermes profile gets its own name, picture and data, and one profile's app never
@@ -161,6 +161,9 @@ One value lives in Hermes' own `$HERMES_HOME/config.yaml`, not in the table abov
 `platforms.hermes-mini.home_channel`. The app records its main chat there the first time it loads,
 so a bare `hermes-mini` job address has a destination. It is written only when no value is present;
 an existing value is never replaced.
+
+The app's own registry, `$HERMES_HOME/data/hermes-mini/app-chats.json`, also records the main chat's
+id. That id, not the chat's name, is how the app and scheduled-job delivery find the home.
 
 Every app chat carries a built-in turn rule: acknowledge the newest message and say in one line
 what happens next before starting work. It rides along with every user message **in an app chat
@@ -201,8 +204,10 @@ A Hermes scheduled job can post its result into the app. Address it as:
 `main` and `home` are reserved words for the main chat, so a side chat with either name is reached
 by its id, not its name.
 
-The result is stored as a normal message in that chat and pushes a notification. The plugin records
-the main chat as its default delivery chat the first time the app loads, so no setup is needed.
+The result is stored as a normal message in that chat and pushes a notification. The plugin gives
+the app a default delivery chat the first time it loads, so no setup is needed. The home itself is
+recorded by id in the app registry: renaming another chat to `Hermes Mini` cannot take it, and
+resetting the main chat records the replacement id.
 
 A name is a label, not an identity. If the named chat is missing, renamed, archived, or matches
 more than one chat, the result goes to the main chat. The app does not announce the move; the

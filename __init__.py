@@ -128,10 +128,8 @@ def _session_meta(session_id: str) -> tuple[str | None, str | None]:
         return None, None
 
 
-# What the app shows: chats from these sources plus the home thread by title.
+# What the app shows: chats from these sources plus the recorded home chat.
 _APP_SOURCES = {"tui"}
-_HOME_TITLE = "Hermes Mini"  # bridge.py HOME_TITLE
-_LEGACY_HOME_TITLES: set[str] = set()
 
 # Built-in app rule, so a fresh install acknowledges every new message before it starts work. An
 # operator's app-instructions.md is appended after it, never replacing the acknowledgement.
@@ -231,6 +229,11 @@ def _registered_app_chat(session_id: str) -> bool:
         return False
 
 
+def _home_chat_id() -> str:
+    """The main-chat id the app recorded, or '' before it claims one."""
+    return _chats().home()
+
+
 def _app_chat(*candidates: Any) -> tuple[str, str | None] | None:
     """The first candidate id that is a chat the app lists, as (session_id, title); None otherwise.
 
@@ -238,6 +241,11 @@ def _app_chat(*candidates: Any) -> tuple[str, str | None] | None:
     chat, or a lookup error means the message would never appear in the app, so no push.
     """
     seen: set[str] = set()
+    try:
+        home = _home_chat_id()
+    except Exception:  # noqa: BLE001 - no registry means no push; the turn still runs
+        log.debug("push: app-chat registry unavailable", exc_info=True)
+        home = ""
     for value in candidates:
         session = str(value or "").strip()
         if not session or session in seen:
@@ -248,7 +256,7 @@ def _app_chat(*candidates: Any) -> tuple[str, str | None] | None:
             continue
         if str(title or "").startswith("Subagent:"):
             return None
-        if title == _HOME_TITLE or title in _LEGACY_HOME_TITLES:
+        if session == home:
             return session, title
         if source in _APP_SOURCES and _registered_app_chat(session):
             return session, title
@@ -377,7 +385,7 @@ def _post_llm_call(*args: Any, **kwargs: Any) -> None:
         _push().notify(
             "reply",
             # The main chat's stored title is an internal key; notifications read the agent's name.
-            _clip(name if not title or title == _HOME_TITLE or title in _LEGACY_HOME_TITLES else title, 120),
+            _clip(name if not title or session == _home_chat_id() else title, 120),
             body,
             session,
             f"reply:{session}",
@@ -433,8 +441,7 @@ def _in_app_chat(*candidates: Any, fail_closed: bool = True) -> bool:
                 row = db.get_session(session)
                 if row is None:
                     break
-                title = str(row.get("title") or "")
-                if title == _HOME_TITLE or title in _LEGACY_HOME_TITLES:
+                if session == _home_chat_id():
                     return True
                 if row.get("source") in _APP_SOURCES and _registered_app_chat(session):
                     return True

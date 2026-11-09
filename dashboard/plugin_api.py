@@ -337,10 +337,19 @@ def _app_chats():
     return _sibling("hermes_mini_app_chats", "app_chats.py")
 
 
+def _home_id() -> str:
+    """The recorded main-chat id, or '' when none is claimed yet."""
+    try:
+        return _app_chats().home()
+    except Exception:  # noqa: BLE001 - the registry is optional for every read path
+        return ""
+
+
 @router.get("/app-chats")
 async def get_app_chats():
     try:
-        return JSONResponse({"ids": sorted(_app_chats().ids())})
+        chats = _app_chats()
+        return JSONResponse({"ids": sorted(chats.ids()), "home": chats.home()})
     except Exception as exc:  # noqa: BLE001 - the drawer falls back to its source rule
         log.warning("app-chats read failed: %s", exc)
         return JSONResponse({"detail": "registry unavailable"}, status_code=503)
@@ -355,12 +364,25 @@ async def add_app_chat(request: Request):
     session_id = body.get("id")
     if not isinstance(session_id, str) or not 0 < len(session_id) <= 200:
         return JSONResponse({"detail": "id must be a chat id"}, status_code=400)
+    claim = bool(body.get("home"))
     try:
-        added = _app_chats().add(session_id)
+        chats = _app_chats()
+        added = chats.add(session_id)
+        current = chats.claim_home(session_id) if claim else chats.home()
     except Exception as exc:  # noqa: BLE001
         log.warning("app-chats write failed: %s", exc)
         return JSONResponse({"detail": "registry unavailable"}, status_code=503)
-    return JSONResponse({"ok": True, "added": added})
+    return JSONResponse({"ok": True, "added": added, "home": current})
+
+
+@router.delete("/app-chats/home")
+async def clear_app_home():
+    try:
+        _app_chats().set_home("")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("app-chats home clear failed: %s", exc)
+        return JSONResponse({"detail": "registry unavailable"}, status_code=503)
+    return JSONResponse({"ok": True, "home": ""})
 
 
 # ---------- unread markers ----------
@@ -451,8 +473,6 @@ async def put_seen(request: Request):
     return JSONResponse(data)
 
 
-BRIDGE_HOME_TITLE = "Hermes Mini"  # keep in step with bridge.py HOME_TITLE
-
 # ---------- Inbox ----------
 # One feed of every agent bubble the app draws, across the chats it lists. The Inbox stores no messages of its own:
 # every read comes from state.db (read-only), so deleting a chat makes its rows disappear and nothing is unopenable.
@@ -464,7 +484,6 @@ INBOX_PAGE = 50
 INBOX_MAX_TEXT = 400
 INBOX_MAX_READ_IDS = 50000
 INBOX_MAX_POST_IDS = 1000
-MAIN_TITLES = (BRIDGE_HOME_TITLE,)  # the app main chat
 _INBOX_LOCK = threading.Lock()
 
 # app.js chatEntries() constants, ported verbatim (each used by the rule it belongs to below).
@@ -506,18 +525,20 @@ def _app_chat_ids() -> set[str]:
 
 
 def _scope_titles(conn: sqlite3.Connection) -> dict[str, str]:
-    """The chats the app lists: the registry plus the main chat, existing and not archived.
+    """The chats the app lists: the registry plus the recorded main chat, existing and not archived.
 
-    Mirrors drawer.js isListed()/fetchPage(): only archived=exclude rows survive, and the home thread is whatever
-    carries the home title. Missing ids simply never come back, so a deleted chat's rows vanish from the feed.
+    Mirrors drawer.js isListed()/fetchPage(): only archived=exclude rows survive. The home is the id the app recorded,
+    not whichever session happens to carry the home title; missing ids never come back, so a deleted chat's rows
+    vanish from the feed.
     """
     registered = _app_chat_ids()
+    home = _home_id()
     titles: dict[str, str] = {}
     for row in conn.execute("SELECT id, title, archived FROM sessions"):
         if row["archived"]:
             continue
         title = str(row["title"] or "")
-        if row["id"] in registered or title in MAIN_TITLES:
+        if row["id"] in registered or (home and row["id"] == home):
             titles[str(row["id"])] = title
     return titles
 
@@ -623,7 +644,11 @@ def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | No
         return None
     title = titles.get(str(row["session_id"]), "")
     # The main chat reads as the chat list's home row does (the external home label, else the agent name).
-    thread = core.agent_identity()["home_label"] if title in MAIN_TITLES else (title or "Untitled")
+    thread = (
+        core.agent_identity()["home_label"]
+        if str(row["session_id"]) == _home_id()
+        else (title or "Untitled")
+    )
     return {
         "id": int(row["id"]),
         "session_id": str(row["session_id"]),
