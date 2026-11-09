@@ -62,6 +62,7 @@ class RestartCommandTest(RouteTestCase):
             mock.patch.object(self.api.core, "find_hermes_executable", return_value="/usr/local/bin/hermes"),
         ):
             command = self.api._restart_all_command()
+        self.assertIn("gateway restart -y --detach", command)
         self.assertIn(f"kill {os.getpid()}", command)
         self.assertIn("dashboard --no-open --port 9119 --host 127.0.0.1 --skip-build", command)
 

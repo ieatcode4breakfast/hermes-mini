@@ -1403,7 +1403,9 @@ def _restart_all_command() -> str:
     skip_build = " --skip-build" if _argv_flag("--skip-build") else ""
     return (
         "sleep 3; "
-        f"{shlex.quote(executable)} gateway restart -y; "
+        # --detach returns once the replacement gateway is started; without it the CLI runs the
+        # gateway in the foreground and this script never reaches the dashboard step.
+        f"{shlex.quote(executable)} gateway restart -y --detach; "
         f"kill {os.getpid()} 2>/dev/null; sleep 3; "
         f"exec {shlex.quote(executable)} dashboard --no-open --port {port} --host {host}{skip_build}"
         # HERMES_HOME travels through the environment set below.
