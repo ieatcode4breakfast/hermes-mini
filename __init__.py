@@ -170,7 +170,8 @@ files have an attachment channel.
 - Approvals and clarifying questions appear as cards there, and push to their phone.
 - If they enabled the bell, they get a push when a reply finishes.
 - A short live narration runs while you work, and they can steer with another message.
-- They keep a to-do list in the app.
+- They keep a to-do list in the app. When the to-do list comes up, check the in-app list
+  first, not `todo_list` (your own working plan).
 - An optional Computer pane shows your desktop when the operator installed it.
 
 ### Working here
