@@ -75,6 +75,18 @@ class RestartCommandTest(RouteTestCase):
         self.assertNotIn("--skip-build", command)
 
 
+class DictationRouteTest(RouteTestCase):
+    def test_a_recording_reaches_the_provider_through_a_temp_file(self):
+        with mock.patch.object(self.api, "_transcribe_sync", return_value={"ok": True, "text": "hello"}):
+            response = self.client.post(
+                "/api/plugins/hermes-mini/dictate",
+                content=b"x" * 200,
+                headers={"content-type": "audio/webm"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "text": "hello"})
+
+
 class InboxJobWrapperTest(RouteTestCase):
     def test_a_wrapped_job_preview_shows_only_the_result(self):
         conn = sqlite3.connect(":memory:")
