@@ -6,8 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Scheduled job results can now be delivered into the app: `hermes-mini:main`, a side chat by id or
+  unique name, or bare `hermes-mini`; each result is stored as a message and pushes a notification.
+- The plugin records its main chat as the platform's default delivery target the first time the app
+  loads, so bare `hermes-mini` works without setup.
+- App chats receive a system-prompt section (`hermes-mini.app`) describing the app, its chats,
+  scheduled-job delivery and image handling; other surfaces do not.
+
 ### Changed
 
+- The app instructions now tell the agent to use a session id for long-lived jobs and that a missing
+  or renamed chat falls back to the main chat.
 - App chats now ship with the acknowledgment rule built in: the agent acknowledges a new message
   and says in one line what happens next before starting work. An optional app-instructions file is
   appended to the rule instead of replacing it.
@@ -31,6 +42,14 @@ All notable changes to this project are documented here. The format follows
   bot name — the default profile's bot title first, then the serving profile's — with `Hermes` only
   when no name exists. No name or picture is stored by the app. The app now falls back to the
   bot's own profile picture when no picture was uploaded through it.
+
+### Fixed
+
+- Scheduled-job delivery now registers with the gateway; a stray package-path import had skipped the
+  platform registration, so job results had no destination.
+- Chat-name delivery matches case-insensitively when the name is unique, never delivers to an
+  archived chat by id, and falls back to the main chat for a missing, renamed, archived or ambiguous
+  target.
 
 ## [0.1.0] — first release
 

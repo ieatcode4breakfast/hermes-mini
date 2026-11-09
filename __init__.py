@@ -165,11 +165,13 @@ files have an attachment channel.
   and no push.
 - deliver='hermes-mini:main' posts the result into the main chat as a live message and a
   push notification.
-- deliver='hermes-mini:<session id or exact chat title>' posts it into that side chat the
-  same way.
-- If the target chat has been deleted, the result goes to the main chat.
+- deliver='hermes-mini:<session id or chat name>' posts it into that side chat the same way.
+  A name is enough when it is unique; the spelling's case does not matter.
+- If the target chat is missing, renamed, archived, or its name is ambiguous, the result goes
+  to the main chat instead.
 - Prefer the main chat for recurring jobs and long-running watches; use a side chat when the
-  result belongs to that task.
+  result belongs to that task. For anything that must survive a rename, use the session id,
+  not the name.
 - Results arrive prefixed [Scheduled job result] and open from the notification.
 
 ### What the app does

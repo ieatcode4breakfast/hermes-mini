@@ -178,7 +178,9 @@ class SystemPromptSectionTest(HookTestCase):
         text = self.hooks._APP_SYSTEM_PROMPT
         for phrase in (
             "deliver='hermes-mini:main'",
-            "deliver='hermes-mini:<session id or exact chat title>'",
+            "deliver='hermes-mini:<session id or chat name>'",
+            "missing, renamed, archived",
+            "use the session id",
             "MEDIA:",
             "![description](https://",
             "Silent rules",

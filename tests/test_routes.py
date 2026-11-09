@@ -9,9 +9,13 @@ Every test runs against a disposable ``HERMES_HOME``.
 
 from __future__ import annotations
 
+import copy
 import io
 import json
+import sys
+import types
 import unittest
+from unittest import mock
 
 from tests.support import DASHBOARD, DisposableHome, load_module
 
@@ -204,6 +208,42 @@ class DataRoutesTest(RouteTestCase):
         self.assertEqual(added.status_code, 200)
         self.assertTrue(added.json()["added"])
         self.assertEqual(self.client.get("/api/plugins/hermes-mini/app-chats").json()["ids"], ["abc123"])
+
+
+class HomeTargetSeedTest(RouteTestCase):
+    """The one Hermes-owned value the app writes: its default scheduled-job destination."""
+
+    def _run_seed(self, config):
+        saved = []
+        package = types.ModuleType("hermes_cli")
+        package.__path__ = []
+        module = types.ModuleType("hermes_cli.config")
+        module.load_config = lambda: config
+        module.save_config = lambda value: saved.append(copy.deepcopy(value))
+        with mock.patch.dict(sys.modules, {"hermes_cli": package, "hermes_cli.config": module}):
+            self.api._ensure_home_target()
+            self.api._ensure_home_target()
+        return saved
+
+    def test_records_the_main_chat_once(self):
+        saved = self._run_seed({"platforms": {}})
+        self.assertEqual(len(saved), 1)
+        block = saved[0]["platforms"]["hermes-mini"]
+        self.assertEqual(block["home_channel"], {
+            "platform": "hermes-mini",
+            "chat_id": "main",
+            "name": "Hermes Mini main chat",
+        })
+        self.assertTrue(block["enabled"])
+
+    def test_an_existing_target_is_never_replaced(self):
+        config = {"platforms": {"hermes-mini": {
+            "home_channel": {"platform": "hermes-mini", "chat_id": "side"},
+        }}}
+        self.assertEqual(self._run_seed(config), [])
+        self.assertEqual(
+            config["platforms"]["hermes-mini"]["home_channel"]["chat_id"], "side",
+        )
 
 
 if __name__ == "__main__":

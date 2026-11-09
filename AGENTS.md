@@ -20,6 +20,9 @@ the plugin installable, replaceable and honest. Read them before changing anythi
   it: no settings, no keys, no logs, no caches, no generated files.
 - Settings live in `$HERMES_HOME/hermes-mini/config.yaml`, your picture in
   `$HERMES_HOME/hermes-mini/assets/`, and state in `$HERMES_HOME/data/hermes-mini/`.
+- The one Hermes-owned file the plugin may write is `$HERMES_HOME/config.yaml`, through Hermes'
+  documented home-channel helper, and only to record `platforms.hermes-mini.home_channel`. It writes
+  that value once, only when none is present, and nothing else.
 - Resolve paths per call through `mini_core.hermes_home()` (which uses Hermes' own resolver). Never
   hard-code `~/.hermes`, `/root/...`, the current working directory, or a profile name.
 - A test asserts the package is byte-identical after normal operation with the directory read-only.
@@ -31,7 +34,7 @@ the plugin installable, replaceable and honest. Read them before changing anythi
   display name, then a named profile id, then `Mini`. The generic `default`/`custom` profile names
   are never shown as a person's agent name.
 - Saving a name or picture must never rename a Hermes bot or profile, and must never touch any file
-  Hermes owns.
+  Hermes owns — the one exception is the delivery default in section 2.
 - Everything is per profile. A request served for another profile must read that profile's settings,
   or nothing at all — never another profile's.
 

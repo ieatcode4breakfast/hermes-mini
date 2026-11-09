@@ -124,6 +124,8 @@ Until a model is configured the chat shows a friendly message rather than failin
   configured to use.
 - **Notifications** (optional): Web Push for approvals, questions and finished replies, with
   per-chat mute.
+- **Scheduled job results**: Hermes cron output can be posted into the main chat or a chosen side
+  chat, with a push.
 - **Computer** (optional): a phone-friendly live view of your agent's desktop, with take-over,
   hand-back, a trackpad and clipboard, gated by Hermes' own display tickets and control lease.
 
@@ -155,9 +157,18 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 per profile: a second Hermes profile gets its own name, picture and data, and one profile's app never
 reads another's.
 
+One value lives in Hermes' own `$HERMES_HOME/config.yaml`, not in the table above:
+`platforms.hermes-mini.home_channel`. The app records its main chat there the first time it loads,
+so a bare `hermes-mini` job address has a destination. It is written only when no value is present;
+an existing value is never replaced.
+
 Every app chat carries a built-in turn rule: acknowledge the newest message and say in one line
 what happens next before starting work. It rides along with every user message **in an app chat
 only** (and its subagents), never in Discord, cron, or another channel.
+
+The plugin also contributes a system-prompt section (`hermes-mini.app`) to app chats only,
+describing the app, its chats, scheduled-job delivery and image handling. Other surfaces — Discord,
+cron, the terminal — never receive it.
 
 An optional file at `$HERMES_HOME/data/hermes-mini/app-instructions.md` is appended to that rule.
 Use it for extra operator instructions; the built-in acknowledgement stays.
@@ -176,6 +187,27 @@ accepted as subscription endpoints, and the request must be HTTPS.
 The VAPID `sub` claim uses, in order: your configured push contact, your configured public URL,
 Hermes' configured dashboard/gateway public URL, then the origin the request came from. No personal
 domain is baked into the source.
+
+## Scheduled job results
+
+A Hermes scheduled job can post its result into the app. Address it as:
+
+- `hermes-mini:main` — the main chat.
+- `hermes-mini:<chat id>` — a specific chat, stable across renames.
+- `hermes-mini:<chat name>` — a named chat, when the name is unique. The spelling's case does not
+  matter.
+- `hermes-mini` — the same as `hermes-mini:main`.
+
+`main` and `home` are reserved words for the main chat, so a side chat with either name is reached
+by its id, not its name.
+
+The result is stored as a normal message in that chat and pushes a notification. The plugin records
+the main chat as its default delivery chat the first time the app loads, so no setup is needed.
+
+A name is a label, not an identity. If the named chat is missing, renamed, archived, or matches
+more than one chat, the result goes to the main chat. The app does not announce the move; the
+plugin's log records it. For a recurring job, or one that must keep working if a chat is renamed,
+use the chat's id.
 
 ## Computer view
 
@@ -210,11 +242,13 @@ Tested here against the real Hermes runtime: the plugin loads through Hermes' di
 `register(ctx)`; the manifest passes `hermes plugins doctor` and `hermes plugins validate`; every
 app route in the suite; settings/identity/avatar validation; push key opt-in and endpoint gating;
 dictation delegation to Hermes' provider with a mocked provider; the app-chat scoping and the
-self-edit guard; the browser module graph and service-worker asset list.
+self-edit guard; scheduled-job target resolution across ids, names, archived chats and missing
+chats; the browser module graph and service-worker asset list.
 
 Not verified here, and worth trying yourself: a real desktop session through Bot Desktop, a real push
-delivery to a device, a real speech-to-text transcription, and the app's appearance in a specific
-browser. Those require services and credentials this project does not ship. See
+delivery to a device, a real speech-to-text transcription, a live scheduled-job delivery, and the
+app's appearance in a specific browser. Those require services and credentials this project does not
+ship. See
 [CHANGELOG.md](CHANGELOG.md) for the honest status list.
 
 ## Documentation

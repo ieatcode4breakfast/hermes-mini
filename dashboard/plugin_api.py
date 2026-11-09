@@ -2,7 +2,9 @@
 
 The chat itself rides Hermes' own authenticated ``/api/ws`` and REST routes; this router adds the
 app's own data (to-dos, pins, seen markers, inbox read state), first-run identity, capability
-advertisement, live narration, Web Push and dictation. The dashboard's dashboard-auth dependency is
+advertisement, live narration, Web Push and dictation. It also records the app's main chat as the
+platform's default scheduled-job delivery target once, so a bare ``hermes-mini`` address has a
+destination. The dashboard's dashboard-auth dependency is
 attached by ``web_server_dashboard._mount_one_plugin_api`` (the same cookie auth as the rest of
 ``/api``), so this file only has to be a FastAPI ``router``.
 
@@ -1856,9 +1858,37 @@ async def capabilities():
                             status_code=200)
 
 
+def _ensure_home_target() -> None:
+    """Record the main chat as this platform's default delivery chat, once.
+
+    Hermes resolves a bare ``deliver: hermes-mini`` through the platform's home channel, and only
+    the install's own config holds one. Writing it here means nobody sets it by hand and a fresh
+    clone gets it the first time the app loads. An existing value always wins; a read-only home or a
+    missing helper only logs, never breaks the app.
+    """
+    try:
+        from hermes_cli.config import load_config, save_config
+
+        config = load_config()
+        block = config.setdefault("platforms", {}).setdefault(core.PLUGIN_ID, {})
+        if block.get("home_channel"):
+            return
+        block["home_channel"] = {
+            "platform": core.PLUGIN_ID,
+            "chat_id": "main",
+            "name": "Hermes Mini main chat",
+        }
+        block.setdefault("enabled", True)
+        save_config(config)
+        log.info("hermes-mini: recorded the main chat as the default delivery target")
+    except Exception:  # noqa: BLE001 - the app must load even if the config cannot be written
+        log.warning("hermes-mini: could not record the default delivery target", exc_info=True)
+
+
 @router.get("/status")
 async def status():
     """What the first-run screen needs: identity, capabilities and how to finish Hermes setup."""
+    _ensure_home_target()
     payload = _identity_payload()
     try:
         caps = _capabilities()

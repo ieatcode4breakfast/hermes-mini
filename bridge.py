@@ -4,9 +4,11 @@ Jobs use ``deliver: hermes-mini`` (main chat), ``hermes-mini:<session_id>`` or
 ``hermes-mini:<title>`` for a named chat, or ``discord:...,hermes-mini`` for both. The gateway owns
 cron delivery, so this registers a minimal gateway platform: nothing inbound, ``send`` only.
 
-Targets resolve at delivery time, in this order: the chat id itself, the newest live session whose
-title matches, then the app's main chat. Deleting a named chat does not lose the message; it lands
-in the main chat instead.
+Targets resolve at delivery time, in this order: a live chat id, the reserved ``main``/``home``
+words, an exact live title, then a case-insensitive title only when one live chat carries it. A
+missing, renamed, archived or ambiguous target falls back to the app's main chat, so the result is
+never lost. The fallback is logged, not shown in the app. The plugin records the main chat as the
+platform's default address on first run, so bare ``hermes-mini`` resolves too.
 
 The output is stored as a USER-role row with a labelled prefix (an assistant-role row would sit next
 to the agent's own turn and break strict alternation). ``display_kind = "job_delivery"`` tells the
@@ -117,18 +119,30 @@ def _home_session_id(db) -> Optional[str]:
 def _resolve_session_id(db, target: str) -> tuple[Optional[str], str]:
     """``(session_id, how)`` for a delivery target: 'id', 'title' or 'home'.
 
-    A named chat that no longer exists resolves to the home chat, so deleting a chat never loses a
-    reminder.
+    Resolution order: a live chat id, the reserved main-chat words, an exact live title, then a
+    case-insensitive title only when exactly one live chat carries it. Anything else - missing,
+    renamed, archived, or ambiguous - falls back to the main chat, so a result is never lost. The
+    fallback is logged, not shown to the person.
     """
     name = (target or "").strip()
     if name and name not in ("main", "home"):
         row = db.get_session(name)
-        if row is not None:
+        if row is not None and not row.get("archived"):
             return str(row["id"]), "id"
         row = db.get_session_by_title(name)
         if row is not None and not row.get("archived"):
             return str(row["id"]), "title"
-        log.warning("bridge: no chat named %r — falling back to the main chat", name)
+        # A spelling difference should not move a result to the wrong chat: accept a
+        # case-insensitive title only when it names one live chat. Two case variants are ambiguous
+        # and fall back instead of guessing.
+        rows = db._read_all(
+            "SELECT id FROM sessions WHERE lower(title) = lower(?) "
+            "AND COALESCE(archived, 0) = 0 LIMIT 2",
+            (name,),
+        )
+        if len(rows) == 1:
+            return str(rows[0]["id"]), "title"
+        log.warning("bridge: target %r is unavailable — falling back to the main chat", name)
     home = _home_session_id(db)
     return home, "home"
 
