@@ -127,5 +127,21 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
 
+class NotificationBellTest(unittest.TestCase):
+    def test_bell_is_revealed_after_the_browser_support_check(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertRegex(html, r'id="pushBtn"[^>]*\bhidden\b')
+        self.assertIn("pushBtn.hidden = false;", app)
+        self.assertGreater(
+            app.index("pushBtn.hidden = false;"),
+            app.index('"PushManager" in window'),
+        )
+
+    def test_a_server_no_still_hides_the_bell(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn("if (detail.push === false) pushBtn.hidden = true;", app)
+
+
 if __name__ == "__main__":
     unittest.main()

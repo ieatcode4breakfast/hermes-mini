@@ -4959,6 +4959,7 @@ if (pushBtn) {
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     pushBtn.hidden = true; // no Web Push here: the bell would be a dead button
   } else {
+    pushBtn.hidden = false; // browser supports Web Push; a definite server "no" hides it again
     pushBtn.addEventListener("click", async () => {
       const turningOff = pushBtn.getAttribute("aria-pressed") === "true";
       const proceed = await confirmDialog(turningOff
