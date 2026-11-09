@@ -2768,7 +2768,7 @@ function hideMediaPath(bubble, path) {
   }
 }
 
-// Full-screen viewer: swipe left/right (or arrow keys) between a reply's images, tap to close.
+// Full-screen viewer: swipe left/right (or arrow keys) between a reply's images, pinch or double-tap to zoom, tap to close.
 // Opening pushes one history entry, so the Back button closes the viewer instead of leaving the app. Any in-app
 // close consumes that entry again with history.back().
 function openViewer(items, start) {
@@ -2800,6 +2800,7 @@ function openViewer(items, start) {
     overlay.append(prevBtn, nextBtn);
   }
   const show = () => {
+    resetZoom(false); // each picture starts at 1x
     img.src = items[index].url;
     img.alt = items[index].alt;
     count.textContent = items.length > 1 ? `${index + 1} / ${items.length}` : "";
@@ -2810,6 +2811,7 @@ function openViewer(items, start) {
   };
   const teardown = () => {
     closed = true;
+    clearTimeout(tapTimer);
     overlay.remove();
     document.removeEventListener("keydown", onKey);
     window.removeEventListener("popstate", onPop);
@@ -2832,22 +2834,121 @@ function openViewer(items, start) {
     else if (event.key === "ArrowRight") step(1);
     else if (event.key === "ArrowLeft") step(-1);
   };
-  let startX = null;
-  let swiped = false;
-  overlay.addEventListener("touchstart", (event) => { startX = event.touches[0].clientX; swiped = false; }, { passive: true });
-  overlay.addEventListener("touchend", (event) => {
-    if (startX === null || items.length < 2) return;
-    const dx = event.changedTouches[0].clientX - startX;
-    startX = null;
+  // Touch gestures. Pinch zooms around the fingers (1x to 5x); one finger pans a zoomed picture; a double tap zooms in
+  // on that spot or back out. At 1x a swipe changes picture and a single tap closes, as before. The picture's
+  // transform is translate(tx, ty) scale(scale) around its centre, which is the overlay's centre.
+  const MAX_ZOOM = 5;
+  const DOUBLE_TAP_ZOOM = 2.5;
+  const DOUBLE_TAP_MS = 250;
+  let scale = 1, tx = 0, ty = 0;
+  let gesture = null; // { mode: "pinch" | "pan" | "swipe", ... } while fingers are down
+  let suppressClickUntil = 0; // a pinch, pan or swipe must not also count as a tap
+  let lastTouchEnd = 0;
+  let tapTimer = null;
+  const centre = () => {
+    const r = overlay.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+  };
+  // Keep the zoomed picture covering the screen: it can move only as far as its own overflow.
+  const clampPan = () => {
+    const c = centre();
+    const maxX = Math.max(0, (img.offsetWidth * scale - c.w) / 2);
+    const maxY = Math.max(0, (img.offsetHeight * scale - c.h) / 2);
+    tx = Math.min(maxX, Math.max(-maxX, tx));
+    ty = Math.min(maxY, Math.max(-maxY, ty));
+  };
+  const apply = (ease) => {
+    img.classList.toggle("easing", ease === true);
+    img.style.transform = scale === 1 && tx === 0 && ty === 0 ? "" : `translate(${tx}px, ${ty}px) scale(${scale})`;
+    overlay.classList.toggle("zoomed", scale > 1);
+  };
+  const resetZoom = (ease) => { scale = 1; tx = 0; ty = 0; apply(ease); };
+  // Zoom to `next`, keeping the picture point under (px, py) where it is.
+  const zoomAt = (next, px, py, ease) => {
+    const c = centre();
+    const qx = (px - c.x - tx) / scale, qy = (py - c.y - ty) / scale;
+    scale = Math.min(MAX_ZOOM, Math.max(1, next));
+    tx = px - c.x - qx * scale;
+    ty = py - c.y - qy * scale;
+    if (scale === 1) { tx = 0; ty = 0; }
+    clampPan();
+    apply(ease);
+  };
+  const pinchOf = (touches) => {
+    const a = touches[0], b = touches[1];
+    return { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  };
+  const beginOne = (touch) => {
+    gesture = { mode: scale > 1 ? "pan" : "swipe", x: touch.clientX, y: touch.clientY, tx, ty, moved: false };
+  };
+  overlay.addEventListener("touchstart", (event) => {
+    if (event.target.closest(".viewer-arrow")) return;
+    if (event.touches.length >= 2) {
+      const p = pinchOf(event.touches);
+      const c = centre();
+      gesture = { mode: "pinch", d: p.d, scale, qx: (p.x - c.x - tx) / scale, qy: (p.y - c.y - ty) / scale };
+      clearTimeout(tapTimer); tapTimer = null;
+    } else beginOne(event.touches[0]);
+  }, { passive: true });
+  overlay.addEventListener("touchmove", (event) => {
+    if (!gesture) return;
+    if (gesture.mode === "pinch" && event.touches.length >= 2) {
+      const p = pinchOf(event.touches);
+      const c = centre();
+      scale = Math.min(MAX_ZOOM, Math.max(1, gesture.scale * (p.d / gesture.d)));
+      tx = p.x - c.x - gesture.qx * scale;
+      ty = p.y - c.y - gesture.qy * scale;
+      clampPan();
+      apply(false);
+    } else if (gesture.mode === "pan" && event.touches.length === 1) {
+      const t = event.touches[0];
+      const dx = t.clientX - gesture.x, dy = t.clientY - gesture.y;
+      if (Math.hypot(dx, dy) > 6) gesture.moved = true;
+      tx = gesture.tx + dx;
+      ty = gesture.ty + dy;
+      clampPan();
+      apply(false);
+    }
+  }, { passive: true });
+  const endTouch = (event) => {
+    lastTouchEnd = Date.now();
+    if (!gesture) return;
+    if (gesture.mode === "pinch") {
+      suppressClickUntil = Date.now() + 400;
+      if (scale < 1.05) resetZoom(true);
+      // One finger still down after a pinch: it carries on as a pan (never as a swipe to the next picture).
+      if (event.touches.length === 1) { beginOne(event.touches[0]); gesture.mode = "pan"; gesture.moved = true; }
+      else if (event.touches.length === 0) gesture = null;
+      return;
+    }
+    if (event.touches.length > 0) return;
+    const done = gesture;
+    gesture = null;
+    if (done.mode === "pan") {
+      if (done.moved) suppressClickUntil = Date.now() + 400;
+      return;
+    }
+    if (event.type === "touchcancel" || items.length < 2) return;
+    const dx = event.changedTouches[0].clientX - done.x;
     if (Math.abs(dx) > 40) {
-      swiped = true;
+      suppressClickUntil = Date.now() + 400;
       step(dx < 0 ? 1 : -1);
     }
-  });
+  };
+  overlay.addEventListener("touchend", endTouch);
+  overlay.addEventListener("touchcancel", endTouch);
   overlay.addEventListener("click", (event) => {
-    if (swiped) { swiped = false; return; }
     if (event.target.closest(".viewer-arrow")) return;
-    close();
+    if (Date.now() < suppressClickUntil) return;
+    // A mouse click closes at once. A touch tap waits a moment for a second tap: two taps zoom, one closes.
+    if (Date.now() - lastTouchEnd > 500) { close(); return; }
+    if (tapTimer) {
+      clearTimeout(tapTimer); tapTimer = null;
+      if (scale > 1) resetZoom(true);
+      else zoomAt(DOUBLE_TAP_ZOOM, event.clientX, event.clientY, true);
+      return;
+    }
+    tapTimer = setTimeout(() => { tapTimer = null; close(); }, DOUBLE_TAP_MS);
   });
   document.addEventListener("keydown", onKey);
   window.addEventListener("popstate", onPop);
