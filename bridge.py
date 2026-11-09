@@ -49,7 +49,6 @@ def _sibling(name: str, filename: str):
 
 
 mini_core = _sibling("hermes_mini_core", "mini_core.py")
-import push_store
 
 log = logging.getLogger("hermes_mini.bridge")
 
