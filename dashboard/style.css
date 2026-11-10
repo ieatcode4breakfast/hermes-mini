@@ -527,7 +527,10 @@ textarea::-webkit-scrollbar { display: none; }
 /* The chat-title caption under the name pill is switched off by request. */
 #caption { display: none !important; }
 .composer .icon-btn { border: 0; background: transparent; }
-.composer .icon-btn:hover, .composer .icon-btn.open { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.composer .icon-btn:hover:not(:disabled), .composer .icon-btn.open { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* A disabled composer button reads as disabled: "+" while dictating or transcribing, the mic while the recording is
+   transcribed. Their explicit colour overrides the browser's own grey-out, so dim them here. */
+.composer .icon-btn:disabled { opacity: 0.4; cursor: default; }
 /* scroll-padding keeps the caret line level with "+"/send when the input scrolls; the mask fades the clipped top line. */
 .composer textarea, .composer textarea:focus {
   border: 0; background: transparent; border-radius: 0; padding: 11px 6px; scroll-padding-block: 11px;
