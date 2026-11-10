@@ -8,6 +8,7 @@
 //    backend treats it as an old client and fails approvals and clarify immediately
 
 import { displayText, failureText } from "./message-policy.js";
+import { localImagePath, mediaTags } from "./media-path.js";
 import { render as renderMarkdown, enhance, copyText, makeCopyButton, COPY_ICON } from "./md.js";
 import { createDrawer, sourceLabel } from "./drawer.js";
 import { confirmDialog } from "./confirm.js";
@@ -422,13 +423,13 @@ function sessionToken() {
 }
 window.__hermesMiniSessionToken = sessionToken;
 
-async function api(path, init = {}) {
+// One authenticated fetch for JSON and file downloads: same token, same 401 redirect, same error detail.
+async function apiFetch(path, init = {}) {
   const token = await sessionToken();
   const res = await fetch(PREFIX + path, {
     credentials: "include",
     ...init,
     headers: {
-      Accept: "application/json",
       ...(token ? { "X-Hermes-Session-Token": token } : {}),
       ...(init.headers || {}),
     },
@@ -457,7 +458,20 @@ async function api(path, init = {}) {
     error.detail = detail;
     throw error;
   }
+  return res;
+}
+
+async function api(path, init = {}) {
+  const res = await apiFetch(path, {
+    ...init,
+    headers: { Accept: "application/json", ...(init.headers || {}) },
+  });
   return res.json();
+}
+
+async function apiBlob(path, init = {}) {
+  const res = await apiFetch(path, init);
+  return res.blob();
 }
 
 function messageText(message) {
@@ -2652,13 +2666,13 @@ async function branchFrom(row) {
 // (bare, in `code`, or as MEDIA:/path) is fetched through the dashboard's authenticated
 // /api/fs/read-data-url (the desktop app's path renderer) and shown under the text. Tap = full screen.
 const MEDIA_PATH_RE = /(?:^|[\s`'"(\[]|MEDIA:)((?:\/|~\/)[^\s`'"<>()\[\]]+?\.(?:png|jpe?g|gif|webp))(?=$|[\s`'")\].,;:!?])/gi;
+const MAX_INLINE_MEDIA = 9; // a Markdown reply can put at most this many local pictures inline, same as the grid
 const mediaCache = new Map(); // path -> Promise<dataUrl|null>
 
 function mediaPaths(text) {
   const found = [];
   for (const m of String(text || "").matchAll(MEDIA_PATH_RE)) {
     if (!found.includes(m[1])) found.push(m[1]);
-    if (found.length === 9) break;
   }
   return found;
 }
@@ -2674,6 +2688,33 @@ function fetchMedia(path) {
     mediaCache.set(path, p);
   }
   return mediaCache.get(path);
+}
+
+const FILE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+const DOWNLOAD_ICON = '<svg class="file-attach-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>';
+
+// A file delivered with MEDIA: downloads only when tapped: the card is the whole attachment until then.
+async function downloadFile(path, name, card) {
+  if (card.classList.contains("busy")) return;
+  card.classList.add("busy");
+  card.disabled = true;
+  try {
+    const blob = await apiBlob(`/api/fs/download?path=${encodeURIComponent(path)}`);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name || "attachment";
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    showToast(error && error.status === 404 ? "File not found" : "Couldn't download that file", "error");
+  } finally {
+    card.classList.remove("busy");
+    card.disabled = false;
+  }
 }
 
 // One renderer for inline pictures, shared by the agent's replies and the person's own messages. A source is either
@@ -2722,13 +2763,95 @@ function renderMedia(sources) {
   return wrap;
 }
 
+// Hermes' native MEDIA:/path directive: turn each tag into the same kind of slot a local Markdown picture leaves,
+// at the exact place it was written. Code samples keep their literal tag, as in the gateway.
+function inlineMediaTags(bubble) {
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.nodeValue.includes("MEDIA:")) continue;
+    if (node.parentElement.closest("pre, code, a, .media, .md-media-slot")) continue;
+    nodes.push(node);
+  }
+  for (const node of nodes) {
+    const tags = mediaTags(node.nodeValue);
+    if (!tags.length) continue;
+    const frag = document.createDocumentFragment();
+    let at = 0;
+    for (const tag of tags) {
+      frag.append(document.createTextNode(node.nodeValue.slice(at, tag.start)));
+      if (tag.kind === "file") {
+        const name = tag.path.split("/").pop() || "file";
+        const card = el("button", "file-attach");
+        card.type = "button";
+        card.dataset.fileSrc = tag.path;
+        card.title = `Download ${name}`;
+        card.setAttribute("aria-label", `Download ${name}`);
+        card.innerHTML = `${FILE_ICON}<span class="file-attach-name"></span>${DOWNLOAD_ICON}`;
+        card.querySelector(".file-attach-name").textContent = name;
+        card.addEventListener("click", () => void downloadFile(tag.path, name, card));
+        frag.append(card);
+      } else {
+        const slot = el("span", "md-media-slot");
+        slot.dataset.mdSrc = tag.path;
+        slot.dataset.alt = tag.path.split("/").pop() || "image";
+        slot.textContent = slot.dataset.alt;
+        frag.append(slot);
+      }
+      at = tag.end;
+    }
+    frag.append(document.createTextNode(node.nodeValue.slice(at)));
+    node.replaceWith(frag);
+  }
+}
+
+// Pictures past this many in one reply are not fetched: say so under the message instead of dropping them silently.
+function showMediaLimit(bubble, count) {
+  if (count <= 0) return;
+  bubble.append(el("div", "media-more", `${count} more picture${count === 1 ? "" : "s"} not shown`));
+}
+
+// A local picture written as Markdown keeps its place: md.js left a span with the path, filled here once the
+// authenticated fetch returns a data URL. A failed fetch leaves the alt text; the rest of the message is untouched.
+function hydrateInlineMedia(bubble, slots) {
+  for (const slot of slots.slice(0, MAX_INLINE_MEDIA)) {
+    const path = slot.dataset.mdSrc;
+    fetchMedia(path).then((url) => {
+      if (!url || !slot.isConnected) return;
+      const img = el("img", "md-img");
+      img.src = url; // a data URL: no raw disk path in the page
+      img.alt = slot.dataset.alt || path.split("/").pop() || "image";
+      img.dataset.mdSrc = path;
+      img.addEventListener("click", () => {
+        // Every picture already in this message makes one gallery, inline and grid alike.
+        const items = [...bubble.querySelectorAll("img.md-img, img.media-img")]
+          .filter((node) => node.src && !node.hidden)
+          .map((node) => ({ url: node.src, alt: node.alt }));
+        openViewer(items, Math.max(0, items.findIndex((item) => item.url === img.src)));
+      });
+      slot.replaceWith(img);
+    });
+  }
+}
+
 function attachMedia(bubble, text) {
-  const paths = mediaPaths(text);
-  if (!paths.length) return;
-  const wrap = renderMedia(paths.map((path) => ({ path })));
-  if (wrap) bubble.append(wrap);
-  // fetchMedia is cached, so this reuses the thumbnail's own request.
-  for (const path of paths) fetchMedia(path).then((url) => { if (url) hideMediaPath(bubble, path); });
+  // MEDIA: directives keep their place, like Markdown local pictures; bare paths still form the bottom grid.
+  inlineMediaTags(bubble);
+  const placed = [...bubble.querySelectorAll("[data-md-src]")];
+  const inline = new Set(placed.map((node) => node.dataset.mdSrc));
+  const slots = placed.filter((node) => node.classList.contains("md-media-slot"));
+  hydrateInlineMedia(bubble, slots);
+  const bare = [...new Set(mediaPaths(text).map(localImagePath).filter(Boolean))]
+    .filter((path) => !inline.has(path));
+  const paths = bare.slice(0, MAX_INLINE_MEDIA); // the grid keeps the same per-message limit as the inline pictures
+  if (paths.length) {
+    const wrap = renderMedia(paths.map((path) => ({ path })));
+    if (wrap) bubble.append(wrap);
+    // fetchMedia is cached, so this reuses the thumbnail's own request.
+    for (const path of paths) fetchMedia(path).then((url) => { if (url) hideMediaPath(bubble, path); });
+  }
+  showMediaLimit(bubble, Math.max(0, slots.length - MAX_INLINE_MEDIA) + Math.max(0, bare.length - paths.length));
 }
 
 // Once a picture shows, its file path is noise: drop the path from the reply text (with a MEDIA: prefix, a `code`

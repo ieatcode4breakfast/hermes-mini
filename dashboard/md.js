@@ -5,7 +5,8 @@
 // render(text) returns an HTML string that is safe to assign to innerHTML:
 //  - the model's raw HTML is limited to a short tag allowlist, with no style, id, name, on* or other attributes
 //  - links: only http(s) and mailto keep an href (they open in a new tab); any other link becomes its text
-//  - images: only https: and inline base64 raster data: URIs render (as img.md-img); anything else becomes its alt text
+//  - images: https:, inline base64 raster data: URIs and local paths (/…, ~/…, file://…) render (as
+//    img.md-img; a local one waits in a placeholder for app.js to fill); anything else becomes its alt text
 //  - tables are wrapped in div.table-wrap; a column whose body cells are all numeric, currency or percent is right-aligned
 //  - fenced code is pre > code.hljs.language-<name>; call enhance(container) after inserting the HTML to add the
 //    language label and the Copy button
@@ -13,6 +14,7 @@
 
 import { Marked } from "./vendor/marked.esm.js";
 import DOMPurify from "./vendor/purify.es.mjs";
+import { localImagePath } from "./media-path.js";
 import hljs from "./vendor/highlight/core.min.js";
 import bashLang from "./vendor/highlight/languages/bash.min.js";
 import shellLang from "./vendor/highlight/languages/shell.min.js";
@@ -152,9 +154,15 @@ marked.use({
 
 // ---------- DOMPurify: the model's HTML is untrusted ----------
 
+// DOMPurify's own protocol list, plus file: and media: so the local path forms survive sanitising. harden never
+// emits either: it turns an accepted path into a data attribute, and anything else into alt text. media: is the
+// app's own picture marker, stripped before the path is used.
+const SAFE_URI = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file|media):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+
 const SANITIZE = {
   RETURN_DOM: true,
   ALLOW_DATA_ATTR: false,
+  ALLOWED_URI_REGEXP: SAFE_URI,
   ALLOWED_TAGS: [
     "a", "abbr", "b", "blockquote", "br", "code", "del", "details", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6",
     "hr", "i", "img", "input", "ins", "kbd", "li", "mark", "ol", "p", "pre", "s", "small", "span", "strong",
@@ -204,7 +212,19 @@ function harden(body) {
         node.setAttribute("referrerpolicy", "no-referrer");
         node.classList.add("md-img");
       } else {
-        node.replaceWith(document.createTextNode(node.getAttribute("alt") || ""));
+        const path = localImagePath(src);
+        if (path) {
+          // A local picture keeps its place. The path waits in a data attribute and app.js fills it with the
+          // authenticated data URL after the reply renders; no src ever points at the disk.
+          const slot = document.createElement("span");
+          slot.className = "md-media-slot";
+          slot.dataset.mdSrc = path;
+          slot.dataset.alt = node.getAttribute("alt") || "";
+          slot.textContent = slot.dataset.alt;
+          node.replaceWith(slot);
+        } else {
+          node.replaceWith(document.createTextNode(node.getAttribute("alt") || ""));
+        }
       }
     } else if (tag === "input") {
       // Only the disabled checkboxes that task lists produce; any other input is dropped.

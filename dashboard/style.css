@@ -282,6 +282,9 @@ input, textarea, select { font-family: inherit; }
 .bubble mark { background: rgba(255, 200, 0, 0.28); color: inherit; border-radius: 3px; padding: 0 2px; }
 .bubble kbd { font: 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 4px; background: var(--surface); }
 .bubble img.md-img { display: block; max-width: 100%; max-height: 320px; height: auto; border-radius: 10px; margin: 0.4em 0; cursor: zoom-in; }
+/* A local Markdown picture before its data arrives (md.js leaves the slot, app.js fills it): the alt text stays
+   quiet instead of reading like body text. */
+.bubble .md-media-slot { color: var(--muted); font-style: italic; }
 .bubble code, .bubble pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
 .bubble code { background: var(--code-bg); padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
 .bubble pre { background: var(--code-bg); padding: 10px; border-radius: 10px; overflow-x: auto; white-space: pre; }
@@ -629,6 +632,8 @@ textarea::-webkit-scrollbar { display: none; }
 .composer .row.wide > .mic-btn { grid-area: mic; }
 .composer .row.wide > .send { grid-area: send; }
 .media { margin-top: 8px; }
+/* Pictures past the per-message limit (app.js showMediaLimit): say so instead of dropping them silently. */
+.media-more { margin-top: 6px; font-size: 12px; color: var(--muted); }
 .media-img { display: block; max-width: 100%; max-height: 320px; border-radius: 12px; object-fit: contain; cursor: zoom-in; }
 /* Every inline picture is a small square thumbnail by default, even a single one: the same size as
    a cell of the 2-up grid; tap opens the full-screen viewer. */
@@ -1127,6 +1132,20 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
 }
 .file-chip svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
 .file-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A file delivered with MEDIA: (app.js): a compact download card. Tap fetches and saves it; nothing is
+   downloaded until then. */
+.file-attach {
+  display: inline-flex; align-items: center; gap: 8px; max-width: min(100%, 300px);
+  margin: 4px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; text-align: left;
+  cursor: pointer;
+}
+.file-attach:hover { background: color-mix(in srgb, var(--fg) 6%, var(--surface)); }
+.file-attach:disabled { opacity: 0.6; cursor: default; }
+.file-attach > svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.file-attach-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-attach .file-attach-down { width: 16px; height: 16px; margin-left: auto; color: var(--muted); }
 
 /* ---------- docked layout (wide window with a mouse; app.js toggles body.docked) ---------- */
 /* Chats become a permanent left column instead of an off-canvas drawer: no scrim, no hamburger, no slide. */
