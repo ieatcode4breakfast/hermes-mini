@@ -662,6 +662,20 @@ textarea::-webkit-scrollbar { display: none; }
   transition: background 150ms ease, transform 150ms ease;
 }
 .viewer-arrow:hover { background: rgba(255, 255, 255, 0.28); }
+/* Download: top-right, same glass circle as the arrows; dims while the picture is being fetched. */
+.viewer-save {
+  position: absolute; top: calc(env(safe-area-inset-top) + 8px); right: 12px; z-index: 2;
+  width: 40px; height: 40px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background 150ms ease, transform 150ms ease, opacity 150ms ease;
+}
+.viewer-save:hover { background: rgba(255, 255, 255, 0.28); }
+.viewer-save:active { transform: scale(0.92); }
+.viewer-save.busy { opacity: 0.5; pointer-events: none; }
+.viewer-save svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 .viewer-arrow:active { transform: translateY(-50%) scale(0.92); }
 .viewer-arrow.prev { left: 16px; }
 .viewer-arrow.next { right: 16px; }

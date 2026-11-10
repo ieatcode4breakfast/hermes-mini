@@ -2891,6 +2891,43 @@ function hideMediaPath(bubble, path) {
   }
 }
 
+// Saves the picture the viewer is showing. Its URL is already loadable by this page (a blob:, data: or same-origin
+// address carrying the dashboard session), so it is fetched as-is and handed to the browser as a download.
+const PICTURE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg", "image/avif": "avif", "image/heic": "heic" };
+function pictureFileName(item, type) {
+  const named = (text) => /^[^\\/]+\.[a-z0-9]{2,5}$/i.test(text || "") ? text : "";
+  let fromUrl = "";
+  try {
+    const url = new URL(item.url, location.href);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      fromUrl = named(decodeURIComponent((url.searchParams.get("path") || url.pathname).split("/").pop() || ""));
+    }
+  } catch { /* not a parseable URL: fall through */ }
+  return named((item.alt || "").trim()) || fromUrl || `picture.${PICTURE_EXT[type] || "png"}`;
+}
+async function downloadPicture(item, button) {
+  if (button.classList.contains("busy")) return;
+  button.classList.add("busy");
+  try {
+    const response = await fetch(item.url, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = pictureFileName(item, blob.type);
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 60_000);
+  } catch {
+    showToast("Couldn't download that picture", "error");
+  } finally {
+    button.classList.remove("busy");
+  }
+}
+
 // Full-screen viewer: swipe left/right (or arrow keys) between a reply's images, pinch or double-tap to zoom, tap to close.
 // Opening pushes one history entry, so the Back button closes the viewer instead of leaving the app. Any in-app
 // close consumes that entry again with history.back().
@@ -2922,15 +2959,49 @@ function openViewer(items, start) {
 
     overlay.append(prevBtn, nextBtn);
   }
+  const saveBtn = el("button", "viewer-save");
+  saveBtn.type = "button";
+  saveBtn.setAttribute("aria-label", "Download picture");
+  saveBtn.title = "Download";
+  saveBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>';
+  saveBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    downloadPicture(items[index], saveBtn);
+  });
+  overlay.append(saveBtn);
   const show = () => {
     resetZoom(false); // each picture starts at 1x
     img.src = items[index].url;
     img.alt = items[index].alt;
     count.textContent = items.length > 1 ? `${index + 1} / ${items.length}` : "";
+    // Warm the neighbours so the next step has its picture ready to slide in.
+    if (items.length > 1) for (const d of [1, -1]) new Image().src = items[(index + d + items.length) % items.length].url;
   };
-  const step = (delta) => {
+  // Changing picture slides the old one out and the new one in from the side it came from, fading as it goes. The
+  // slide uses the separate `translate` property so it never fights the zoom transform. A quick second step cancels
+  // the first one's animation and goes straight on; reduced motion swaps at once.
+  const SLIDE_PX = 48;
+  let stepToken = 0;
+  const step = async (delta) => {
     index = (index + delta + items.length) % items.length;
+    const token = ++stepToken;
+    if (!img.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) { show(); return; }
+    img.getAnimations().forEach((a) => a.cancel());
+    const dir = delta > 0 ? 1 : -1;
+    const out = img.animate(
+      [{ opacity: 1, translate: "0 0" }, { opacity: 0, translate: `${-dir * SLIDE_PX}px 0` }],
+      { duration: 130, easing: "ease-in", fill: "forwards" },
+    );
+    try { await out.finished; } catch { return; } // cancelled by a newer step
+    if (token !== stepToken || closed) return;
     show();
+    try { await img.decode(); } catch { /* broken or not decodable yet: show it anyway */ }
+    if (token !== stepToken || closed) return;
+    out.cancel();
+    img.animate(
+      [{ opacity: 0, translate: `${dir * SLIDE_PX}px 0` }, { opacity: 1, translate: "0 0" }],
+      { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
   };
   const teardown = () => {
     closed = true;
@@ -3005,7 +3076,7 @@ function openViewer(items, start) {
     gesture = { mode: scale > 1 ? "pan" : "swipe", x: touch.clientX, y: touch.clientY, tx, ty, moved: false };
   };
   overlay.addEventListener("touchstart", (event) => {
-    if (event.target.closest(".viewer-arrow")) return;
+    if (event.target.closest(".viewer-arrow, .viewer-save")) return;
     if (event.touches.length >= 2) {
       const p = pinchOf(event.touches);
       const c = centre();
@@ -3061,7 +3132,7 @@ function openViewer(items, start) {
   overlay.addEventListener("touchend", endTouch);
   overlay.addEventListener("touchcancel", endTouch);
   overlay.addEventListener("click", (event) => {
-    if (event.target.closest(".viewer-arrow")) return;
+    if (event.target.closest(".viewer-arrow, .viewer-save")) return;
     if (Date.now() < suppressClickUntil) return;
     // A mouse click closes at once. A touch tap waits a moment for a second tap: two taps zoom, one closes.
     if (Date.now() - lastTouchEnd > 500) { close(); return; }
