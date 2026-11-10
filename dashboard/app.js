@@ -3395,6 +3395,7 @@ function updateComposer() {
   els.attach.disabled = locked || dictating;
   if (els.micBtn) els.micBtn.disabled = locked || Boolean(state.transcribing);
   // Edit and Branch follow the streaming state; the buttons are re-synced only when it changes, not on every delta.
+  els.log.classList.toggle("busy", busy); // style.css keeps a disabled Edit visible, faded, while a reply streams
   if (busy !== shownBusy) {
     shownBusy = busy;
     syncActionAvailability();

@@ -343,6 +343,10 @@ input, textarea, select { font-family: inherit; }
   :where(:root[data-input="mouse"]) .msg-act { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
   :where(:root[data-input="mouse"]) .msg:hover .msg-act:not(:disabled), :where(:root[data-input="mouse"]) .msg-act:focus-visible, :where(:root[data-input="mouse"]) .msg-actions:focus-within .msg-act:not(:disabled) { opacity: 1; pointer-events: auto; }
   :where(:root[data-input="mouse"]) .msg-act:disabled { opacity: 0; }
+  /* While a reply streams, Edit is disabled; on a mouse layout keep it in the row as a faded icon when the actions
+     show, instead of leaving an empty slot beside Copy. It stays unclickable (disabled, and pointer-events none). */
+  :where(:root[data-input="mouse"]) .log.busy .msg:hover .msg-act[data-action="edit"]:disabled,
+  :where(:root[data-input="mouse"]) .log.busy .msg-actions:focus-within .msg-act[data-action="edit"]:disabled { opacity: 0.35; }
 
 /* Touch: no hover, so the icons show only after a tap on the message (app.js). They keep their slots in the
    28px row while hidden (visibility, not display), so the time never moves when they appear; hidden buttons take
