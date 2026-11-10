@@ -1596,6 +1596,11 @@ export function createBotScreen(deps) {
   // and a text-only paste is left to the page as before.
   document.addEventListener("paste", (event) => {
     if (!openFlag || !rfb || !iHold()) return;
+    // A paste aimed at a field outside the pane (the chat composer, a dialog) belongs to that field, even while the
+    // computer is open: the focused element decides, not where the pointer is. With nothing focused the listener still
+    // catches the Ctrl+V fallback for the remote.
+    const focus = document.activeElement;
+    if (focus && focus !== document.body && !shell.contains(focus)) return;
     const data = event.clipboardData;
     if (!data) return;
     let file = Array.from(data.files || []).find((candidate) => candidate.type.startsWith("image/"));
