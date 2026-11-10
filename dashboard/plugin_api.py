@@ -1452,9 +1452,9 @@ async def gateway_restart():
 async def push_key():
     """The key the browser subscribes with.
 
-    A key that does not exist yet is reported as ``null`` with ``pending`` set: this route never
-    generates one, so merely opening the app cannot create push state. The POST that the person's
-    explicit "turn on" action sends generates it.
+    A key that does not exist yet is reported as ``null``: this route never generates one, so
+    merely opening the app cannot create push state. The POST that the person's explicit "turn on"
+    action sends generates it.
     """
     try:
         store = _push_store()
@@ -1711,7 +1711,7 @@ def _identity_payload() -> dict[str, Any]:
     return {
         "product": core.PRODUCT_NAME,
         "name": identity["name"],
-        # Where the prefilled name came from, so the setup screen can explain itself.
+        # Where the name came from, so a caller can explain it.
         "name_source": identity["source"],
         # An uploaded picture wins; otherwise use the picture Hermes already has for this bot.
         "avatar_url": _avatar_url(avatar_file) if avatar_file else core.hermes_avatar_data_url(),
@@ -1738,9 +1738,9 @@ async def get_identity():
 async def save_identity(request: Request):
     """Persist the user's confirmed name and their own picture.
 
-    Called only from the setup screen's explicit Save (or a later change in settings). The picture is
-    sent as the raw image body with its media type; ``?name=`` carries the confirmed name so the body
-    stays a single image and large uploads are still streamed.
+    Called only from an explicit save request, never on a page load. The picture is sent as the raw
+    image body with its media type; ``?name=`` carries the confirmed name so the body stays a single
+    image and large uploads are still streamed.
     """
     existing = core.load_settings()
     name = request.query_params.get("name")
@@ -1924,7 +1924,7 @@ def _ensure_home_target() -> None:
 
 @router.get("/status")
 async def status():
-    """What the first-run screen needs: identity, capabilities and how to finish Hermes setup."""
+    """What the app needs at load: identity, capabilities and how to finish Hermes setup."""
     _ensure_home_target()
     payload = _identity_payload()
     try:

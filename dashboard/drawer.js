@@ -39,7 +39,7 @@ const SOURCE_LABELS = {
 const DAY_MS = 86400000;
 // The pin glyph on a pinned row (upright; the row menu's Pin item is the same mark, tilted).
 const PIN_PATHS = ["M8 3h8", "M9.5 3v7L7 13h10l-2.5-3V3", "M12 13v8"];
-// The main chat's reset glyph: a circular arrow. Stroked (style.css sets stroke), grey like the other row icons.
+// The main chat's reset lives in the row menu; its glyph is static markup in index.html.
 
 export function sourceLabel(source) {
   if (!source) return "";

@@ -8,7 +8,7 @@ Targets resolve at delivery time, in this order: a live chat id, the reserved ``
 words, an exact live title, then a case-insensitive title only when one live chat carries it. A
 missing, renamed, archived or ambiguous target falls back to the app's main chat, so the result is
 never lost. The fallback is logged, not shown in the app. The plugin records the main chat as the
-platform's default address on first run, so bare ``hermes-mini`` resolves too.
+platform's default address the first time the app loads, so bare ``hermes-mini`` resolves too.
 
 The output is stored as a USER-role row with a labelled prefix (an assistant-role row would sit next
 to the agent's own turn and break strict alternation). ``display_kind = "job_delivery"`` tells the

@@ -481,7 +481,7 @@ def agent_identity() -> dict[str, str]:
     """The name and avatar for user-facing text and images.
 
     The name is always the Hermes bot's (default profile first, then the serving profile), then
-    the display name, a named profile id, and finally ``Mini``. There is no app-level override.
+    the display name, a named profile id, and finally ``Hermes``. There is no app-level override.
     """
     settings = load_settings()
     name, source = identity_from_hermes()
@@ -655,8 +655,9 @@ def vanilla_config() -> dict[str, Any]:
 def configured_public_origin(configured: dict[str, Any] | None = None) -> str:
     """A stable contact origin for the VAPID ``sub`` claim.
 
-    The app's own external setting wins, then Hermes' configured dashboard public URL, then the
-    request origin (the route supplies it). No personal domain is ever baked in.
+    The app's own external settings win (push contact, then public URL), then Hermes' configured
+    dashboard or gateway public URL, then the request origin (the route supplies it). No personal
+    domain is ever baked in.
     """
     settings = load_settings()
     for candidate in (settings["push"]["contact"], settings["server"]["public_url"]):
@@ -675,7 +676,7 @@ def configured_public_origin(configured: dict[str, Any] | None = None) -> str:
 
 
 def model_configured(config: dict[str, Any] | None = None) -> bool:
-    """Whether Hermes has a model selected, so the app can offer friendly setup guidance."""
+    """Whether Hermes has a model selected, reported to the app as a capability."""
     config = config if config is not None else vanilla_config()
     model = config.get("model")
     if isinstance(model, str):

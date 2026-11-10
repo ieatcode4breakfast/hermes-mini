@@ -1,5 +1,5 @@
 // Computer: a full-viewport noVNC viewer for the agent's headless desktop.
-// The JSON-RPC leg rides the host page's authenticated /api/ws connection (deps.rpc: app.js or computer.js) (display.* methods). The RFB leg is a
+// The JSON-RPC leg rides the host page's authenticated /api/ws connection (deps.rpc from the host page) (display.* methods). The RFB leg is a
 // sibling WebSocket to /api/display/ws, minted per attach by display.observe (single-use ticket, 30 s). The backend owns
 // runtime + lease; this module only asks for the lease when the person actually inputs and gives it back after 20 s of
 // quiet.

@@ -7,7 +7,8 @@ agent from a phone, tablet or desktop: multiple chats, an inbox, to-dos, live pr
 steering, optional push notifications, dictation, and an optional bundled view of your agent's
 desktop.
 
-- **Product name**: Hermes Mini (the app's title, bookmark and install name).
+- **Product name**: Hermes Mini (the install name and the app's own label; the browser tab shows the
+  agent's name).
 - **Agent name**: the name your Hermes bot already has — the default profile's bot title first, then
   the serving profile's — with **Hermes** as the fallback when none is set.
 - **One plugin**: settings and state live outside the plugin, so updating the code never touches them.
@@ -103,16 +104,18 @@ already has for the bot — the default profile's bot title, then the serving pr
 display name or a named profile id, and finally **Hermes**. The app never renames the agent, and it
 stores no name or picture of its own.
 
-If Hermes has no model configured yet, the chat says so and links to the Hermes docs; history,
-to-dos and the inbox still work.
+If Hermes has no model configured yet, there is no reply to show until one is set up in Hermes;
+history, to-dos and the inbox still work.
 
-Opening the app, reading the page, and every capability probe are pure reads.
+Reading the page and every capability probe are pure reads. Opening the app may create its own
+state files under `$HERMES_HOME/data/hermes-mini/`, and it records the default delivery target once
+(see [Settings, state and profiles](#settings-state-and-profiles)).
 
 ### Configure a model
 
 Hermes Mini does not configure providers. Use Hermes itself, for example `hermes model` or the
 dashboard's Config page. See the [Hermes documentation](https://hermes-agent.nousresearch.com/docs/).
-Until a model is configured the chat shows a friendly message rather than failing.
+Until a model is configured, there is no reply to show.
 
 ## What's in it
 
@@ -167,10 +170,11 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 per profile: a second Hermes profile gets its own name, picture and data, and one profile's app never
 reads another's.
 
-One value lives in Hermes' own `$HERMES_HOME/config.yaml`, not in the table above:
-`platforms.hermes-mini.home_channel`. The app records its main chat there the first time it loads,
-so a bare `hermes-mini` job address has a destination. It is written only when no value is present;
-an existing value is never replaced.
+The plugin also records the platform's delivery default in Hermes' own `$HERMES_HOME/config.yaml`:
+`platforms.hermes-mini.home_channel`, and in that same first write it marks the platform enabled if
+it has no `enabled` key. The app records its main chat there the first time it loads, so a bare
+`hermes-mini` job address has a destination. The home channel is written only when no value is
+present; an existing value is never replaced.
 
 The app's own registry, `$HERMES_HOME/data/hermes-mini/app-chats.json`, also records the main chat's
 id. That id, not the chat's name, is how the app and scheduled-job delivery find the home.
@@ -233,8 +237,8 @@ shell and its service worker install without it. The viewer uses Hermes' own `/a
 (display tickets and control leases) and the plugin's `/api/plugins/hermes-mini/computer/clipboard`
 routes, which are limited to the person currently holding control.
 
-Hermes Mini does not start a desktop, install desktop packages, or run one in the background. If
-Bot Desktop is not set up, the button is hidden.
+Hermes Mini does not install desktop packages or run a desktop in the background. If Bot Desktop is
+not set up, the button is hidden; when it is, **Start Screen** asks Hermes to start one.
 
 ## Troubleshooting
 

@@ -19,9 +19,9 @@ import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
-// where the server has already applied "saved override, then bot title, then display name, then named
-// profile, then Hermes". Until that resolves the neutral "Hermes" is shown. The product name, which is what the
-// tab title and the installed app carry, stays "Hermes Mini" and is separate from the agent name.
+// where the server has already applied "bot title, then display name, then named profile, then
+// Hermes". Until that resolves the neutral "Hermes" is shown. The product name, which is what the
+// installed app carries, stays "Hermes Mini" and is separate from the agent name.
 let AGENT = "Hermes";
 
 // The old internal title of the main chat. It is read once, only to migrate an install whose registry
@@ -1272,8 +1272,8 @@ async function deleteSession(item) {
   if (item.id === state.viewedId) await switchSession(state.homeId);
 }
 
-// Resets the main chat: after the drawer's confirmation, verify this device still points at the server's current
-// title holder, delete it through the same fenced mutation as Delete, forget the old local pointers, then let
+// Resets the main chat: after the drawer's confirmation, verify this device still points at the server's recorded
+// home chat, delete it through the same fenced mutation as Delete, forget the old local pointers, then let
 // ensureHome create (or adopt) the fresh main chat thread and attach it, empty. Other chats are untouched.
 // A refusal before the delete leaves the old main chat exactly as it was. A failure after the delete says so plainly
 // and leaves the app able to retry; it never claims the old chat survived.
@@ -1326,7 +1326,7 @@ async function resetMainChat(item) {
     setEmptyState(false);
     for (const id of [...state.cards.keys()]) removeCard(id);
     persistView();
-    await attachThread(); // ensureHome creates or adopts the fresh title holder, and attachHome shows it empty
+    await attachThread(); // ensureHome creates or adopts the fresh home chat, and attachHome shows it empty
     state.composerLocked = false;
     await drawerApi.refresh();
   } catch (error) {
@@ -4645,8 +4645,8 @@ function cancelDictation(silent = false) {
 
 if (els.micBtn) {
   // Hide only on a definite no: this browser cannot record. The server-side probe decides the other half
-  // (no configured speech-to-text provider) via identity.js loadStatus(), which runs before first paint of
-  // the composer; the /dictate route stays the real gate either way.
+  // (no configured speech-to-text provider) via identity.js loadStatus(), which runs at boot; the
+  // /dictate route stays the real gate either way.
   if (!isDictationSupported()) {
     els.micBtn.hidden = true;
   } else {
@@ -5488,7 +5488,7 @@ autosize();
 
 // Boot: read the agent's identity and the feature flags first, so the page shows the user's own name and only
 // the controls that work, then confirm we are signed in (a 401 redirects to the dashboard login), then connect
-// and attach the thread. Identity is a pure read; the setup sheet it may open writes only on Save.
+// and attach the thread. Identity is a read (the status route also records the default delivery target once).
 (async () => {
   try {
     identityApi.wire({

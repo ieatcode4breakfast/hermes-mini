@@ -195,7 +195,7 @@ self.addEventListener("push", (event) => {
         body: data.body || "",
         tag,
         renotify: true,
-        // icon: the user's own picture when it was set, else the neutral mark. badge: the status-bar glyph,
+        // icon: the payload's icon when one is sent, else the app portrait. badge: the status-bar glyph,
         // which Android paints white from the alpha channel only.
         icon: data.icon || "icon-192.png",
         badge: "badge-96.png?v=2",

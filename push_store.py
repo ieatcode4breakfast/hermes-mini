@@ -468,7 +468,8 @@ def _b64url_json(value: Any) -> str:
 
 
 def vapid_subject(origin: str = "") -> str:
-    """The VAPID ``sub`` claim: an app/operator-set contact, else the origin the app is served from."""
+    """The VAPID ``sub`` claim: an app/operator-set contact or Hermes' configured public URL, else the
+    request origin."""
     configured = mini_core.configured_public_origin()
     for candidate in (configured, origin):
         url = mini_core.clean_public_url(candidate)
