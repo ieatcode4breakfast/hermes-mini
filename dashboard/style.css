@@ -651,6 +651,8 @@ textarea::-webkit-scrollbar { display: none; }
 .viewer img { transform-origin: 50% 50%; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .viewer img.easing { transition: transform 260ms var(--ease-out); }
 .viewer.zoomed img { will-change: transform; }
+/* The outgoing picture during a slide (app.js openViewer): a fixed copy that moves off the edge, then is removed. */
+.viewer img.viewer-ghost { position: fixed; max-width: none; max-height: none; object-fit: contain; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .viewer img.easing { transition: none; } }
 .viewer-arrow {
   position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;

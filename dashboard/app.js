@@ -2977,35 +2977,44 @@ function openViewer(items, start) {
     // Warm the neighbours so the next step has its picture ready to slide in.
     if (items.length > 1) for (const d of [1, -1]) new Image().src = items[(index + d + items.length) % items.length].url;
   };
-  // Changing picture slides the old one out and the new one in from the side it came from, fading as it goes. The
-  // slide uses the separate `translate` property so it never fights the zoom transform. A quick second step cancels
-  // the first one's animation and goes straight on; reduced motion swaps at once.
-  const SLIDE_PX = 48;
+  // Changing picture is a plain carousel slide: the old picture and the new one move together, the old one off one
+  // edge while the new one comes in from the other. The outgoing picture is a throwaway copy, so the real <img> keeps
+  // its zoom handling; the slide uses the separate `translate` property so it never fights the zoom transform. The
+  // new picture is decoded first so it never slides in blank. A quick second step finishes the first at once;
+  // reduced motion swaps without moving.
+  const SLIDE_MS = 280;
+  const SLIDE_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
   let stepToken = 0;
+  let ghost = null;
+  const dropGhost = () => { if (ghost) { ghost.remove(); ghost = null; } };
   const step = async (delta) => {
     index = (index + delta + items.length) % items.length;
     const token = ++stepToken;
+    img.getAnimations().forEach((a) => a.finish());
+    dropGhost();
     if (!img.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) { show(); return; }
-    img.getAnimations().forEach((a) => a.cancel());
     const dir = delta > 0 ? 1 : -1;
-    const out = img.animate(
-      [{ opacity: 1, translate: "0 0" }, { opacity: 0, translate: `${-dir * SLIDE_PX}px 0` }],
-      { duration: 130, easing: "ease-in", fill: "forwards" },
-    );
-    try { await out.finished; } catch { return; } // cancelled by a newer step
+    const from = img.getBoundingClientRect();
+    const old = img.cloneNode(false);
+    old.removeAttribute("style");
+    old.className = "viewer-ghost";
+    old.style.cssText = `left:${from.left}px;top:${from.top}px;width:${from.width}px;height:${from.height}px`;
+    const preload = new Image();
+    preload.src = items[index].url;
+    try { await preload.decode(); } catch { /* broken or slow: slide it in anyway */ }
     if (token !== stepToken || closed) return;
+    ghost = old;
+    overlay.append(ghost);
     show();
-    try { await img.decode(); } catch { /* broken or not decodable yet: show it anyway */ }
-    if (token !== stepToken || closed) return;
-    out.cancel();
-    img.animate(
-      [{ opacity: 0, translate: `${dir * SLIDE_PX}px 0` }, { opacity: 1, translate: "0 0" }],
-      { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-    );
+    const width = overlay.clientWidth;
+    ghost.animate([{ translate: "0 0" }, { translate: `${-dir * width}px 0` }], { duration: SLIDE_MS, easing: SLIDE_EASE, fill: "forwards" })
+      .finished.then(() => { if (ghost === old) dropGhost(); }, () => {});
+    img.animate([{ translate: `${dir * width}px 0` }, { translate: "0 0" }], { duration: SLIDE_MS, easing: SLIDE_EASE });
   };
   const teardown = () => {
     closed = true;
     clearTimeout(tapTimer);
+    dropGhost();
     overlay.remove();
     document.removeEventListener("keydown", onKey);
     window.removeEventListener("popstate", onPop);
