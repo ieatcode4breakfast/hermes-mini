@@ -446,6 +446,8 @@ body:not(.docked) .bs-title-icon { display: none; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.success { background: #2e7d32; color: #fff; }
 .toast.error { background: #c62828; color: #fff; }
+/* The restart pill (app.js): it stays up for the whole restart, above a transient toast so neither covers the other. */
+.toast.restart-toast { bottom: calc(env(safe-area-inset-bottom) + 148px); }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 /* Computers have a real keyboard: no on-screen keyboard button there. */
 @media (hover: hover) and (pointer: fine) {

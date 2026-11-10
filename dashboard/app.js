@@ -5090,8 +5090,26 @@ if (pushBtn) {
   }
 }
 
+// The restart pill: it stays from the click until this app has attached to the new process, so a long restart never
+// looks finished. It is its own element, so a transient toast cannot replace it.
+let restartToast = null;
+function showRestartNotice() {
+  if (!restartToast) {
+    restartToast = el("div", "toast restart-toast");
+    restartToast.setAttribute("role", "status");
+    restartToast.setAttribute("aria-live", "polite");
+    document.body.append(restartToast);
+  }
+  restartToast.textContent = "Restarting…";
+  restartToast.classList.add("show");
+}
+function hideRestartNotice() {
+  if (restartToast) restartToast.classList.remove("show");
+}
+
 // Gateway restart: confirm, ask the server to restart it detached, then watch the gateway state
-// until a new process is running. Green toast when it is back, red if it is not back within 90 s.
+// until a new process is running and this app has connected to it. Green toast when it is back, red if it is not back
+// within 150 s.
 const restartBtn = $("restartBtn");
 if (restartBtn) {
   restartBtn.addEventListener("click", async () => {
@@ -5116,9 +5134,10 @@ if (restartBtn) {
     restartBtn.disabled = true;
     try {
       const res = await api("/api/plugins/hermes-mini/gateway/restart", { method: "POST" });
-      showToast("Restarting…");
+      showRestartNotice();
       // The button restarts the gateway and then the dashboard (plugin_api.py _RESTART_ALL): done when both report a
-      // new pid. Reads fail while the dashboard is down; the loop just waits.
+      // new pid AND this app is attached to the new gateway. Reads fail while the dashboard is down; the loop just
+      // waits. The pill stays up for the whole loop.
       const before = res.pid_before;
       const dashBefore = res.dashboard_pid_before;
       const deadline = Date.now() + 150_000;
@@ -5127,7 +5146,8 @@ if (restartBtn) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
         try {
           const now = await api("/api/plugins/hermes-mini/gateway/status");
-          if (now.state === "running" && now.pid && now.pid !== before && (!dashBefore || (now.dashboard_pid && now.dashboard_pid !== dashBefore))) {
+          const connected = Boolean(state.wsReady && state.ws && state.ws.readyState === WebSocket.OPEN && state.ready);
+          if (connected && now.state === "running" && now.pid && now.pid !== before && (!dashBefore || (now.dashboard_pid && now.dashboard_pid !== dashBefore))) {
             back = true;
             break;
           }
@@ -5135,8 +5155,10 @@ if (restartBtn) {
           /* the dashboard is restarting too; a failed read just waits for the next one */
         }
       }
+      hideRestartNotice();
       showToast(back ? "Restarted" : "Restart didn't finish", back ? "success" : "error");
     } catch (error) {
+      hideRestartNotice();
       showToast(error && error.status === 429 ? "A restart was just requested" : "Couldn't restart", "error");
     } finally {
       restartBtn.classList.remove("busy");
