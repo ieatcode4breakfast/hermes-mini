@@ -31,21 +31,55 @@ IMAGE_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")
 IMAGE_MAX_BYTES = 15 * 1024 * 1024
 
 
+# Copying reads the X selection straight through Tk, with no external clipboard tool to install or break. The same
+# interpreter runs the helper with only the desktop's display and authority. Tk asks for text, so an image-only
+# clipboard reads as empty instead of arriving as decoded image bytes.
+_CLIPBOARD_READER = r"""
+import sys
+import tkinter
+
+selection = "PRIMARY" if sys.argv[1] == "primary" else "CLIPBOARD"
+root = tkinter.Tk()
+root.withdraw()
+try:
+    try:
+        text = (root.selection_get(selection=selection, type="UTF8_STRING")
+                if selection == "PRIMARY" else root.clipboard_get(type="UTF8_STRING"))
+    except tkinter.TclError:
+        text = (root.selection_get(selection=selection, type="STRING")
+                if selection == "PRIMARY" else root.clipboard_get(type="STRING"))
+except tkinter.TclError:
+    text = ""
+finally:
+    root.destroy()
+sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+"""
+
+
 def _read_desktop_clipboard(which: str = "clipboard") -> str:
+    import os
     import subprocess
+    import sys
 
     from tools.bot_desktop.runtime import published_env
 
     env = published_env()
     if not env or not env.get("DISPLAY"):
         raise RuntimeError("desktop not running")
-    child_env = {"PATH": "/usr/bin:/bin", **{k: v for k, v in env.items() if k in ("DISPLAY", "XAUTHORITY")}}
-    done = subprocess.run(
-        ["xclip", "-o", "-selection", which],
-        env=child_env, capture_output=True, timeout=3, stdin=subprocess.DEVNULL,
-    )
+    child_env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": os.environ.get("HOME", "/root"),
+        **{k: env[k] for k in ("DISPLAY", "XAUTHORITY", "LANG", "LC_ALL") if env.get(k)},
+    }
+    try:
+        done = subprocess.run(
+            [sys.executable, "-c", _CLIPBOARD_READER, which],
+            env=child_env, capture_output=True, timeout=3, stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""  # the helper could not start or the display did not answer
     if done.returncode != 0:
-        return ""  # nothing copied yet (xclip reports no selection as an error)
+        return ""
     return done.stdout[:CLIPBOARD_MAX_BYTES].decode("utf-8", errors="replace")
 
 
