@@ -677,6 +677,8 @@ textarea::-webkit-scrollbar { display: none; }
 .viewer-save:hover { background: rgba(255, 255, 255, 0.28); }
 .viewer-save:active { transform: scale(0.92); }
 .viewer-save.busy { opacity: 0.5; pointer-events: none; }
+/* Back: the same glass circle at top-left; closes the viewer like the system Back button. */
+.viewer-back { right: auto; left: 12px; }
 .viewer-save svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 .viewer-arrow:active { transform: translateY(-50%) scale(0.92); }
 .viewer-arrow.prev { left: 16px; }

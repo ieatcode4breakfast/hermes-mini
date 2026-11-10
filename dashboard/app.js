@@ -2969,6 +2969,16 @@ function openViewer(items, start) {
     downloadPicture(items[index], saveBtn);
   });
   overlay.append(saveBtn);
+  const backBtn = el("button", "viewer-save viewer-back");
+  backBtn.type = "button";
+  backBtn.setAttribute("aria-label", "Back");
+  backBtn.title = "Back";
+  backBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>';
+  backBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    close();
+  });
+  overlay.append(backBtn);
   const show = () => {
     resetZoom(false); // each picture starts at 1x
     img.src = items[index].url;
