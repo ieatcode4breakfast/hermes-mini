@@ -732,30 +732,19 @@ export function createTodo({ api }) {
   // Enter (or Shift+Enter) in any row: Keep's split. The row keeps the text before the caret and the text after it
   // becomes a new draft directly below, with the caret at its start.
   // With blanks allowed, an empty row still splits: the row above is saved as "" and a fresh draft opens below (rule
-  // changed 7 Nov 2026). At the very start of a row that has text, the row is committed whole instead, as before.
+  // changed 7 Nov 2026). At the very start of a row that has text nothing sits above the caret, so the row keeps its
+  // text whole and a fresh draft opens below it: Enter there adds a line like it does at the end (changed 10 Nov 2026).
   function splitEdit() {
     const state = editing;
     if (!state) return;
     const raw = state.span.textContent;
     const offset = caretOffset(state.span);
-    const after = raw.slice(offset).trim();
-    const before = raw.slice(0, offset).trim();
+    const atStart = offset === 0 && Boolean(raw.trim());
+    const after = atStart ? "" : raw.slice(offset).trim();
+    const before = atStart ? raw.trim() : raw.slice(0, offset).trim();
     // The row's indent right now (Tab can have changed it): the new draft sits directly below at the same indent
     //.
     const indent = indentOf(items.find((entry) => entry.id === state.id) || state.item);
-    if (!before && raw.trim()) {
-      // The caret sits at the very start of a row with text: there is nothing to keep above it, so the row is
-      // committed whole and no draft is opened.
-      const whole = raw.trim();
-      stopEdit();
-      if (state.draft) {
-        commitDraft(state, whole);
-        return;
-      }
-      if (whole !== state.text) void saveText(state.id, whole);
-      else render();
-      return;
-    }
     stopEdit();
     if (state.draft) {
       const index = openIndex(state.id);
