@@ -1451,6 +1451,8 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
 :where(:root[data-input="mouse"]) .inbox-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
 .inbox-row:last-of-type { border-bottom: 0; }
 .inbox-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+/* The main chat's home icon (inbox.js homeIcon), as in the chat list; nudged down to sit on the name's baseline. */
+.inbox-row-top .inbox-home { width: 16px; height: 16px; flex: none; color: var(--accent); align-self: center; margin-right: -2px; }
 .inbox-thread {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 14px; font-weight: 650; line-height: 1.3;

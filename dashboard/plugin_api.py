@@ -648,15 +648,13 @@ def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | No
         return None
     title = titles.get(str(row["session_id"]), "")
     # The main chat reads as the chat list's home row does (the external home label, else the agent name).
-    thread = (
-        core.agent_identity()["home_label"]
-        if str(row["session_id"]) == _home_id()
-        else (title or "Untitled")
-    )
+    home = str(row["session_id"]) == _home_id()
+    thread = core.agent_identity()["home_label"] if home else (title or "Untitled")
     return {
         "id": int(row["id"]),
         "session_id": str(row["session_id"]),
         "thread": thread,
+        "home": home,  # the app draws the chat list's home icon beside the main chat's name
         "ts": float(row["timestamp"] or 0),
         "text": plain,
     }

@@ -27,10 +27,27 @@ function normalise(raw) {
     id: Number(raw && raw.id),
     session_id: String((raw && raw.session_id) || ""),
     thread: String((raw && raw.thread) || ""),
+    home: Boolean(raw && raw.home),
     ts: Number((raw && raw.ts) || 0),
     text: String((raw && raw.text) || ""),
     read: Boolean(raw && raw.read),
   };
+}
+
+// The chat list's home icon (drawer.js rowEl), so a main-chat message reads the same in both places.
+const HOME_PATHS = ["M3 11l9-7 9 7", "M5 10v10h14V10"];
+function homeIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("inbox-home");
+  for (const d of HOME_PATHS) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
 }
 
 function listFrom(payload) {
@@ -98,6 +115,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     row.type = "button";
     row.dataset.id = String(item.id);
     const top = el("div", "inbox-row-top");
+    if (item.home) top.append(homeIcon());
     top.append(el("span", "inbox-thread", item.thread));
     const label = formatTime(item.ts);
     if (label) {

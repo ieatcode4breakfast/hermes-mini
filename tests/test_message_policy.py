@@ -122,6 +122,21 @@ console.log('22 parity fixtures and all introduction stream boundaries passed');
             row.update(role='user', display_kind='job_delivery', content='[Scheduled job result]\n♻ Gateway restarted successfully.')
             self.assertIsNone(api._inbox_item(row, {}))
 
+    def test_inbox_marks_main_chat_rows_home(self):
+        try:
+            api = load_module('hermes_mini_policy_api_home', PROJECT_ROOT / 'dashboard/plugin_api.py')
+        except ImportError:
+            self.skipTest('FastAPI unavailable')
+        row = {'id': 1, 'session_id': 'main', 'role': 'assistant', 'display_kind': '',
+               'content': 'Morning summary.', 'display_content': None,
+               'display_metadata': '{}', 'timestamp': 1, 'finish_reason': 'stop', 'tool_calls': None}
+        with mock.patch.object(api, '_home_id', return_value='main'):
+            self.assertTrue(api._inbox_item(row, {})['home'])
+            row.update(session_id='side')
+            item = api._inbox_item(row, {'side': 'Photos'})
+            self.assertFalse(item['home'])
+            self.assertEqual(item['thread'], 'Photos')
+
     def test_turn_guidance_is_app_scoped_and_present_on_existing_chats(self):
         hooks = load_module('hermes_mini_hooks', PROJECT_ROOT / '__init__.py')
         with mock.patch.object(hooks, '_in_app_chat', return_value=False):
