@@ -1541,3 +1541,10 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
   .fab:active, .icon-btn:active, .send:active:not(:disabled), .btn:active, .rename-cancel:active, .confirm-cancel:active,
   .rename-submit:active:not(:disabled), .confirm-submit:active:not(:disabled), .todo-check:active:not(:disabled) { transform: none; }
 }
+
+/* The restart pill's "..." (app.js showRestartNotice): each dot fades up in turn, on a loop. Reduced motion keeps them still. */
+.restart-dots span { animation: restart-dot 1.2s ease-in-out infinite; opacity: 0.25; }
+.restart-dots span:nth-child(2) { animation-delay: 0.2s; }
+.restart-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes restart-dot { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .restart-dots span { animation: none; opacity: 1; } }

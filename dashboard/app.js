@@ -5314,7 +5314,13 @@ function showRestartNotice() {
     restartToast.setAttribute("aria-live", "polite");
     document.body.append(restartToast);
   }
-  restartToast.textContent = "Restarting…";
+  // "Restarting" plus three dots that blink in turn (style.css .restart-dots); screen readers hear just "Restarting".
+  if (!restartToast.querySelector(".restart-dots")) {
+    const dots = el("span", "restart-dots");
+    dots.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 3; i++) dots.append(el("span", "", "."));
+    restartToast.replaceChildren(document.createTextNode("Restarting"), dots);
+  }
   restartToast.classList.add("show");
 }
 function hideRestartNotice() {
