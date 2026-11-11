@@ -473,6 +473,11 @@ async def put_seen(request: Request):
     except Exception as exc:  # noqa: BLE001
         log.warning("seen store save failed: %s", exc)
         return JSONResponse({"detail": "could not save the seen marker"}, status_code=500)
+    # A read chat's notifications are retracted on the person's other devices (push_store.dismiss).
+    try:
+        _push_store().dismiss(session_id, stamp)
+    except Exception as exc:  # noqa: BLE001 - the read mark is saved; a missed retraction is cosmetic
+        log.warning("push dismiss failed: %s", exc)
     return JSONResponse(data)
 
 

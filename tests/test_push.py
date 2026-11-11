@@ -54,6 +54,42 @@ class PushKeyTest(DisposableHome):
         self.assertEqual(raw[0], 0x04)
 
 
+class DismissTest(DisposableHome):
+    """A read chat's reply/job notification is retracted once, and only if one was actually sent."""
+
+    def setUp(self):
+        super().setUp()
+        self.push = load_push()
+        self.push.ensure_public_key_b64url()
+        self.sent = []
+        put = mock.patch.object(self.push._queue, "put_nowait", side_effect=self.sent.append)
+        start = mock.patch.object(self.push, "_ensure_sender")
+        put.start(); start.start()
+        self.addCleanup(put.stop); self.addCleanup(start.stop)
+
+    def test_reply_then_read_sends_one_dismiss(self):
+        self.assertTrue(self.push.notify("reply", "Mini", "hi", "chat-a", "reply:chat-a"))
+        stamp = self.push._read_shown()["chat-a"]
+        self.assertTrue(self.push.dismiss("chat-a", stamp + 5))
+        self.assertEqual(self.sent[-1]["kind"], "dismiss")
+        self.assertEqual(self.sent[-1]["session_id"], "chat-a")
+        # Already retracted: a second read sends nothing.
+        self.assertFalse(self.push.dismiss("chat-a", stamp + 10))
+        self.assertEqual(len(self.sent), 2)
+
+    def test_read_mark_older_than_the_notification_keeps_it(self):
+        self.push.notify("job", "Mini", "done", "chat-b", "job:7")
+        stamp = self.push._read_shown()["chat-b"]
+        self.assertFalse(self.push.dismiss("chat-b", stamp - 60))
+        self.assertIn("chat-b", self.push._read_shown())
+
+    def test_approvals_and_unnotified_chats_send_nothing(self):
+        self.push.notify("approval", "Mini", "rm -rf", "chat-c", "approval:chat-c")
+        self.assertFalse(self.push.dismiss("chat-c", 2_000_000_000))
+        self.assertFalse(self.push.dismiss("never-notified", 2_000_000_000))
+        self.assertEqual([item["kind"] for item in self.sent], ["approval"])
+
+
 @unittest.skipUnless(HAVE_FASTAPI, "FastAPI is not installed in this environment")
 class EndpointGateTest(DisposableHome):
     """The accepted push hosts are the security boundary: this route must not POST anywhere else."""

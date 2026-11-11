@@ -100,6 +100,10 @@ def _muted_path() -> Path:
     return _push_dir() / "muted-sessions.json"
 
 
+def _shown_path() -> Path:
+    return _push_dir() / "shown.json"
+
+
 def _ensure_dir() -> Path:
     path = _push_dir()
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -612,6 +616,92 @@ def _fit_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+# ---------- retracting a notification once its chat is read ----------
+# A reply or job notification stays on a device until tapped or swiped. When the chat is read anywhere (the app's
+# /seen mark), every device is sent a "dismiss" push that closes that chat's notifications and shows nothing. The
+# hooks (gateway process) record which chats have a notification out in shown.json; the /seen route (dashboard
+# process) reads it, so a dismiss is only sent for a chat that was actually notified, at most once per notification.
+# That keeps silent pushes rare, which browsers require of a push subscription.
+DISMISSABLE_KINDS = ("reply", "job")
+MAX_SHOWN = 200
+
+
+def _shown_lock():
+    """An exclusive lock across the gateway and dashboard processes (a no-op where fcntl is missing)."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def held():
+        try:
+            import fcntl
+        except ImportError:
+            yield
+            return
+        _ensure_dir()
+        with open(_push_dir() / ".shown.lock", "a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    return held()
+
+
+def _read_shown() -> dict[str, int]:
+    try:
+        data = json.loads(_shown_path().read_bytes() or b"{}")
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, UnicodeDecodeError) as exc:
+        log.warning("push: cannot read shown.json: %s", exc)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): int(v) for k, v in data.items() if isinstance(k, str) and k and isinstance(v, (int, float))}
+
+
+def _write_shown(shown: dict[str, int]) -> None:
+    if len(shown) > MAX_SHOWN:
+        shown = dict(sorted(shown.items(), key=lambda item: item[1], reverse=True)[:MAX_SHOWN])
+    _atomic_write(_shown_path(), json.dumps(shown, ensure_ascii=False).encode("utf-8"))
+
+
+def _note_shown(session_id: str, now: float) -> None:
+    try:
+        with _shown_lock():
+            shown = _read_shown()
+            shown[session_id] = int(now)
+            _write_shown(shown)
+    except Exception as exc:  # noqa: BLE001 - only the later retraction is lost
+        log.warning("push: cannot record shown notification: %s", exc)
+
+
+def dismiss(session_id: str, seen_at: float) -> bool:
+    """Retract a read chat's notifications on every device. Returns True when a dismiss push was queued.
+
+    Sent only when a reply or job notification went out for this chat at or before ``seen_at`` (the read mark), and
+    only once: the record is cleared as the push is queued. Never raises.
+    """
+    try:
+        session_id = str(session_id or "").strip()
+        if not session_id or not keys_exist():
+            return False
+        with _shown_lock():
+            shown = _read_shown()
+            sent = shown.get(session_id)
+            if sent is None or sent > int(seen_at):
+                return False
+            shown.pop(session_id, None)
+            _write_shown(shown)
+        _queue.put_nowait({"kind": "dismiss", "session_id": session_id, "ts": int(time.time())})
+        _ensure_sender()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.warning("push: dismiss failed: %s", exc)
+        return False
+
+
 def notify(kind: str, title: str, body: str, session_id: str = "", tag: str = "", **extra: Any) -> bool:
     """Queue one push for every subscription. Returns True when it was queued, never raises."""
     try:
@@ -642,6 +732,8 @@ def notify(kind: str, title: str, body: str, session_id: str = "", tag: str = ""
         payload = _fit_payload(payload)
         _queue.put_nowait(payload)
         _ensure_sender()
+        if session_id and payload["kind"] in DISMISSABLE_KINDS:
+            _note_shown(session_id, now)
         return True
     except Exception as exc:  # noqa: BLE001 - notifications are best effort, never a turn failure
         log.warning("push: notify failed: %s", exc)
