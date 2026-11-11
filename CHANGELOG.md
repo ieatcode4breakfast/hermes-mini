@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Reading a chat retracts its notifications: that device closes the chat's reply and job
+  notifications at once, and the server sends the other devices a silent "dismiss" push that closes
+  them too. Only chats that were actually notified get one, once. Approvals and questions stay until
+  answered.
+- The picture viewer has a back button and a download button, and slides between pictures like a
+  carousel. Pinch and double-tap zoom.
+- The Inbox shows the chat list's home icon on main-chat messages.
+- Replies place local `MEDIA:` pictures inline and other files as download cards; the card fetches
+  the file only when tapped. The app prompt tells the agent how to attach files this way.
 - Scheduled job results can now be delivered into the app: `hermes-mini:main`, a side chat by id or
   unique name, or bare `hermes-mini`; each result is stored as a message and pushes a notification.
 - The plugin records its main chat as the platform's default delivery target the first time the app
@@ -17,6 +26,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The "Restarting" notice stays up until the app has reconnected to the new gateway, and its dots
+  animate.
+- The narration line says "Working…" while a shell command runs.
+- Copying out of the computer reads the remote selection without xclip.
+- New chat stays a local draft until its first message; empty chats are hidden from the list.
+- Edit stays visible while the agent works; the attach button reads as disabled while dictating.
+- A picture pasted into the chat field stays in the chat; Enter at the start of a to-do keeps its
+  text and opens a new line below.
+- The to-do panel stays over the docked computer, and the to-do drag press is steadier on phones.
+- Motion across the app is smoother and quicker.
 - Added app-scoped onboarding guidance and presentation filters for known introductions, routine
   gateway notices, command tips and canned failure instructions. Covers streaming, transcript
   display, inbox and push previews. Offline parity and integration tests exercise these paths;
