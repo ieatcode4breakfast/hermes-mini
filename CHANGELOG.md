@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Model and provider picker. A tab on the input box's top edge shows the chat's model and
+  reasoning level; it opens a sheet listing Hermes's connected providers and their models (search,
+  prices where Hermes has them), a reasoning slider and fast mode where the model supports it. A pick
+  switches the chat and becomes the default for new chats. The Providers screen lists every provider
+  Hermes supports, with search, and saves or updates an API key through Hermes; sign-in providers show
+  Hermes's own setup note. Everything goes through Hermes's own gateway methods; the app keeps no model
+  state. A model switch shows in the chat as a muted line.
 - Reading a chat retracts its notifications: that device closes the chat's reply and job
   notifications at once, and the server sends the other devices a silent "dismiss" push that closes
   them too. Only chats that were actually notified get one, once. Approvals and questions stay until

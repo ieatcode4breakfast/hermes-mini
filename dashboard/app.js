@@ -17,6 +17,7 @@ import { createInbox } from "./inbox.js";
 import { showToast } from "./toast.js";
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
+import { createModelPicker, shortModel } from "./model.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -142,6 +143,18 @@ const state = {
   resettingMain: false, // a main-chat reset is between its confirmation and its finish
   composerLocked: false, // a reset deleted the old main but no replacement is attached: keep the composer disabled
 };
+
+// The model chip on the composer and its sheet (model.js). A New chat (draft) has no session yet: its pick is sent
+// as session.create overrides when the first message creates the chat.
+const modelUi = createModelPicker({
+  rpc: (method, params, timeoutMs) => rpc(method, params, timeoutMs),
+  getSid: () => state.liveSid,
+  isDraft: () => state.viewedUnsent && !state.liveSid,
+  isBusy: () => state.streaming,
+  confirmDialog,
+  showToast,
+  chip: $("modelChip"),
+});
 
 // ---------- storage / small helpers ----------
 
@@ -496,7 +509,9 @@ function messageText(message) {
 // Used by the history render and by the row-id lookup, so both see the same message rows.
 // agent/prompt_builder.py STEER_MARKER_OPEN / STEER_MARKER_CLOSE (fallback when display_content is missing).
 const STEER_WRAP = /\[OUT-OF-BAND USER MESSAGE\b[^\]]*\]\s*([\s\S]*?)\s*\[\/OUT-OF-BAND USER MESSAGE\]/g;
-const HIDDEN_NOTICE_KINDS = new Set(["model_switch", "personality_switch", "auto_continue"]);
+const HIDDEN_NOTICE_KINDS = new Set(["personality_switch", "auto_continue"]);
+// tui_gateway/server.py _MODEL_SWITCH_MARKER_PREFIX: the row a model switch leaves, drawn as a muted "Switched to" line.
+const MODEL_SWITCH_MARKER = /^\[System: The active model for this chat has changed to (\S+)(?: via provider (\S+?))?\./;
 const FILE_REF = /@file:(?:"([^"\n]+)"|'([^'\n]+)'|`([^`\n]+)`|(\S+))/g;
 const OTHER_REF = /@(?:folder|url|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\S+)/g;
 const ATTACHED_CONTEXT_TAIL = /(?:^|\n)--- Attached Context ---\s*\n[\s\S]*$/;
@@ -583,6 +598,12 @@ function chatEntries(messages, { notices = false } = {}) {
     // Hermes' injected system notices (background task finished, etc.) are not shown at all.
     if (message.role === "user" && (NOTICE_KINDS.has(kind) || HIDDEN_NOTICE_KINDS.has(kind))) continue;
     const raw = typeof message.display_content === "string" ? message.display_content.trim() : messageText(message);
+    if (kind === "model_switch") {
+      // Hermes keeps one switch marker per chat (the latest); shown as a small muted line, never as a bubble.
+      const hit = MODEL_SWITCH_MARKER.exec(messageText(message).trim()) || MODEL_SWITCH_MARKER.exec(raw);
+      if (notices && hit) entries.push({ message, text: `Switched to ${shortModel(hit[1])}`, images: [], files: [], kind: "fail" });
+      continue;
+    }
     if (kind === "failed_turn") {
       // Hermes closing a failed turn, not the agent speaking: a small muted line.
       if (notices && raw) entries.push({ message, text: failureText(raw), images: [], files: [], kind: "fail" });
@@ -917,6 +938,7 @@ async function createThread() {
   const created = await rpc("session.create", {});
   state.liveSid = created.session_id;
   state.homeId = created.stored_session_id;
+  modelUi.setInfo(created.info);
   safeStorageSet(STORE_KEY, state.homeId);
   const winner = await registerAppChat(state.homeId, true);
   if (winner && winner !== state.homeId) {
@@ -1017,12 +1039,15 @@ function openDraft(opts = {}) {
   updateComposer();
   persistView();
   refreshDockedDrawer();
+  if (!opts.keepPick) modelUi.resetDraft();
+  void modelUi.showDraft();
 }
 
 // Creates the real chat for the first message. The draft view is already on screen, so this only adds the session and
 // its id; the composer keeps what the person typed. RPC errors are thrown to the caller.
 async function openFreshChat() {
-  const created = await rpc("session.create", {});
+  const created = await rpc("session.create", modelUi.createParams());
+  modelUi.setInfo(created.info);
   state.viewedId = created.stored_session_id;
   state.viewedUnsent = true;
   state.storedId = created.stored_session_id;
@@ -1031,11 +1056,12 @@ async function openFreshChat() {
   state.ready = true;
   persistView();
   updateCaption();
+  void modelUi.afterCreate();
 }
 
 // A New chat has no server id now: on boot or a reconnect it is simply a fresh draft.
 async function attachUnsent() {
-  openDraft();
+  openDraft({ keepPick: true });
 }
 
 // Attaches the chat on screen: the one remembered in state.viewedId, or the home thread. A chat that no longer
@@ -1086,6 +1112,7 @@ async function attachHome(fresh) {
     try {
       const resumed = await rpc("session.resume", { session_id: state.homeId });
       state.liveSid = resumed.session_id;
+      modelUi.setInfo(resumed.info);
       running = Boolean(resumed.running);
       openRequests = resumed.open_requests || [];
       messageCount = Number(resumed.message_count) || 0;
@@ -1115,6 +1142,7 @@ async function attachSession(id) {
   const resumed = await rpc("session.resume", { session_id: id });
   state.storedId = id;
   state.liveSid = resumed.session_id;
+  modelUi.setInfo(resumed.info);
   state.ready = false;
   setReadOnly(false);
   updateCaption();
@@ -3465,6 +3493,10 @@ function onEvent(event) {
   // A draft has no runtime either: ignore every chat event, including un-keyed ones.
   if (state.viewedUnsent && !state.liveSid) return;
   if (event.session_id && state.liveSid && event.session_id !== state.liveSid) return;
+  if (type === "session.info") {
+    modelUi.setInfo(payload);
+    return;
+  }
 
   switch (type) {
     case "message.start": {

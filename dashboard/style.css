@@ -1548,3 +1548,150 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
 .restart-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes restart-dot { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .restart-dots span { animation: none; opacity: 1; } }
+
+/* ---------- Model chip and sheet (model.js) ----------
+   Same language as the drawer and dialogs: flat rows with a 14px radius and a tint on press, 12px muted group heads,
+   the dialog's outlined field and pill button, one shadowed surface. No cards, badges or tinted selections. */
+/* Model tab: rides on the input box's top edge at the right, like a browser tab. It sits behind the box (z-index -1 in
+   the row's stacking context) so the box's shadow runs under it and the two read as one shape; the ::before/::after
+   flares are the tab's concave feet. The rest of the row's top edge stays clear. The log gets the tab's height as
+   extra bottom room so the last line never sits behind it. */
+/* For the tab to sit truly behind the box, the box's fill and shadow move to a ::after layer inside the row's stacking
+   context: tab (-2), then the box (-1) with its real shadow falling across the tab, then the row's content. */
+.composer .row { position: relative; z-index: 1; background: transparent; box-shadow: none; }
+.app.drop-target .composer .row { background: transparent; }
+.composer .row::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+  background: var(--surface); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: background-color 160ms ease;
+}
+.app.drop-target .composer .row::after { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.log { padding-bottom: calc(16px + 26px); }
+/* The tab is a layer behind the box: its own shade (a step lighter than the box in dark, a step darker in light, where
+   white cannot go lighter); the box's own shadow falls across its lower edge. The feet are cut to their concave
+   shape with a mask and overlap the tab by 1px so no seam shows. It sits clear of the box's rounded corner (27px
+   radius + 12px foot), so both feet land on the straight top edge. */
+:root { --model-tab: #e6e7ec; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --model-tab: #2a2c33; } }
+:root[data-theme="dark"] { --model-tab: #2a2c33; }
+.model-tab {
+  --tab-bg: var(--model-tab);
+  position: absolute; bottom: calc(100% - 1px); right: 34px; z-index: -2;
+  display: inline-flex; align-items: center; gap: 4px; max-width: min(70%, 320px); height: 28px; margin: 0; padding: 0 12px 2px;
+  border: 0; border-radius: 12px 12px 0 0; background: var(--tab-bg); color: var(--muted);
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.model-tab::before, .model-tab::after {
+  content: ""; position: absolute; bottom: 0; width: 12px; height: 12px; pointer-events: none; background: var(--tab-bg);
+}
+.model-tab::before {
+  left: -11px;
+  -webkit-mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px);
+}
+.model-tab::after {
+  right: -11px;
+  -webkit-mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px);
+}
+.model-tab:hover, .model-tab[aria-expanded="true"] { color: var(--fg); }
+.model-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-tab-meta { white-space: nowrap; }
+.model-tab-meta::before { content: "·"; margin-right: 4px; }
+.model-tab-meta[hidden] { display: none; }
+.model-tab-caret { width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; }
+.composer .row.wide > .model-tab { grid-area: auto; }
+
+.model-scrim { z-index: 60; }
+.model-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 61; margin: 0 auto; width: min(100%, 560px);
+  max-height: min(82vh, 720px); display: flex; flex-direction: column; box-sizing: border-box;
+  background: var(--surface); color: var(--fg); border-radius: 28px 28px 0 0; box-shadow: 0 -8px 36px rgba(0, 0, 0, 0.28);
+  padding: 20px 12px calc(env(safe-area-inset-bottom) + 12px);
+  transform: translateY(100%); visibility: hidden; transition: transform 220ms var(--ease-exit), visibility 0s linear 220ms;
+}
+.model-sheet.open { transform: none; visibility: visible; transition: transform 340ms var(--ease-out), visibility 0s; }
+.model-head { display: flex; align-items: center; gap: 4px; padding: 0 0 12px 12px; }
+.model-title-wrap { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.model-title { flex: 0 0 auto; }
+.model-title { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.3; }
+.model-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }
+.model-current[hidden] { display: none; }
+.model-back, .model-refresh, .model-close {
+  width: 36px; height: 36px; border: 0; border-radius: 999px; background: transparent; color: var(--muted);
+  font: inherit; font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.model-back:active, .model-refresh:active, .model-close:active { background: var(--zebra); color: var(--fg); }
+:where(:root[data-input="mouse"]) :is(.model-back, .model-refresh, .model-close):hover { background: var(--zebra); color: var(--fg); }
+.model-back[hidden], .model-refresh[hidden] { display: none; }
+.model-refresh svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.model-refresh.spin svg { animation: model-spin 0.8s linear infinite; }
+@keyframes model-spin { to { transform: rotate(360deg); } }
+.model-pane { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 4px; }
+.model-pane[hidden] { display: none; }
+/* Children of a scrolling flex column must not shrink, or they squash to slivers. */
+.model-pane > *, .model-list > * { flex-shrink: 0; }
+.model-search {
+  display: block; box-sizing: border-box; width: calc(100% - 12px); height: 44px; margin: 0 6px 6px; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 12px; background: transparent; color: var(--fg);
+  font: inherit; font-size: 16px; caret-color: var(--accent); outline: none; -webkit-appearance: none; appearance: none;
+}
+.model-search:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.model-list { display: flex; flex-direction: column; }
+.model-empty { margin: 8px 12px; color: var(--muted); font-size: 14px; }
+.model-group { display: flex; flex-direction: column; }
+.model-provider {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 0; padding: 14px 12px 6px; border: 0; background: transparent;
+  color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.model-provider::after {
+  content: ""; width: 6px; height: 6px; margin: 0 4px 2px auto; flex: 0 0 auto; border: solid currentColor; border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg); transition: transform 160ms var(--ease-out);
+}
+.model-group.open > .model-provider::after { transform: rotate(-135deg) translate(-1px, -1px); }
+.model-provider-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-connected { font-weight: 400; }
+.model-options, .provider-body { display: none; flex-direction: column; }
+.model-group.open .model-options, .model-group.open .provider-body { display: flex; }
+.model-option, .model-add {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px;
+  border: 0; border-radius: 14px; background: transparent; color: var(--fg); font: inherit; font-size: 15px; text-align: left; cursor: pointer;
+}
+.model-option:active, .model-add:active { background: var(--zebra); }
+:where(:root[data-input="mouse"]) :is(.model-option, .model-add):hover:not(:active):not(:disabled) { background: var(--zebra); }
+.model-option:disabled { opacity: 0.45; cursor: default; }
+.model-option-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.model-option-price { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.model-option.on::after {
+  content: ""; width: 5px; height: 10px; flex: 0 0 auto; margin: 0 4px 3px 2px; border: solid var(--accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.model-add { margin-top: 4px; color: var(--muted); justify-content: space-between; }
+.model-add::after { content: "›"; font-size: 20px; line-height: 1; }
+.model-controls { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding: 8px 12px 0; border-top: 1px solid var(--line); }
+.model-row.model-effort { gap: 16px; padding: 0 12px 8px; }
+.model-effort .model-row-label { flex: 0 0 auto; }
+.model-effort .model-slider { flex: 1; min-width: 0; }
+.model-effort[hidden] { display: none; }
+.model-row { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 15px; }
+.model-row[hidden] { display: none; }
+.model-row-label { flex: 1; }
+.model-slider { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.model-switch { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
+.provider-form { display: flex; align-items: flex-end; gap: 8px; padding: 2px 12px 10px; }
+.provider-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.provider-key {
+  display: block; box-sizing: border-box; width: 100%; height: 44px; margin: 0; padding: 0 14px; border: 1px solid var(--line-strong);
+  border-radius: 12px; background: transparent; color: var(--fg); font: inherit; font-size: 16px; caret-color: var(--accent);
+  outline: none; -webkit-appearance: none; appearance: none;
+}
+.provider-key:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.provider-save {
+  min-width: 80px; height: 40px; margin-bottom: 2px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--accent); color: #fff;
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.provider-save:active:not(:disabled) { transform: scale(0.97); }
+.provider-save:disabled { background: color-mix(in srgb, var(--fg) 12%, transparent); color: var(--muted); }
+.provider-note { margin: 0 12px 10px; color: var(--muted); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .model-sheet, .model-sheet.open, .model-provider::after { transition: none; }
+  .model-refresh.spin svg { animation: none; }
+}

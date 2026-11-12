@@ -175,5 +175,50 @@ class JobWrapperTest(unittest.TestCase):
         self.assertIn('"jobtext.js"', sw)
 
 
+
+class ModelPickerTest(unittest.TestCase):
+    """The model chip and sheet (model.js) restyle Hermes's own gateway methods; nothing app-side holds model state."""
+
+    def setUp(self):
+        self.model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+
+    def test_model_tab_rides_on_the_input(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        composer = html[html.index('<footer class="composer">'):html.index("</footer>")]
+        self.assertIn('id="modelChip"', composer)
+        topbar = html[html.index('<header class="topbar">'):html.index("</header>")]
+        self.assertNotIn("modelChip", topbar)
+
+    def test_chip_lookups_match_the_markup(self):
+        # chip.querySelector only sees the button's children; a sibling looked up that way is null and crashes boot.
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        button = html[html.index('id="modelChip"'):]
+        button = button[:button.index("</button>")]
+        for cls in re.findall(r'chip\.querySelector\("\.([a-z-]+)"\)', self.model):
+            self.assertIn(f'class="{cls}', button, cls)
+
+    def test_module_is_imported_and_precached(self):
+        self.assertIn('from "./model.js"', self.app)
+        self.assertIn('"model.js"', (DASHBOARD / "sw.js").read_text(encoding="utf-8"))
+
+    def test_only_hermes_methods_are_called(self):
+        methods = set(re.findall(r'rpc\(\s*"([a-z_.]+)"', self.model))
+        self.assertTrue(methods)
+        self.assertLessEqual(methods, {"model.options", "model.save_key", "model.disconnect", "config.set"})
+
+    def test_api_keys_never_touch_browser_storage(self):
+        for word in ("localStorage", "sessionStorage", "indexedDB", "console."):
+            self.assertNotIn(word, self.model)
+
+    def test_new_chat_pick_rides_on_session_create(self):
+        self.assertIn('rpc("session.create", modelUi.createParams())', self.app)
+
+    def test_model_switch_is_shown_not_hidden(self):
+        hidden = re.search(r"const HIDDEN_NOTICE_KINDS = new Set\(\[([^\]]*)\]\)", self.app).group(1)
+        self.assertNotIn("model_switch", hidden)
+        self.assertIn('kind === "model_switch"', self.app)
+
+
 if __name__ == "__main__":
     unittest.main()
