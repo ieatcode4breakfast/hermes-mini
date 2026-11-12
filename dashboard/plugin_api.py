@@ -457,6 +457,10 @@ async def put_seen(request: Request):
     if isinstance(at, bool) or not isinstance(at, (int, float)) or at != at or at in (float("inf"), float("-inf")):
         return JSONResponse({"detail": "at must be a unix time in seconds"}, status_code=400)
     stamp = int(at)
+    # Optional: the reading device's push subscription, so its own retraction is not pushed back to it.
+    reader = body.get("endpoint")
+    if reader is not None and (not isinstance(reader, str) or len(reader) > 2048):
+        return JSONResponse({"detail": "endpoint must be a push subscription URL"}, status_code=400)
     try:
         with _SEEN_LOCK:
             data = _read_seen()
@@ -475,7 +479,7 @@ async def put_seen(request: Request):
         return JSONResponse({"detail": "could not save the seen marker"}, status_code=500)
     # A read chat's notifications are retracted on the person's other devices (push_store.dismiss).
     try:
-        _push_store().dismiss(session_id, stamp)
+        _push_store().dismiss(session_id, stamp, reader or "")
     except Exception as exc:  # noqa: BLE001 - the read mark is saved; a missed retraction is cosmetic
         log.warning("push dismiss failed: %s", exc)
     return JSONResponse(data)

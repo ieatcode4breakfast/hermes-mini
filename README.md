@@ -213,8 +213,10 @@ domain is baked into the source.
 Notifications are retracted once their chat is read. Opening a chat closes that device's reply and
 job notifications for it straight away. The read mark also reaches the server, which sends the other
 devices a "dismiss" push that closes the same notifications and shows nothing. A dismiss is sent
-only for a chat that was actually notified (recorded in `push/shown.json`) and only once per
-notification, so silent pushes stay rare. Approval and question notifications are never retracted
+only for a chat that was actually notified (recorded in `push/shown.json`), only once per
+notification, and never to the device that read the chat, so with one device subscribed no dismiss
+is sent at all. A chat only counts as read while the app is on screen: a reply that finishes in the
+background leaves its notification alone. Approval and question notifications are never retracted
 this way: they stay until answered.
 
 ## Scheduled job results

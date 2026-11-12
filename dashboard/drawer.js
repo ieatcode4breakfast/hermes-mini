@@ -260,6 +260,16 @@ export function createDrawer(deps) {
     }).catch(() => {});
   }
 
+  // This device's push subscription, sent with a read mark so the server's retraction skips the device that read the
+  // chat (it closes its own notifications above). "" when push is off or unavailable.
+  function pushEndpoint() {
+    if (!("serviceWorker" in navigator)) return Promise.resolve("");
+    return navigator.serviceWorker.getRegistration()
+      .then((reg) => (reg && reg.pushManager ? reg.pushManager.getSubscription() : null))
+      .then((sub) => (sub && sub.endpoint) || "")
+      .catch(() => "");
+  }
+
   function markSeen(id, at = null) {
     if (!id) return;
     closeChatNotifications(id);
@@ -268,11 +278,11 @@ export function createDrawer(deps) {
     if ((Number(st.seen.seen[id]) || 0) >= stamp) return; // already recorded at least this far
     st.seen.seen[id] = stamp;
     if (st.open && st.rows.some((row) => row.id === id)) render({ keepScroll: true });
-    deps.api(SEEN_URL, {
+    pushEndpoint().then((endpoint) => deps.api(SEEN_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, at: stamp }),
-    }).then((data) => {
+      body: JSON.stringify(endpoint ? { id, at: stamp, endpoint } : { id, at: stamp }),
+    })).then((data) => {
       mergeSeen(data);
       st.seenLoaded = true;
       if (st.open) render({ keepScroll: true });

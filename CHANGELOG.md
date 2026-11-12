@@ -80,6 +80,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A reply that finishes while the app is in the background no longer marks its chat read. The
+  page keeps running for a while after it is left, so the read retracted the reply's notification a
+  second after it was shown, leaving a home-screen badge count with no notification behind it.
+- The device that reads a chat is no longer sent its own "dismiss" push; it closes its notifications
+  itself. With one device subscribed, reading a chat sends no push at all.
+- Tapping a notification after a while away no longer says "Message not found" for a message that
+  is there. The app now checks that its connection is alive before reading the chat; a connection
+  that died in the background left the reply looking unfinished, so the chat was not reloaded.
 - Scheduled-job delivery now registers with the gateway; a stray package-path import had skipped the
   platform registration, so job results had no destination.
 - Chat-name delivery matches case-insensitively when the name is unique, never delivers to an

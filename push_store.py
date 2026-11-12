@@ -528,7 +528,13 @@ def _host(endpoint: str) -> str:
         return endpoint[:60]
 
 
+# Queue-only field: a subscription endpoint the item must not be sent to (dismiss's reader). Never in the payload.
+_SKIP_KEY = "_skip_endpoint"
+
+
 def _broadcast(payload: dict[str, Any]) -> None:
+    payload = dict(payload)
+    skip = str(payload.pop(_SKIP_KEY, "") or "")
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     subscriptions = list_subscriptions()
     if not subscriptions:
@@ -536,6 +542,8 @@ def _broadcast(payload: dict[str, Any]) -> None:
         return
     for sub in subscriptions:
         endpoint = str(sub.get("endpoint") or "")
+        if skip and endpoint == skip:
+            continue
         try:
             body = _encrypt_for(sub, data)
             status = _post(endpoint, body)
@@ -618,7 +626,8 @@ def _fit_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 # ---------- retracting a notification once its chat is read ----------
 # A reply or job notification stays on a device until tapped or swiped. When the chat is read anywhere (the app's
-# /seen mark), every device is sent a "dismiss" push that closes that chat's notifications and shows nothing. The
+# /seen mark), every other device is sent a "dismiss" push that closes that chat's notifications and shows nothing
+# (the reader closes its own; /seen passes its endpoint so it is skipped). The
 # hooks (gateway process) record which chats have a notification out in shown.json; the /seen route (dashboard
 # process) reads it, so a dismiss is only sent for a chat that was actually notified, at most once per notification.
 # That keeps silent pushes rare, which browsers require of a push subscription.
@@ -677,14 +686,18 @@ def _note_shown(session_id: str, now: float) -> None:
         log.warning("push: cannot record shown notification: %s", exc)
 
 
-def dismiss(session_id: str, seen_at: float) -> bool:
-    """Retract a read chat's notifications on every device. Returns True when a dismiss push was queued.
+def dismiss(session_id: str, seen_at: float, reader_endpoint: str = "") -> bool:
+    """Retract a read chat's notifications on the other devices. Returns True when a dismiss push was queued.
 
     Sent only when a reply or job notification went out for this chat at or before ``seen_at`` (the read mark), and
-    only once: the record is cleared as the push is queued. Never raises.
+    only once: the record is cleared as the push is queued. ``reader_endpoint`` is the push subscription of the device
+    that read the chat: it closes its own notifications locally, so it is skipped, and when no other device is
+    subscribed nothing is sent at all. A push that shows nothing counts against the browser's silent-push allowance.
+    Never raises.
     """
     try:
         session_id = str(session_id or "").strip()
+        reader_endpoint = str(reader_endpoint or "").strip()
         if not session_id or not keys_exist():
             return False
         with _shown_lock():
@@ -694,7 +707,12 @@ def dismiss(session_id: str, seen_at: float) -> bool:
                 return False
             shown.pop(session_id, None)
             _write_shown(shown)
-        _queue.put_nowait({"kind": "dismiss", "session_id": session_id, "ts": int(time.time())})
+        if reader_endpoint and not any(sub.get("endpoint") != reader_endpoint for sub in list_subscriptions()):
+            return False  # the reader is the only device: it already closed its own
+        item: dict[str, Any] = {"kind": "dismiss", "session_id": session_id, "ts": int(time.time())}
+        if reader_endpoint:
+            item[_SKIP_KEY] = reader_endpoint
+        _queue.put_nowait(item)
         _ensure_sender()
         return True
     except Exception as exc:  # noqa: BLE001

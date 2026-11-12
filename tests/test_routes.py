@@ -272,6 +272,15 @@ class DataRoutesTest(RouteTestCase):
         self.assertIn("seen", body)
         self.assertTrue((self.home / "data" / "hermes-mini" / "seen.json").is_file())
 
+    def test_seen_takes_the_reading_devices_push_endpoint(self):
+        url = "/api/plugins/hermes-mini/seen"
+        ok = self.client.put(url, json={"id": "chat-a", "at": 1_800_000_000, "endpoint": "https://fcm.googleapis.com/fcm/send/x"})
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["seen"]["chat-a"], 1_800_000_000)
+        self.assertEqual(self.client.put(url, json={"id": "chat-b", "at": 1_800_000_000}).status_code, 200)
+        self.assertEqual(self.client.put(url, json={"id": "chat-c", "at": 1, "endpoint": 7}).status_code, 400)
+        self.assertEqual(self.client.put(url, json={"id": "chat-c", "at": 1, "endpoint": "x" * 3000}).status_code, 400)
+
     def test_app_chats_registry_is_empty_until_a_chat_is_added(self):
         body = self.client.get("/api/plugins/hermes-mini/app-chats").json()
         self.assertEqual(body["ids"], [])

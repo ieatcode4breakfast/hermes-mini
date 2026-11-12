@@ -1483,7 +1483,9 @@ async function loadHistory(messageCount = null) {
   // A deep link wants its own message on screen, not the end of the chat: it loads the pages it needs and centres the
   // message itself, so the end-of-chat scroll and the fill would only yank the view away.
   if (!pendingTarget) scrollToBottom(true);
-  drawerApi.markSeen(state.viewedId); // the chat on screen counts as read once its history is in
+  // The chat on screen counts as read once its history is in, but only when it is actually on screen: a reconnect in
+  // the background must not read it (and retract its notification); coming back to the app marks it.
+  if (pageVisible()) drawerApi.markSeen(state.viewedId);
   if (!pendingTarget) void fillOlder(); // a page that is mostly tool rows may not fill the screen: keep loading until it scrolls
 }
 
@@ -1666,6 +1668,34 @@ async function waitForSocket(ms = 5000) {
   return state.wsReady;
 }
 
+function pageVisible() {
+  return document.visibilityState === "visible";
+}
+
+// A socket that died while the app was in the background still reads as ready until the heartbeat notices, and a
+// reply that was streaming then never got its end: state.turn stays set, so a tap skipped the history reload and
+// searched a chat that did not have the new reply yet ("Message not found"). Probe the socket first; a dead one is
+// dropped, and the reconnect re-attaches the chat (fresh history, no stale turn) before the tap reads it.
+const DEEPLINK_PING_MS = 2500;
+async function ensureLiveSocket(ms = 10000) {
+  const ws = state.ws;
+  if (ws && state.wsReady) {
+    try {
+      await rpc("gateway.ping", {}, DEEPLINK_PING_MS);
+      return true;
+    } catch {
+      if (state.ws === ws) {
+        state.backoffIdx = 0; // reconnect at once: the person is waiting on this tap
+        dropSocket(ws);
+      }
+    }
+  }
+  const until = Date.now() + ms;
+  const settled = () => state.wsReady && (state.ready || state.readOnly) && !state.connecting;
+  while (!settled() && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+  return settled();
+}
+
 // A tap can land while a chat switch is still starting. switchSession() refuses a second switch, so a deep link
 // that ignored that would read the chat being left and call its message missing.
 async function waitForSwitch(ms = 5000) {
@@ -1689,7 +1719,7 @@ async function openTarget(id, target) {
   const run = ++deeplinkRun;
   pendingTarget = target;
   try {
-    await waitForSocket();
+    await ensureLiveSocket();
     if (run !== deeplinkRun) return false;
     await openPushedSession(id);
     await waitForSwitch();
@@ -3310,7 +3340,10 @@ function finishTurn() {
   }
   state.turn = null;
   updateComposer();
-  if (!state.viewedUnsent) drawerApi.markSeen(state.viewedId); // a reply that finished on screen is read
+  // A reply that finished on screen is read. One that finished while the app was in the background is not: the page
+  // keeps running for a while after it is left, and reading here retracted the reply's notification a second after it
+  // was shown (a launcher badge with no notification behind it). Coming back to the app marks it.
+  if (!state.viewedUnsent && pageVisible()) drawerApi.markSeen(state.viewedId);
   refreshDockedDrawer(); // a finished reply may have set the chat's title
 }
 

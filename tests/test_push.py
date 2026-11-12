@@ -83,6 +83,36 @@ class DismissTest(DisposableHome):
         self.assertFalse(self.push.dismiss("chat-b", stamp - 60))
         self.assertIn("chat-b", self.push._read_shown())
 
+    def _subscribe(self, endpoint):
+        self.push.add_subscription({"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}})
+
+    def test_the_only_device_reading_gets_no_dismiss_push(self):
+        # It closes its own notification locally; a push that shows nothing would spend its silent-push allowance.
+        phone = "https://fcm.googleapis.com/fcm/send/phone"
+        self._subscribe(phone)
+        self.push.notify("reply", "Mini", "hi", "chat-d", "reply:chat-d")
+        stamp = self.push._read_shown()["chat-d"]
+        self.assertFalse(self.push.dismiss("chat-d", stamp + 5, phone))
+        self.assertEqual([item["kind"] for item in self.sent], ["reply"])
+        self.assertNotIn("chat-d", self.push._read_shown())
+
+    def test_dismiss_skips_the_reader_and_reaches_the_other_devices(self):
+        phone = "https://fcm.googleapis.com/fcm/send/phone"
+        laptop = "https://fcm.googleapis.com/fcm/send/laptop"
+        self._subscribe(phone)
+        self._subscribe(laptop)
+        self.push.notify("reply", "Mini", "hi", "chat-e", "reply:chat-e")
+        stamp = self.push._read_shown()["chat-e"]
+        self.assertTrue(self.push.dismiss("chat-e", stamp + 5, phone))
+        posted = []
+        with mock.patch.object(self.push, "_encrypt_for", side_effect=lambda sub, data: data), \
+                mock.patch.object(self.push, "_post", side_effect=lambda endpoint, body: posted.append((endpoint, body)) or 201):
+            self.push._broadcast(self.sent[-1])
+        self.assertEqual([endpoint for endpoint, _ in posted], [laptop])
+        # The skip is queue-only: it never reaches a device.
+        self.assertNotIn(b"phone", posted[0][1])
+        self.assertNotIn(self.push._SKIP_KEY.encode(), posted[0][1])
+
     def test_approvals_and_unnotified_chats_send_nothing(self):
         self.push.notify("approval", "Mini", "rm -rf", "chat-c", "approval:chat-c")
         self.assertFalse(self.push.dismiss("chat-c", 2_000_000_000))
