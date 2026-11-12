@@ -275,7 +275,10 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     search.addEventListener("input", renderList);
 
     const list = node("div", "model-list");
-    const add = node("button", "model-add", "Providers and keys");
+    // A small pill button at the right under the list: "Providers +".
+    const add = node("button", "model-add");
+    add.append(node("span", "", "Providers"));
+    add.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>');
     add.type = "button";
     add.addEventListener("click", () => void openAdd());
 
@@ -285,18 +288,72 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     // sends it.
     const effortRow = node("div", "model-row model-effort");
     effortRow.append(node("span", "model-row-label", "Reasoning"));
-    const effort = node("input", "model-slider");
-    effort.type = "range";
-    effort.min = "0";
-    effort.max = String(EFFORTS.length - 1);
-    effort.step = "1";
+    // A level meter instead of a range input: five bars rising in height (low..max); none filled is Off. Tap a bar or
+    // drag across them; the title line previews the level while the finger is down and it is sent on release. The far
+    // left edge (left of the first bar's middle) is Off, and tapping the only lit bar turns it off too.
+    const effort = node("div", "model-meter");
+    effort.tabIndex = 0;
+    effort.setAttribute("role", "slider");
     effort.setAttribute("aria-label", "Reasoning effort");
-    effort.addEventListener("input", () => {
-      const label = EFFORTS[Number(effort.value)][1];
-      effort.setAttribute("aria-valuetext", label);
-      paintChip(EFFORTS[Number(effort.value)][0]);
+    effort.setAttribute("aria-valuemin", "0");
+    effort.setAttribute("aria-valuemax", String(EFFORTS.length - 1));
+    for (let k = 1; k < EFFORTS.length; k += 1) effort.append(node("span", "model-meter-bar"));
+    const showLevel = (index) => {
+      [...effort.children].forEach((bar, k) => bar.classList.toggle("on", k < index));
+      effort.dataset.level = String(index);
+      effort.setAttribute("aria-valuenow", String(index));
+      effort.setAttribute("aria-valuetext", EFFORTS[index][1]);
+    };
+    // Level under the finger, measured against the bars themselves (the box is wider, for an easy target): left of the
+    // first bar is Off; otherwise the first bar whose right edge (plus half the gap) is past the finger.
+    const levelAt = (x) => {
+      const bars = [...effort.children].map((bar) => bar.getBoundingClientRect());
+      if (x < bars[0].left) return 0;
+      for (let k = 0; k < bars.length; k += 1) {
+        const next = bars[k + 1];
+        if (!next || x < (bars[k].right + next.left) / 2) return k + 1;
+      }
+      return bars.length;
+    };
+    let drag = null; // { start, moved }
+    effort.addEventListener("pointerdown", (event) => {
+      try {
+        effort.setPointerCapture(event.pointerId);
+      } catch {
+        /* capture is a nicety: without it the drag still works while the finger stays over the meter */
+      }
+      drag = { start: Number(effort.dataset.level || 0), moved: false };
+      const index = levelAt(event.clientX);
+      showLevel(index);
+      paintChip(EFFORTS[index][0]);
     });
-    effort.addEventListener("change", () => void setEffort(EFFORTS[Number(effort.value)][0]));
+    effort.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const index = levelAt(event.clientX);
+      if (index !== Number(effort.dataset.level)) drag.moved = true;
+      showLevel(index);
+      paintChip(EFFORTS[index][0]);
+    });
+    const finish = () => {
+      if (!drag) return;
+      let index = Number(effort.dataset.level || 0);
+      if (!drag.moved && index === 1 && drag.start === 1) index = 0; // tap the only lit bar: Off
+      const changed = index !== drag.start;
+      drag = null;
+      showLevel(index);
+      if (changed) void setEffort(EFFORTS[index][0]);
+      else paintChip();
+    };
+    effort.addEventListener("pointerup", finish);
+    effort.addEventListener("pointercancel", finish);
+    effort.addEventListener("keydown", (event) => {
+      const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
+      if (!step) return;
+      event.preventDefault();
+      const index = Math.max(0, Math.min(EFFORTS.length - 1, Number(effort.dataset.level || 0) + step));
+      showLevel(index);
+      void setEffort(EFFORTS[index][0]);
+    });
     effortRow.append(effort);
     const fastRow = node("label", "model-row model-fast-row");
     fastRow.append(node("span", "model-row-label", "Fast mode"));
@@ -316,7 +373,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     sheet.addEventListener("keydown", (event) => {
       if (event.key === "Escape") close();
     });
-    parts = { scrim, back, title, current, refresh, search, list, effort, effortRow, fast, fastRow, pick, addPane };
+    parts = { scrim, back, title, current, refresh, search, list, effort, effortRow, controls, fast, fastRow, pick, addPane };
   }
 
   function showPane(which) {
@@ -334,12 +391,15 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     if (!parts) return;
     const effort = isDraft() && draftEffort ? draftEffort : info.reasoning;
     const index = Math.max(0, EFFORTS.findIndex(([word]) => word === (effort || "")));
-    parts.effort.value = String(index);
+    [...parts.effort.children].forEach((bar, k) => bar.classList.toggle("on", k < index));
+    parts.effort.dataset.level = String(index);
+    parts.effort.setAttribute("aria-valuenow", String(index));
     parts.effort.setAttribute("aria-valuetext", effort ? EFFORTS[index][1] : "Default");
     const caps = currentCaps();
     parts.effortRow.hidden = caps ? caps.reasoning === false : false;
     // Fast mode is a live-session setting and only some models have it (capabilities.fast).
     parts.fastRow.hidden = isDraft() || !(caps && caps.fast);
+    parts.controls.hidden = parts.fastRow.hidden; // fast mode is its only row: no empty divider without it
     parts.fast.checked = Boolean(info.fast);
   }
 
