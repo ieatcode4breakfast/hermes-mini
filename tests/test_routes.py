@@ -117,28 +117,76 @@ class InboxJobWrapperTest(RouteTestCase):
         self.assertEqual(item["text"], "Jump reminder — time to jump!")
 
 
-class InboxCompactionCopyTest(RouteTestCase):
-    """Context compaction re-inserts kept messages under new ids; a read message must stay read."""
+class InboxDbCase(RouteTestCase):
+    """A small state.db with one app chat; helpers for the Inbox routes. Holds no tests itself."""
 
-    def _db(self):
+    BASE = "/api/plugins/hermes-mini/inbox"
+
+    def _db(self, with_uid=True):
         path = self.home / "state.db"
         conn = sqlite3.connect(path)
+        self.addCleanup(conn.close)
         conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
         conn.execute(
             "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT, "
             "display_metadata TEXT, timestamp REAL, finish_reason TEXT, tool_calls TEXT, active INTEGER, "
-            "compacted INTEGER, message_uid TEXT)"
+            f"compacted INTEGER{', message_uid TEXT' if with_uid else ''})"
         )
         conn.execute("CREATE TABLE session_turn_leases (conversation_id TEXT, expires_at REAL, acquired_at REAL)")
         conn.execute("INSERT INTO sessions VALUES ('chat', 'Reminders', 0)")
+        conn.commit()
+        self.client.post("/api/plugins/hermes-mini/app-chats", json={"id": "chat"})
+        self.with_uid = with_uid
         return conn
 
     def _add(self, conn, row_id, uid, text, active=1, ts=1_800_000_000.0):
-        conn.execute(
-            "INSERT INTO messages VALUES (?, 'chat', 'assistant', ?, NULL, NULL, ?, 'stop', NULL, ?, 0, ?)",
-            (row_id, text, ts, active, uid),
-        )
+        if getattr(self, "with_uid", True):
+            conn.execute(
+                "INSERT INTO messages VALUES (?, 'chat', 'assistant', ?, NULL, NULL, ?, 'stop', NULL, ?, 0, ?)",
+                (row_id, text, ts, active, uid),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO messages VALUES (?, 'chat', 'assistant', ?, NULL, NULL, ?, 'stop', NULL, ?, 0)",
+                (row_id, text, ts, active),
+            )
         conn.commit()
+
+    def _compact(self, conn, moves):
+        """Context compaction: every row goes inactive, the kept ones come back as new rows (same uid and time)."""
+        old = {row[0]: row for row in conn.execute("SELECT id, message_uid, content, timestamp FROM messages")}
+        conn.execute("UPDATE messages SET active = 0")
+        for old_id, new_id in moves.items():
+            _, uid, text, ts = old[old_id]
+            self._add(conn, new_id, uid, text, ts=ts)
+
+    def count(self):
+        response = self.client.get(f"{self.BASE}/unread-count")
+        self.assertEqual(response.status_code, 200)
+        return response.json()["count"]
+
+    def feed(self, unread=False):
+        response = self.client.get(f"{self.BASE}?limit=100{'&unread=1' if unread else ''}")
+        self.assertEqual(response.status_code, 200)
+        return response.json()["items"]
+
+    def flags(self):
+        return {item["id"]: (item["read"], item["marked_unread"]) for item in self.feed()}
+
+    def unread_tab(self):
+        return [item["id"] for item in self.feed(unread=True)]
+
+    def mark(self, route, ids, manual=True):
+        response = self.client.post(f"{self.BASE}/{route}", json={"ids": ids, "manual": manual})
+        self.assertEqual(response.status_code, 200, response.text)
+        return response
+
+    def stored(self):
+        return json.loads((self.home / "data" / "hermes-mini" / "inbox-read.json").read_text(encoding="utf-8"))
+
+
+class InboxCompactionCopyTest(InboxDbCase):
+    """Context compaction re-inserts kept messages under new ids; a read message must stay read."""
 
     def test_a_compaction_copy_of_a_read_reply_stays_read(self):
         self.client.post("/api/plugins/hermes-mini/app-chats", json={"id": "chat"})
@@ -161,6 +209,195 @@ class InboxCompactionCopyTest(RouteTestCase):
         self.assertEqual([item["id"] for item in unread], [51])
         feed = {item["id"]: item["read"] for item in self.client.get(base).json()["items"]}
         self.assertEqual(feed, {50: True, 51: False})
+
+    def test_mark_unread_wins_over_the_watermark_and_read_copies(self):
+        self.client.post("/api/plugins/hermes-mini/app-chats", json={"id": "chat"})
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self._add(conn, 11, "uid-b", "Changed the wording", ts=1_800_000_060.0)
+        base = "/api/plugins/hermes-mini/inbox"
+        count = lambda: self.client.get(f"{base}/unread-count").json()["count"]
+        flags = lambda: {item["id"]: item["read"] for item in self.client.get(base).json()["items"]}
+        unread_tab = lambda: [item["id"] for item in self.client.get(f"{base}?unread=1").json()["items"]]
+        mark = lambda route, ids, manual=True: self.client.post(f"{base}/{route}", json={"ids": ids, "manual": manual})
+
+        self.client.post(f"{base}/read-all", json={})
+        self.assertEqual(count(), 0)
+        # Under the watermark: marked unread on purpose, then read again.
+        self.assertEqual(mark("unread", [10]).status_code, 200)
+        self.assertEqual((count(), unread_tab(), flags()), (1, [10], {10: False, 11: True}))
+        held = {item["id"]: item["marked_unread"] for item in self.client.get(base).json()["items"]}
+        self.assertEqual(held, {10: True, 11: False})
+        # Seen in the chat (a read that is not manual): a message marked unread by hand stays unread.
+        mark("read", [10], manual=False)
+        self.assertEqual((count(), unread_tab()), (1, [10]))
+        mark("read", [10])
+        self.assertEqual((count(), unread_tab()), (0, []))
+        # Never marked unread by hand: a chat view reads it as before.
+        mark("read", [11], manual=False)
+        self.assertEqual(count(), 0)
+
+        # A compaction copy of a read message: unread on purpose, then read again.
+        conn.execute("UPDATE messages SET active = 0")
+        self._add(conn, 50, "uid-a", "Logged: 10h30m")
+        conn.close()
+        self.assertEqual(count(), 0)
+        mark("unread", [50])
+        self.assertEqual((count(), unread_tab()), (1, [50]))
+        mark("read", [50])
+        self.assertEqual(count(), 0)
+
+        # Mark all clears every purposeful unread under it.
+        mark("unread", [50])
+        self.client.post(f"{base}/read-all", json={})
+        self.assertEqual(count(), 0)
+        self.assertEqual(mark("unread", ["x"]).status_code, 400)
+
+
+class InboxManualUnreadTest(InboxDbCase):
+    """Mark unread by hand: wins over every other read rule and holds until marked read by hand or Mark all."""
+
+    def _two_read(self, conn):
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self._add(conn, 11, "uid-b", "Changed the wording", ts=1_800_000_060.0)
+        self.client.post(f"{self.BASE}/read-all", json={})
+        self.assertEqual(self.count(), 0)
+
+    def test_held_unread_survives_a_compaction(self):
+        conn = self._db()
+        self._two_read(conn)
+        self.mark("unread", [10])
+        self._compact(conn, {10: 50, 11: 51})
+        # The copy of the held message is still unread and still held; the other copy is read.
+        self.assertEqual(self.flags(), {50: (False, True), 51: (True, False)})
+        self.assertEqual((self.count(), self.unread_tab()), (1, [50]))
+
+    def test_a_chat_view_of_the_copy_does_not_release_it(self):
+        conn = self._db()
+        self._two_read(conn)
+        self.mark("unread", [10])
+        self._compact(conn, {10: 50, 11: 51})
+        self.mark("read", [50], manual=False)  # the chat scrolled it into view
+        self.assertEqual((self.count(), self.flags()[50]), (1, (False, True)))
+
+    def test_marking_the_copy_read_by_hand_releases_the_message(self):
+        conn = self._db()
+        self._two_read(conn)
+        self.mark("unread", [10])
+        self._compact(conn, {10: 50, 11: 51})
+        self.mark("read", [50])
+        self.assertEqual((self.count(), self.flags()), (0, {50: (True, False), 51: (True, False)}))
+        self.assertEqual(self.stored()["unread"], [])  # the old id 10 is released too
+        # And a second compaction does not bring the hold back.
+        self._compact(conn, {50: 70})
+        self.assertEqual((self.count(), self.flags()), (0, {70: (True, False)}))
+
+    def test_marking_the_original_read_releases_its_copies(self):
+        conn = self._db()
+        self._two_read(conn)
+        self.mark("unread", [10])
+        self._add(conn, 50, "uid-a", "Logged: 10h30m")  # a copy that is still active beside the original
+        self.mark("read", [10])
+        self.assertEqual(self.count(), 0)
+        self.assertEqual(self.stored()["unread"], [])
+
+    def test_opening_from_the_inbox_or_the_chat_keeps_the_hold(self):
+        conn = self._db()
+        self._two_read(conn)
+        self.mark("unread", [11])
+        for _ in range(3):
+            self.mark("read", [11], manual=False)
+        self.client.post(f"{self.BASE}/read", json={"ids": [11]})  # no "manual" at all: the chat's own call
+        self.assertEqual((self.count(), self.unread_tab(), self.flags()[11]), (1, [11], (False, True)))
+
+    def test_a_message_never_held_is_read_by_a_chat_view(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged")
+        self._add(conn, 11, "uid-b", "Other", ts=1_800_000_060.0)
+        self.assertEqual(self.count(), 2)
+        self.mark("unread", [11])
+        self.mark("read", [10], manual=False)
+        self.assertEqual((self.count(), self.unread_tab()), (1, [11]))
+
+    def test_mark_unread_then_read_round_trip_above_the_watermark(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged")
+        self.mark("read", [10], manual=False)
+        self.assertEqual(self.count(), 0)
+        self.mark("unread", [10])
+        self.assertEqual((self.count(), self.flags()), (1, {10: (False, True)}))
+        self.assertNotIn(10, self.stored()["read"])
+        self.mark("read", [10])
+        self.assertEqual((self.count(), self.flags()), (0, {10: (True, False)}))
+
+    def test_mark_all_releases_every_hold(self):
+        conn = self._db()
+        self._two_read(conn)
+        self.mark("unread", [10, 11])
+        self.assertEqual(self.count(), 2)
+        self.client.post(f"{self.BASE}/read-all", json={})
+        self.assertEqual((self.count(), self.unread_tab(), self.stored()["unread"]), (0, [], []))
+
+    def test_the_unread_tab_reaches_an_old_held_message_past_a_long_read_history(self):
+        conn = self._db()
+        self._add(conn, 1, "uid-old", "The old one", ts=1_700_000_000.0)
+        for row_id in range(2, 452):  # 450 newer messages: more than two raw batches of 200
+            self._add(conn, row_id, f"uid-{row_id}", f"Message {row_id}", ts=1_800_000_000.0 + row_id)
+        self.client.post(f"{self.BASE}/read-all", json={})
+        self.assertEqual((self.count(), self.unread_tab()), (0, []))
+        self.mark("unread", [1])
+        self.assertEqual((self.count(), self.unread_tab()), (1, [1]))
+        # The All tab pages to it with the cursor and shows it held.
+        items, cursor, seen = [], None, {}
+        while True:
+            url = f"{self.BASE}?limit=100" + (f"&before={cursor}" if cursor else "")
+            body = self.client.get(url).json()
+            items += body["items"]
+            cursor = body["next"]
+            if not cursor:
+                break
+        seen = {item["id"]: (item["read"], item["marked_unread"]) for item in items}
+        self.assertEqual(len(items), 451)
+        self.assertEqual(seen[1], (False, True))
+        self.assertTrue(all(seen[row_id] == (True, False) for row_id in range(2, 452)))
+
+    def test_a_database_without_message_uid_still_works(self):
+        conn = self._db(with_uid=False)
+        self._add(conn, 10, None, "Logged")
+        self._add(conn, 11, None, "Other", ts=1_800_000_060.0)
+        self.assertEqual(self.count(), 2)
+        self.mark("read", [10], manual=False)
+        self.mark("unread", [11])
+        self.mark("read", [11], manual=False)
+        self.assertEqual((self.count(), self.flags()), (1, {10: (True, False), 11: (False, True)}))
+        self.mark("read", [11])
+        self.assertEqual(self.count(), 0)
+
+    def test_a_damaged_read_file_is_an_empty_tracker(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged")
+        path = self.home / "data" / "hermes-mini" / "inbox-read.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"watermark": 5, "read": ["x", True, -3], "unread": ["10", False, 0, -1, 2.5]}),
+                        encoding="utf-8")
+        self.assertEqual((self.count(), self.flags()), (1, {10: (False, False)}))
+        path.write_text("{not json", encoding="utf-8")
+        self.assertEqual(self.count(), 1)
+        self.mark("unread", [10])
+        self.assertEqual(self.stored()["unread"], [10])
+
+    def test_the_routes_refuse_bad_bodies(self):
+        conn = self._db()
+        for body in ({"ids": "10"}, {"ids": [0]}, {"ids": [True]}, {"ids": ["10"]}, {"ids": list(range(1, 1002))}, {}):
+            for route in ("read", "unread"):
+                response = self.client.post(f"{self.BASE}/{route}", json=body)
+                self.assertEqual(response.status_code, 400, (route, body))
+        # "manual" must be exactly true; anything else is a chat view.
+        self._add(conn, 10, "uid-a", "Logged")
+        self.mark("unread", [10])
+        for manual in ("true", 1, None):
+            self.client.post(f"{self.BASE}/read", json={"ids": [10], "manual": manual})
+            self.assertEqual(self.count(), 1, manual)
 
 
 class IdentityRoutesTest(RouteTestCase):

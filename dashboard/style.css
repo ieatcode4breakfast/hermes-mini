@@ -1448,8 +1448,40 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
   display: block; width: 100%; margin: 0; padding: 11px var(--inbox-gutter); border: 0; /* no dividers between rows */
   border-radius: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
 }
-:where(:root[data-input="mouse"]) .inbox-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(:root[data-input="mouse"]) .inbox-item:hover .inbox-row { background: color-mix(in srgb, var(--fg) 6%, transparent); }
 .inbox-row:last-of-type { border-bottom: 0; }
+/* One message (inbox.js rowNode): the row, the strip a right swipe uncovers, and the hover toggle. */
+.inbox-item { position: relative; overflow: hidden; }
+.inbox-item .inbox-row { position: relative; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); }
+.inbox-item .inbox-row { transition: background-color 120ms ease, color 120ms ease; }
+.inbox-item:not(.swiping) .inbox-row { transition: background-color 120ms ease, color 120ms ease, transform 0.2s var(--ease-out); }
+/* The swipe strip grows with the finger from the left edge and names the action. Each action has its own colour,
+   so the two never look alike mid-swipe: "Mark read" (an unread row) red, "Mark unread" (a read row) blue. Faint
+   until letting go would act, then the full colour with white words, faded in rather than snapped on. */
+.inbox-item.unread { --swipe-tone: var(--danger); }
+.inbox-item.read { --swipe-tone: #2563eb; }
+.inbox-swipe {
+  position: absolute; inset: 0 auto 0 0; width: var(--swipe, 0px); overflow: hidden;
+  display: flex; align-items: center; gap: 8px; padding-left: var(--inbox-gutter); white-space: nowrap;
+  background: color-mix(in srgb, var(--swipe-tone, var(--accent)) 16%, transparent); color: var(--muted);
+  font-size: 14px; font-weight: 600; pointer-events: none;
+  transition: background-color 220ms ease, color 220ms ease;
+}
+.inbox-item:not(.swiping):not(.settling) .inbox-swipe { visibility: hidden; }
+/* After letting go the strip closes with the row as it slides back, keeping its colour and words. */
+.inbox-item.settling .inbox-swipe { transition: width 0.2s var(--ease-out), background-color 220ms ease, color 220ms ease; }
+.inbox-swipe svg { width: 18px; height: 18px; flex: none; }
+.inbox-item.armed .inbox-swipe { background: var(--swipe-tone, var(--accent)); color: #fff; }
+/* Mouse only: one icon at the row's right edge on hover (or keyboard focus), naming the action in its tooltip. */
+.inbox-toggle {
+  position: absolute; right: var(--inbox-gutter); bottom: 10px; z-index: 1;
+  width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); color: var(--fg); cursor: pointer; opacity: 0; pointer-events: none;
+}
+.inbox-toggle svg { width: 16px; height: 16px; }
+:where(:root[data-input="mouse"]) .inbox-item:hover .inbox-toggle, .inbox-toggle:focus-visible { opacity: 1; pointer-events: auto; }
+:where(:root[data-input="mouse"]) .inbox-toggle:hover { color: var(--accent); border-color: var(--accent); }
 .inbox-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 /* The main chat's home icon (inbox.js homeIcon), as in the chat list; nudged down to sit on the name's baseline. */
 .inbox-row-top .inbox-home { width: 16px; height: 16px; flex: none; color: var(--accent); align-self: center; margin-right: -2px; }
@@ -1464,7 +1496,7 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
 }
 /* Unread: stronger text on a soft accent tint, so it reads at a glance. Read: muted, no tint. Still no badges or dots (the spec keeps those to the drawer). */
 .inbox-row.unread { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-:where(:root[data-input="mouse"]) .inbox-row.unread:hover { background: color-mix(in srgb, var(--accent) 17%, transparent); }
+:where(:root[data-input="mouse"]) .inbox-item:hover .inbox-row.unread { background: color-mix(in srgb, var(--accent) 17%, transparent); }
 .inbox-row.unread .inbox-text { color: var(--fg); font-weight: 500; }
 /* Inbox button and the panel's back button: open tray when all is read, closed envelope while anything is unread. */
 .inbox-icon-unread { display: none; }
@@ -1508,7 +1540,7 @@ body.inbox-open .identity .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var
 /* Quiet icon buttons and menu rows: the hover and press tints ease in instead of snapping. Opacity is listed because
    some of these also fade in on row hover. */
 .msg-act, .bubble .code-copy, .chat-dots, .chat-reset, .group-action, .todo-close, .todo-del, .todo-clear, .todo-additem,
-.inbox-close, .inbox-markall, .inbox-row, .edit-cancel, .dictate-cancel, .menu-item, .row-menu-item,
+.inbox-close, .inbox-markall, .inbox-row, .inbox-toggle, .edit-cancel, .dictate-cancel, .menu-item, .row-menu-item,
 .theme-switch button, .push-btn, .bubble-toggle, .drawer-new-icon {
   transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease-out;
 }

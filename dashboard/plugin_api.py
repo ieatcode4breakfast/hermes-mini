@@ -677,18 +677,21 @@ def _has_message_uid(conn: sqlite3.Connection) -> bool:
         return False
 
 
-def _read_copies(conn: sqlite3.Connection, rows: list[sqlite3.Row], watermark: int, read: set[int]) -> set[int]:
+def _read_copies(conn: sqlite3.Connection, rows: list[sqlite3.Row], watermark: int, read: set[int],
+                 unread: set[int] | None = None) -> set[int]:
     """Ids among ``rows`` whose message was already read under another row id.
 
     Context compaction writes the messages it keeps back out as new rows: new ids, same chat, same ``message_uid``
     and timestamp, with the originals left inactive. Read state is kept by row id, so without this every compaction
     brought a batch of already-read replies back as unread. Only rows that look unread by id are looked up, one
-    query per chat (the (session_id, id) index), so the badge stays cheap to poll.
+    query per chat (the (session_id, id) index), so the badge stays cheap to poll. A row marked unread on purpose
+    (``unread``) is never a read copy, and neither is a copy of one.
     """
+    unread = unread or set()
     wanted: dict[str, dict[str, list[int]]] = {}
     for row in rows:
         row_id = int(row["id"])
-        if row_id <= watermark or row_id in read:
+        if row_id <= watermark or row_id in read or row_id in unread:
             continue
         uid = row["message_uid"] if "message_uid" in row.keys() else None
         if uid:
@@ -704,14 +707,43 @@ def _read_copies(conn: sqlite3.Connection, rows: list[sqlite3.Row], watermark: i
                 [session_id, *chunk],
             ):
                 other_id = int(other_id)
-                if other_id <= watermark or other_id in read:
+                if other_id not in unread and (other_id <= watermark or other_id in read):
                     found.update(row_id for row_id in by_uid.get(str(uid), []) if row_id != other_id)
     return found
 
 
+def _message_keys(conn: sqlite3.Connection, ids: Any) -> dict[int, tuple[str, str]]:
+    """Row id -> (chat, message_uid) for the given rows: the identity that survives a compaction rewrite."""
+    ids = sorted({int(value) for value in ids})
+    if not ids or not _has_message_uid(conn):
+        return {}
+    keys: dict[int, tuple[str, str]] = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        marks = ",".join("?" for _ in chunk)
+        for row_id, session_id, uid in conn.execute(
+            f"SELECT id, session_id, message_uid FROM messages WHERE id IN ({marks})", chunk,
+        ):
+            if uid:
+                keys[int(row_id)] = (str(session_id), str(uid))
+    return keys
+
+
+def _held_keys(conn: sqlite3.Connection, unread: set[int]) -> set[tuple[str, str]]:
+    """The messages marked unread by hand, as (chat, message_uid): a compaction copy of one is held unread too."""
+    return set(_message_keys(conn, unread).values())
+
+
+def _is_held(row: sqlite3.Row, unread: set[int], held: set[tuple[str, str]]) -> bool:
+    if int(row["id"]) in unread:
+        return True
+    uid = row["message_uid"] if "message_uid" in row.keys() else None
+    return bool(uid) and (str(row["session_id"]), str(uid)) in held
+
+
 def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before: tuple[float, int] | None = None,
                     id_gt: int | None = None, id_lt: int | None = None, limit: int = 200, by_id: bool = False,
-                    asc: bool = False) -> list[sqlite3.Row]:
+                    asc: bool = False, only_ids: list[int] | None = None) -> list[sqlite3.Row]:
     """The SQL half of chatEntries: only the row shapes that can be a agent bubble, in feed order.
 
     active/compacted matches the history route's display read (hermes_state_messages._DISPLAY_ACTIVE_CLAUSE:
@@ -749,6 +781,11 @@ def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before:
     if id_lt is not None:
         sql += " AND m.id < ?"
         params.append(id_lt)
+    if only_ids is not None:
+        if not only_ids:
+            return []
+        sql += f" AND m.id IN ({','.join('?' for _ in only_ids)})"
+        params.extend(only_ids)
     if by_id:
         sql += " ORDER BY m.id ASC" if asc else " ORDER BY m.id DESC"
     else:
@@ -770,13 +807,17 @@ def _parse_cursor(value: Any) -> tuple[float, int] | None:
 
 def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[float, int] | None,
                limit: int, watermark: int = 0, read: set[int] | None = None,
-               unread_only: bool = False) -> tuple[list[dict[str, Any]], str | None]:
+               unread_only: bool = False, unread: set[int] | None = None) -> tuple[list[dict[str, Any]], str | None]:
     """Newest first, paging until `limit` qualifying rows are found or the chat history runs out.
 
-    Every item carries its `read` flag: at or under the Mark-all watermark, in the read list, or a compaction copy of
-    a message read under another id (_read_copies). `unread_only` is the Unread tab; it also ends the scan once a whole
-    batch of raw rows sits at or under the watermark, so it never walks the whole history to fill a page."""
+    Every item carries its `read` flag: marked unread on purpose (`unread`) wins; otherwise at or under the Mark-all
+    watermark, in the read list, or a compaction copy of a message read under another id (_read_copies). `unread_only`
+    is the Unread tab; it also ends the scan once a whole batch of raw rows sits at or under the watermark (unless a
+    row under it was marked unread), so it never walks the whole history to fill a page."""
     read = read or set()
+    unread = unread or set()
+    held = _held_keys(conn, unread)
+    marked_below = any(value <= watermark for value in unread)
     items: list[dict[str, Any]] = []
     cursor = before
     exhausted = True
@@ -784,13 +825,15 @@ def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[f
         rows = _candidate_rows(conn, list(titles), before=cursor, limit=200)
         if not rows:
             return items, None
-        copies = _read_copies(conn, rows, watermark, read)
+        copies = _read_copies(conn, rows, watermark, read, unread)
         for at, row in enumerate(rows):
             item = _inbox_item(row, titles)
             cursor = (float(row["timestamp"] or 0), int(row["id"]))
             if item is not None:
                 item_id = item["id"]
-                item["read"] = item_id <= watermark or item_id in read or item_id in copies
+                on_hold = _is_held(row, unread, held)  # marked unread by hand: held until marked read by hand
+                item["read"] = not on_hold and (item_id <= watermark or item_id in read or item_id in copies)
+                item["marked_unread"] = on_hold
             if item is not None and not (unread_only and item["read"]):
                 items.append(item)
                 if len(items) >= limit:
@@ -799,31 +842,36 @@ def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[f
                     return items, (None if exhausted else f"{cursor[0]}:{cursor[1]}")
         if len(rows) < 200:
             return items, None
-        if unread_only and all(int(row["id"]) <= watermark for row in rows):
+        if unread_only and not marked_below and all(int(row["id"]) <= watermark for row in rows):
             return items, None
     return items, None
 
 
 def _read_inbox_state() -> dict[str, Any]:
-    """{"watermark": max id read by Mark all, "read": [ids above it]}; a bad file reads as an empty tracker."""
+    """{"watermark": max id read by Mark all, "read": [ids above it], "unread": [ids marked unread on purpose]}.
+
+    `unread` overrides everything else (the watermark, the read list, a read compaction copy): it is how a person marks
+    a message unread again. A bad file reads as an empty tracker."""
+    empty = {"watermark": 0, "read": [], "unread": []}
     try:
         data = json.loads(_inbox_read_path().read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {"watermark": 0, "read": []}
+        return empty
     except Exception as exc:  # noqa: BLE001 - a bad file means "nothing read", never a broken Inbox
         log.warning("inbox read store unreadable: %s", exc)
-        return {"watermark": 0, "read": []}
+        return empty
     if not isinstance(data, dict):
-        return {"watermark": 0, "read": []}
+        return empty
     raw_mark = data.get("watermark")
     watermark = int(raw_mark) if isinstance(raw_mark, (int, float)) and not isinstance(raw_mark, bool) and raw_mark > 0 else 0
-    read: list[int] = []
-    raw_read = data.get("read")
-    if isinstance(raw_read, list):
-        for value in raw_read:
-            if isinstance(value, int) and not isinstance(value, bool) and value > watermark:
-                read.append(value)
-    return {"watermark": watermark, "read": sorted(set(read))}
+
+    def ids(name: str, above: int) -> list[int]:
+        raw = data.get(name)
+        if not isinstance(raw, list):
+            return []
+        return sorted({value for value in raw if isinstance(value, int) and not isinstance(value, bool) and value > above})
+
+    return {"watermark": watermark, "read": ids("read", watermark), "unread": ids("unread", 0)}
 
 
 def _write_inbox_state(data: dict[str, Any]) -> None:
@@ -865,16 +913,24 @@ def _unread_count(conn: sqlite3.Connection, titles: dict[str, str], state: dict[
     enough to poll: the SQL prefilters, and the scan stops as soon as the badge cannot grow past 99+ anyway."""
     watermark = int(state.get("watermark") or 0)
     read = set(state.get("read") or [])
+    unread = set(state.get("unread") or [])
+    held = _held_keys(conn, unread)
     count = 0
+    # Messages under the watermark that were marked unread on purpose; the scan below starts above it.
+    below = sorted(value for value in unread if value <= watermark)
+    for start in range(0, len(below), 500):
+        for row in _candidate_rows(conn, list(titles), only_ids=below[start:start + 500], limit=500, by_id=True):
+            if _inbox_item(row, titles) is not None:
+                count += 1
     cursor = watermark
     while count < 1000:
         rows = _candidate_rows(conn, list(titles), id_gt=cursor, limit=500, by_id=True, asc=True)
         if not rows:
             break
-        copies = _read_copies(conn, rows, watermark, read)
+        copies = _read_copies(conn, rows, watermark, read, unread)
         for row in rows:
             cursor = int(row["id"])
-            if cursor in read or cursor in copies:
+            if not _is_held(row, unread, held) and (cursor in read or cursor in copies):
                 continue
             if _inbox_item(row, titles) is None:
                 continue
@@ -905,7 +961,7 @@ async def get_inbox(before: str | None = None, limit: int = INBOX_PAGE, unread: 
             titles = _scope_titles(conn)
             # ?unread=1: the Unread tab, the same unread rule the badge counts.
             items, next_cursor = _feed_page(conn, titles, cursor, page_size, watermark=watermark, read=read_ids,
-                                            unread_only=bool(unread))
+                                            unread_only=bool(unread), unread=set(state.get("unread") or []))
         finally:
             conn.close()
     except sqlite3.Error as exc:
@@ -914,41 +970,92 @@ async def get_inbox(before: str | None = None, limit: int = INBOX_PAGE, unread: 
     return JSONResponse({"items": items, "next": next_cursor})
 
 
-@router.post("/inbox/read")
-async def inbox_mark_read(request: Request):
+async def _inbox_ids(request: Request) -> tuple[list[int] | None, bool, JSONResponse | None]:
+    """The {"ids": [...], "manual": bool} body of the read and unread routes."""
     body, error = await _json_body(request)
     if error is not None:
-        return error
+        return None, False, error
     assert body is not None
     ids = body.get("ids")
     if not isinstance(ids, list) or len(ids) > INBOX_MAX_POST_IDS:
-        return JSONResponse({"detail": f"ids must be a list of at most {INBOX_MAX_POST_IDS} message ids"}, status_code=400)
+        return None, False, JSONResponse(
+            {"detail": f"ids must be a list of at most {INBOX_MAX_POST_IDS} message ids"}, status_code=400)
     clean: list[int] = []
     for value in ids:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            return JSONResponse({"detail": "ids must be whole message ids"}, status_code=400)
+            return None, False, JSONResponse({"detail": "ids must be whole message ids"}, status_code=400)
         clean.append(value)
+    return clean, body.get("manual") is True, None
+
+
+@router.post("/inbox/read")
+async def inbox_mark_read(request: Request):
+    clean, manual, error = await _inbox_ids(request)
+    if error is not None:
+        return error
+    assert clean is not None
     try:
         with _INBOX_LOCK:
             state = _read_inbox_state()
             watermark = int(state.get("watermark") or 0)
             read = set(state.get("read") or [])
+            unread = set(state.get("unread") or [])
+            keys: dict[int, tuple[str, str]] = {}
+            conn = None
+            try:
+                conn = _inbox_conn()
+                if unread:
+                    keys = _message_keys(conn, unread | set(clean))
+            except sqlite3.Error:
+                pass  # identity unknown: fall back to row ids below
+            held_keys = {keys[value] for value in unread if value in keys}
+            # A message marked unread by hand stays unread until it is marked read by hand ("manual": the Inbox's
+            # swipe and hover toggle). Seeing it in the chat, or opening it from the Inbox, does not clear it - nor
+            # a compaction copy of it (same chat and message_uid).
+            if not manual:
+                clean = [value for value in clean if value not in unread and keys.get(value) not in held_keys]
+            released = {keys[value] for value in clean if value in keys}
             for value in clean:
                 if value > watermark:
                     read.add(value)
             state["read"] = sorted(read)[-INBOX_MAX_READ_IDS:]
+            # Marking read releases the message under every row id it has had.
+            state["unread"] = sorted(value for value in unread
+                                     if value not in set(clean) and keys.get(value) not in released)
             try:
-                conn = _inbox_conn()
-                try:
+                if conn is not None:
                     _prune_inbox_state(conn, state)
-                finally:
-                    conn.close()
             except sqlite3.Error:
                 pass  # the tracker is still correct; pruning retries on a later call
+            finally:
+                if conn is not None:
+                    conn.close()
             _write_inbox_state(state)
     except Exception as exc:  # noqa: BLE001
         log.warning("inbox read save failed: %s", exc)
         return JSONResponse({"detail": "could not save the read marker"}, status_code=500)
+    return JSONResponse({"ok": True, "watermark": watermark})
+
+
+@router.post("/inbox/unread")
+async def inbox_mark_unread(request: Request):
+    """Marks messages unread again (the Inbox's swipe and hover toggle). Wins over the watermark and read copies, and
+    holds until the message is marked read by hand ("manual" on /inbox/read) or by Mark all."""
+    clean, _manual, error = await _inbox_ids(request)
+    if error is not None:
+        return error
+    assert clean is not None
+    try:
+        with _INBOX_LOCK:
+            state = _read_inbox_state()
+            watermark = int(state.get("watermark") or 0)
+            wanted = set(clean)
+            state["read"] = [value for value in state.get("read") or [] if value not in wanted]
+            state["unread"] = sorted(set(state.get("unread") or []) | wanted)[-INBOX_MAX_POST_IDS:]
+            _write_inbox_state(state)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("inbox unread save failed: %s", exc)
+        return JSONResponse({"detail": "could not save the unread marker"}, status_code=500)
     return JSONResponse({"ok": True, "watermark": watermark})
 
 
@@ -977,6 +1084,7 @@ async def inbox_mark_all_read(request: Request):
             watermark = max(int(state.get("watermark") or 0), int(upto or 0))
             state["watermark"] = watermark
             state["read"] = [value for value in state.get("read") or [] if value > watermark]
+            state["unread"] = [value for value in state.get("unread") or [] if value > watermark]
             _write_inbox_state(state)
     except sqlite3.Error as exc:
         log.warning("inbox read-all failed: %s", exc)

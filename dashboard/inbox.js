@@ -31,24 +31,47 @@ function normalise(raw) {
     ts: Number((raw && raw.ts) || 0),
     text: String((raw && raw.text) || ""),
     read: Boolean(raw && raw.read),
+    // Marked unread by hand: only marking it read by hand (the toggle) or Mark all clears it.
+    markedUnread: Boolean(raw && raw.marked_unread),
   };
 }
 
-// The chat list's home icon (drawer.js rowEl), so a main-chat message reads the same in both places.
-const HOME_PATHS = ["M3 11l9-7 9 7", "M5 10v10h14V10"];
-function homeIcon() {
+function icon(paths, className) {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
-  svg.classList.add("inbox-home");
-  for (const d of HOME_PATHS) {
+  if (className) svg.classList.add(className);
+  for (const d of paths) {
     const path = document.createElementNS(ns, "path");
     path.setAttribute("d", d);
     svg.append(path);
   }
   return svg;
 }
+
+// The chat list's home icon (drawer.js rowEl), so a main-chat message reads the same in both places.
+const HOME_PATHS = ["M3 11l9-7 9 7", "M5 10v10h14V10"];
+const homeIcon = () => icon(HOME_PATHS, "inbox-home");
+
+// The read toggle: an open envelope marks a message read, a closed one marks it unread.
+const MAIL_OPEN = [
+  "M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z",
+  "m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10",
+];
+const MAIL_CLOSED = [
+  "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z",
+  "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7",
+];
+const toggleText = (item) => (item.read ? "Mark unread" : "Mark read");
+const toggleIcon = (item) => icon(item.read ? MAIL_CLOSED : MAIL_OPEN);
+
+// Swipe right on a row (touch only): the uncovered strip on its left names the action, and letting go past the
+// threshold toggles it. Vertical movement always wins, so the list still scrolls.
+const SWIPE_START_PX = 10;
+const SWIPE_MAX_PX = 120;
+const SWIPE_SHARE = 0.35;
+const SWIPE_SETTLE_MS = 220; // the row's slide back (style.css .inbox-item:not(.swiping) .inbox-row), plus a frame
 
 function listFrom(payload) {
   const raw = payload && Array.isArray(payload.items) ? payload.items : [];
@@ -110,10 +133,15 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
 
   // ---------- rendering ----------
 
+  // One message: the row (tap opens it), the hover toggle beside it, and the strip a swipe uncovers. The toggle is a
+  // sibling, not a child, because a button cannot hold another button.
   function rowNode(item) {
-    const row = el("button", `inbox-row ${item.read ? "read" : "unread"}`);
+    const wrap = el("div", "inbox-item");
+    wrap.dataset.id = String(item.id);
+    const swipe = el("div", "inbox-swipe");
+    swipe.setAttribute("aria-hidden", "true");
+    const row = el("button", "inbox-row");
     row.type = "button";
-    row.dataset.id = String(item.id);
     const top = el("div", "inbox-row-top");
     if (item.home) top.append(homeIcon());
     top.append(el("span", "inbox-thread", item.thread));
@@ -125,7 +153,121 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     }
     row.append(top, el("div", "inbox-text", stripCronWrapper(item.text)));
     row.addEventListener("click", () => void activate(item));
-    return row;
+    const toggle = el("button", "inbox-toggle");
+    toggle.type = "button";
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void toggleRead(item);
+    });
+    wrap.append(swipe, row, toggle);
+    paintRow(wrap, item);
+    attachSwipe(wrap, row, item);
+    return wrap;
+  }
+
+  // Read/unread look plus the toggle's words and icon, which always name the action the toggle would take.
+  function paintRow(wrap, item) {
+    wrap.classList.toggle("read", item.read);
+    wrap.classList.toggle("unread", !item.read);
+    const row = wrap.querySelector(".inbox-row");
+    row.classList.toggle("read", item.read);
+    row.classList.toggle("unread", !item.read);
+    const text = toggleText(item);
+    const toggle = wrap.querySelector(".inbox-toggle");
+    toggle.title = text;
+    toggle.setAttribute("aria-label", text);
+    toggle.replaceChildren(toggleIcon(item));
+    // A swipe in progress, or one closing after release, keeps the words and colour it started with.
+    if (!wrap.classList.contains("swiping") && !wrap.classList.contains("settling")) {
+      wrap.querySelector(".inbox-swipe").replaceChildren(toggleIcon(item), el("span", "inbox-swipe-label", text));
+    }
+  }
+
+  function attachSwipe(wrap, row, item) {
+    let start = null;
+    let swiping = false;
+    let armed = false;
+    let swallowClick = false;
+    let settleTimer = 0;
+    let settleDone = null;
+    const threshold = () => Math.min(SWIPE_MAX_PX, row.offsetWidth * SWIPE_SHARE);
+    // After release the row slides back and the strip closes with it, unchanged; only then does the toggle act, so
+    // the words and colour never flip mid-animation. A new swipe starting meanwhile finishes the old one first.
+    const settle = (fire) => {
+      wrap.classList.remove("swiping");
+      wrap.classList.add("settling");
+      wrap.style.setProperty("--swipe", "0px");
+      settleDone = () => {
+        clearTimeout(settleTimer);
+        settleDone = null;
+        armed = false;
+        wrap.classList.remove("settling", "armed");
+        wrap.style.removeProperty("--swipe");
+        if (fire) void toggleRead(item);
+        else paintRow(wrap, item);
+      };
+      settleTimer = setTimeout(() => settleDone?.(), SWIPE_SETTLE_MS);
+    };
+    row.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") return;
+      start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    });
+    row.addEventListener("pointermove", (event) => {
+      if (!start || event.pointerId !== start.id) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (!swiping) {
+        if (Math.abs(dy) > SWIPE_START_PX && Math.abs(dy) >= Math.abs(dx)) {
+          start = null; // a scroll: leave it to the list
+          return;
+        }
+        if (dx < SWIPE_START_PX || dx < Math.abs(dy) * 1.5) return;
+        settleDone?.();
+        swiping = true;
+        wrap.classList.add("swiping");
+        try {
+          row.setPointerCapture(event.pointerId);
+        } catch {
+          /* capture is a nicety */
+        }
+      }
+      const shift = Math.max(0, Math.min(dx, row.offsetWidth * 0.8));
+      wrap.style.setProperty("--swipe", `${shift}px`);
+      const nowArmed = shift >= threshold();
+      if (nowArmed !== armed) {
+        armed = nowArmed;
+        wrap.classList.toggle("armed", armed);
+        if (armed) {
+          try {
+            navigator.vibrate?.(10);
+          } catch {
+            /* vibrate is optional */
+          }
+        }
+      }
+    });
+    const finish = (event) => {
+      if (!start || event.pointerId !== start.id) return;
+      const fire = swiping && armed && event.type === "pointerup";
+      const wasSwiping = swiping;
+      start = null;
+      swiping = false;
+      if (!wasSwiping) return;
+      // The lift after a swipe must not also open the message.
+      swallowClick = true;
+      setTimeout(() => {
+        swallowClick = false;
+      }, 400);
+      settle(fire);
+    };
+    row.addEventListener("pointerup", finish);
+    row.addEventListener("pointercancel", finish);
+    row.addEventListener("click", (event) => {
+      if (!swallowClick) return;
+      swallowClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
   }
 
   function dateNode(ts) {
@@ -176,11 +318,9 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
   }
 
   function syncReadMarks() {
-    for (const node of listEl.querySelectorAll(".inbox-row")) {
+    for (const node of listEl.querySelectorAll(".inbox-item")) {
       const item = items.find((entry) => String(entry.id) === node.dataset.id);
-      if (!item) continue;
-      node.classList.toggle("read", item.read);
-      node.classList.toggle("unread", !item.read);
+      if (item) paintRow(node, item);
     }
   }
 
@@ -206,7 +346,10 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
         // Read marks may have changed on another device: merge them without dropping paged-in older rows.
         for (const entry of fresh) {
           const item = items.find((row) => row.id === entry.id);
-          if (item) item.read = entry.read;
+          if (item && !item.pending) { // a toggle still saving keeps what it shows
+            item.read = entry.read;
+            item.markedUnread = entry.markedUnread;
+          }
         }
         // A head row that is no longer in the feed means its chat was deleted: at the top, rebuild from the server.
         const headIds = new Set(fresh.map((entry) => entry.id));
@@ -293,10 +436,38 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     }
   }
 
+  // The swipe and the hover toggle: flip one message without opening it. The row and the badge change at once; a
+  // failed save puts the row back. On the Unread tab a row marked read stays until the list reloads, like a tapped one.
+  async function toggleRead(item) {
+    if (item.pending) return; // one save at a time per message, so the server always ends where the screen does
+    item.pending = true;
+    const next = !item.read;
+    const held = item.markedUnread;
+    item.read = next;
+    item.markedUnread = !next;
+    syncReadMarks();
+    setUnread(Math.max(0, unread + (next ? -1 : 1)));
+    try {
+      await api(`${INBOX_API}/${next ? "read" : "unread"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [item.id], manual: true }),
+      });
+    } catch {
+      item.read = !next;
+      item.markedUnread = held;
+      syncReadMarks();
+    } finally {
+      item.pending = false;
+    }
+    void refreshBadge();
+  }
+
   // Tapping a row: mark it read, close the panel (on every screen since it hangs over the chat; the person, 8 Nov 2026),
   // then open the chat at that message (the notification deep link).
   async function activate(item) {
-    if (!item.read) {
+    // A message marked unread by hand stays unread when opened; only the toggle clears it.
+    if (!item.read && !item.markedUnread) {
       item.read = true;
       syncReadMarks();
       await markRead([item.id]);
@@ -321,7 +492,11 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
         body: "{}",
       });
       const watermark = Number(data && data.watermark) || 0;
-      for (const item of items) if (item.id <= watermark) item.read = true;
+      for (const item of items) {
+        if (item.id > watermark) continue;
+        item.read = true;
+        item.markedUnread = false;
+      }
       syncReadMarks();
       setUnread(0);
       if (filter === "unread") void loadHead({ reset: true }); // everything on the Unread tab is read now
