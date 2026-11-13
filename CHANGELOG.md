@@ -80,6 +80,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Already-read replies no longer come back as unread in the Inbox. When Hermes compacts a long chat
+  it writes the messages it keeps back out under new ids; the Inbox kept read state by id, so every
+  compaction brought a batch of read replies back. A copy now counts as read when its original was
+  (same chat, same Hermes message id).
 - A reply that finishes while the app is in the background no longer marks its chat read. The
   page keeps running for a while after it is left, so the read retracted the reply's notification a
   second after it was shown, leaving a home-screen badge count with no notification behind it.

@@ -669,6 +669,46 @@ def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | No
     }
 
 
+def _has_message_uid(conn: sqlite3.Connection) -> bool:
+    """Whether this state.db carries Hermes's stable per-message identity (an older schema may not)."""
+    try:
+        return any(row[1] == "message_uid" for row in conn.execute("PRAGMA table_info(messages)"))
+    except sqlite3.Error:
+        return False
+
+
+def _read_copies(conn: sqlite3.Connection, rows: list[sqlite3.Row], watermark: int, read: set[int]) -> set[int]:
+    """Ids among ``rows`` whose message was already read under another row id.
+
+    Context compaction writes the messages it keeps back out as new rows: new ids, same chat, same ``message_uid``
+    and timestamp, with the originals left inactive. Read state is kept by row id, so without this every compaction
+    brought a batch of already-read replies back as unread. Only rows that look unread by id are looked up, one
+    query per chat (the (session_id, id) index), so the badge stays cheap to poll.
+    """
+    wanted: dict[str, dict[str, list[int]]] = {}
+    for row in rows:
+        row_id = int(row["id"])
+        if row_id <= watermark or row_id in read:
+            continue
+        uid = row["message_uid"] if "message_uid" in row.keys() else None
+        if uid:
+            wanted.setdefault(str(row["session_id"]), {}).setdefault(str(uid), []).append(row_id)
+    found: set[int] = set()
+    for session_id, by_uid in wanted.items():
+        uids = list(by_uid)
+        for start in range(0, len(uids), 500):
+            chunk = uids[start:start + 500]
+            marks = ",".join("?" for _ in chunk)
+            for other_id, uid in conn.execute(
+                f"SELECT id, message_uid FROM messages WHERE session_id = ? AND message_uid IN ({marks})",
+                [session_id, *chunk],
+            ):
+                other_id = int(other_id)
+                if other_id <= watermark or other_id in read:
+                    found.update(row_id for row_id in by_uid.get(str(uid), []) if row_id != other_id)
+    return found
+
+
 def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before: tuple[float, int] | None = None,
                     id_gt: int | None = None, id_lt: int | None = None, limit: int = 200, by_id: bool = False,
                     asc: bool = False) -> list[sqlite3.Row]:
@@ -682,8 +722,10 @@ def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before:
         return []
     marks = ",".join("?" for _ in session_ids)
     now = time.time()
+    uid = "m.message_uid" if _has_message_uid(conn) else "NULL AS message_uid"
     sql = (
-        "SELECT m.id, m.session_id, m.role, m.content, m.display_kind, m.display_metadata, m.timestamp, m.finish_reason, m.tool_calls"
+        "SELECT m.id, m.session_id, m.role, m.content, m.display_kind, m.display_metadata, m.timestamp, m.finish_reason, m.tool_calls,"
+        f" {uid}"
         f" FROM messages m WHERE m.session_id IN ({marks})"
         " AND (m.active = 1 OR m.compacted = 1)"
         " AND ((m.role = 'assistant' AND COALESCE(m.display_kind, '') NOT IN ('hidden', 'failed_turn')"
@@ -727,12 +769,14 @@ def _parse_cursor(value: Any) -> tuple[float, int] | None:
 
 
 def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[float, int] | None,
-               limit: int, accept: Any = None, stop_at_or_below: int = 0) -> tuple[list[dict[str, Any]], str | None]:
+               limit: int, watermark: int = 0, read: set[int] | None = None,
+               unread_only: bool = False) -> tuple[list[dict[str, Any]], str | None]:
     """Newest first, paging until `limit` qualifying rows are found or the chat history runs out.
 
-    `accept` narrows the feed (the Unread tab). `stop_at_or_below` ends the scan once a whole batch
-    of raw rows sits at or under that id: everything there is read by Mark all, so the Unread tab never walks the
-    whole history to fill a page."""
+    Every item carries its `read` flag: at or under the Mark-all watermark, in the read list, or a compaction copy of
+    a message read under another id (_read_copies). `unread_only` is the Unread tab; it also ends the scan once a whole
+    batch of raw rows sits at or under the watermark, so it never walks the whole history to fill a page."""
+    read = read or set()
     items: list[dict[str, Any]] = []
     cursor = before
     exhausted = True
@@ -740,10 +784,14 @@ def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[f
         rows = _candidate_rows(conn, list(titles), before=cursor, limit=200)
         if not rows:
             return items, None
+        copies = _read_copies(conn, rows, watermark, read)
         for at, row in enumerate(rows):
             item = _inbox_item(row, titles)
             cursor = (float(row["timestamp"] or 0), int(row["id"]))
-            if item is not None and (accept is None or accept(item)):
+            if item is not None:
+                item_id = item["id"]
+                item["read"] = item_id <= watermark or item_id in read or item_id in copies
+            if item is not None and not (unread_only and item["read"]):
                 items.append(item)
                 if len(items) >= limit:
                     # More raw rows in this batch, or a full batch, may hold older qualifying rows.
@@ -751,7 +799,7 @@ def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[f
                     return items, (None if exhausted else f"{cursor[0]}:{cursor[1]}")
         if len(rows) < 200:
             return items, None
-        if stop_at_or_below and all(int(row["id"]) <= stop_at_or_below for row in rows):
+        if unread_only and all(int(row["id"]) <= watermark for row in rows):
             return items, None
     return items, None
 
@@ -813,8 +861,8 @@ def _max_feed_id(conn: sqlite3.Connection, titles: dict[str, str]) -> int:
 
 
 def _unread_count(conn: sqlite3.Connection, titles: dict[str, str], state: dict[str, Any]) -> int:
-    """Feed items above the watermark that are not in the read list. Cheap enough to poll: the SQL prefilters,
-    and the scan stops as soon as the badge cannot grow past 99+ anyway."""
+    """Feed items above the watermark that are not in the read list, nor compaction copies of a read message. Cheap
+    enough to poll: the SQL prefilters, and the scan stops as soon as the badge cannot grow past 99+ anyway."""
     watermark = int(state.get("watermark") or 0)
     read = set(state.get("read") or [])
     count = 0
@@ -823,9 +871,10 @@ def _unread_count(conn: sqlite3.Connection, titles: dict[str, str], state: dict[
         rows = _candidate_rows(conn, list(titles), id_gt=cursor, limit=500, by_id=True, asc=True)
         if not rows:
             break
+        copies = _read_copies(conn, rows, watermark, read)
         for row in rows:
             cursor = int(row["id"])
-            if cursor in read:
+            if cursor in read or cursor in copies:
                 continue
             if _inbox_item(row, titles) is None:
                 continue
@@ -851,20 +900,17 @@ async def get_inbox(before: str | None = None, limit: int = INBOX_PAGE, unread: 
             state = _read_inbox_state()
         watermark = int(state.get("watermark") or 0)
         read_ids = set(state.get("read") or [])
-        # ?unread=1: the Unread tab, the same unread rule the badge counts.
-        accept = (lambda item: item["id"] > watermark and item["id"] not in read_ids) if unread else None
         conn = _inbox_conn()
         try:
             titles = _scope_titles(conn)
-            items, next_cursor = _feed_page(conn, titles, cursor, page_size, accept=accept,
-                                            stop_at_or_below=watermark if unread else 0)
+            # ?unread=1: the Unread tab, the same unread rule the badge counts.
+            items, next_cursor = _feed_page(conn, titles, cursor, page_size, watermark=watermark, read=read_ids,
+                                            unread_only=bool(unread))
         finally:
             conn.close()
     except sqlite3.Error as exc:
         log.warning("inbox read failed: %s", exc)
         return JSONResponse({"detail": "inbox unavailable"}, status_code=503)
-    for item in items:
-        item["read"] = item["id"] <= watermark or item["id"] in read_ids
     return JSONResponse({"items": items, "next": next_cursor})
 
 

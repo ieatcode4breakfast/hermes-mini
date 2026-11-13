@@ -117,6 +117,52 @@ class InboxJobWrapperTest(RouteTestCase):
         self.assertEqual(item["text"], "Jump reminder — time to jump!")
 
 
+class InboxCompactionCopyTest(RouteTestCase):
+    """Context compaction re-inserts kept messages under new ids; a read message must stay read."""
+
+    def _db(self):
+        path = self.home / "state.db"
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT, "
+            "display_metadata TEXT, timestamp REAL, finish_reason TEXT, tool_calls TEXT, active INTEGER, "
+            "compacted INTEGER, message_uid TEXT)"
+        )
+        conn.execute("CREATE TABLE session_turn_leases (conversation_id TEXT, expires_at REAL, acquired_at REAL)")
+        conn.execute("INSERT INTO sessions VALUES ('chat', 'Reminders', 0)")
+        return conn
+
+    def _add(self, conn, row_id, uid, text, active=1, ts=1_800_000_000.0):
+        conn.execute(
+            "INSERT INTO messages VALUES (?, 'chat', 'assistant', ?, NULL, NULL, ?, 'stop', NULL, ?, 0, ?)",
+            (row_id, text, ts, active, uid),
+        )
+        conn.commit()
+
+    def test_a_compaction_copy_of_a_read_reply_stays_read(self):
+        self.client.post("/api/plugins/hermes-mini/app-chats", json={"id": "chat"})
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self._add(conn, 11, "uid-b", "Changed the wording", ts=1_800_000_060.0)
+        base = "/api/plugins/hermes-mini/inbox"
+        self.assertEqual(self.client.get(f"{base}/unread-count").json()["count"], 2)
+        self.client.post(f"{base}/read", json={"ids": [10]})
+        self.assertEqual(self.client.get(f"{base}/unread-count").json()["count"], 1)
+
+        # Compaction: the originals go inactive and come back as new rows with the same message_uid.
+        conn.execute("UPDATE messages SET active = 0")
+        self._add(conn, 50, "uid-a", "Logged: 10h30m")
+        self._add(conn, 51, "uid-b", "Changed the wording", ts=1_800_000_060.0)
+        conn.close()
+
+        self.assertEqual(self.client.get(f"{base}/unread-count").json()["count"], 1)
+        unread = self.client.get(f"{base}?unread=1").json()["items"]
+        self.assertEqual([item["id"] for item in unread], [51])
+        feed = {item["id"]: item["read"] for item in self.client.get(base).json()["items"]}
+        self.assertEqual(feed, {50: True, 51: False})
+
+
 class IdentityRoutesTest(RouteTestCase):
     def test_get_identity_is_a_pure_read(self):
         before = self.snapshot_tree(self.home)
