@@ -245,44 +245,18 @@ export function createDrawer(deps) {
   // Records that a chat has been looked at. The local map updates now, so the dot clears at once, and the server keeps
   // the shared copy for the other devices. The mark is the chat's own latest activity or now, whichever is later, so a
   // slightly different clock on the phone can never leave a just-read chat looking unread.
-  // This device's own reply/job notifications for a chat close as soon as the chat is read here (sw.js does the
-  // same on a dismiss push from another device). Approval and question notifications stay until answered.
-  function closeChatNotifications(id) {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.getRegistration().then((reg) => {
-      if (!reg || !reg.getNotifications) return;
-      return reg.getNotifications().then((shown) => {
-        for (const n of shown) {
-          const data = n.data || {};
-          if (data.session_id === id && (data.kind === "reply" || data.kind === "job")) n.close();
-        }
-      });
-    }).catch(() => {});
-  }
-
-  // This device's push subscription, sent with a read mark so the server's retraction skips the device that read the
-  // chat (it closes its own notifications above). "" when push is off or unavailable.
-  function pushEndpoint() {
-    if (!("serviceWorker" in navigator)) return Promise.resolve("");
-    return navigator.serviceWorker.getRegistration()
-      .then((reg) => (reg && reg.pushManager ? reg.pushManager.getSubscription() : null))
-      .then((sub) => (sub && sub.endpoint) || "")
-      .catch(() => "");
-  }
-
   function markSeen(id, at = null) {
     if (!id) return;
-    closeChatNotifications(id);
     const row = st.rows.find((item) => item.id === id);
     const stamp = Math.floor(Math.max(Number(at) || 0, row ? row.last_active : 0, Date.now() / 1000));
     if ((Number(st.seen.seen[id]) || 0) >= stamp) return; // already recorded at least this far
     st.seen.seen[id] = stamp;
     if (st.open && st.rows.some((row) => row.id === id)) render({ keepScroll: true });
-    pushEndpoint().then((endpoint) => deps.api(SEEN_URL, {
+    deps.api(SEEN_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(endpoint ? { id, at: stamp, endpoint } : { id, at: stamp }),
-    })).then((data) => {
+      body: JSON.stringify({ id, at: stamp }),
+    }).then((data) => {
       mergeSeen(data);
       st.seenLoaded = true;
       if (st.open) render({ keepScroll: true });

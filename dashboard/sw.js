@@ -5,7 +5,7 @@
 // correct because those files are the app. The computer viewer and its noVNC runtime are OPTIONAL_CORE:
 // each is precached on its own, and a failure there is ignored, so a desktop module that is absent can
 // never fail the app install. They are fetched on demand the first time the viewer opens anyway.
-const CACHE = "hermes-mini-v42";
+const CACHE = "hermes-mini-v43";
 const SCOPE_PATH = new URL("./", self.location.href).pathname;
 // The app is served at /dashboard-plugins/hermes-mini/ but its API lives at /api/plugins/hermes-mini/
 // (any reverse-proxy prefix in front of both is preserved). Same split app.js makes for PREFIX.
@@ -174,18 +174,6 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// Closes the reply and job notifications for one chat. Approval and question notifications stay: they still need an
-// answer. The app calls the same thing through the registration when a chat is opened (drawer.js markSeen).
-const DISMISSABLE_KINDS = new Set(["reply", "job"]);
-async function closeChatNotifications(sessionId) {
-  if (!sessionId) return;
-  const shown = await self.registration.getNotifications();
-  for (const notification of shown) {
-    const data = notification.data || {};
-    if (data.session_id === sessionId && DISMISSABLE_KINDS.has(data.kind)) notification.close();
-  }
-}
-
 // Push arrives even when no tab is open. If the app is visibly focused it already shows the approval card,
 // question or reply, so the notification is skipped to avoid announcing what the person is looking at.
 self.addEventListener("push", (event) => {
@@ -198,11 +186,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Hermes Mini";
   const kind = data.kind || "";
   const tag = data.tag || "hermes-mini";
-  // The chat was read somewhere (push_store.dismiss): close its reply/job notifications here and show nothing.
-  if (kind === "dismiss") {
-    event.waitUntil(closeChatNotifications(data.session_id || ""));
-    return;
-  }
+  // Older servers sent a "dismiss" push when a chat was read; notifications are no longer retracted, so it is ignored.
+  if (kind === "dismiss") return;
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

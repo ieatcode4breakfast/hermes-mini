@@ -90,6 +90,7 @@ class DictationRouteTest(RouteTestCase):
 class InboxJobWrapperTest(RouteTestCase):
     def test_a_wrapped_job_preview_shows_only_the_result(self):
         conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.row_factory = sqlite3.Row
         conn.execute(
             "CREATE TABLE m (id INTEGER, role TEXT, display_kind TEXT, content TEXT, session_id TEXT, "
@@ -252,6 +253,98 @@ class InboxCompactionCopyTest(InboxDbCase):
         self.client.post(f"{base}/read-all", json={})
         self.assertEqual(count(), 0)
         self.assertEqual(mark("unread", ["x"]).status_code, 400)
+
+
+class MergedJobRowsTest(InboxDbCase):
+    """Hermes folds job results and the person's next message into one user row (dropping the job label).
+
+    The chat redraws that row from its originals (/merged-jobs) and the Inbox lists the job originals again.
+    """
+
+    JOB = "[Scheduled job result]\n"
+
+    def _merged_db(self, with_absorbed=True):
+        path = self.home / "state.db"
+        conn = sqlite3.connect(path)
+        self.addCleanup(conn.close)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT, "
+            "display_metadata TEXT, timestamp REAL, finish_reason TEXT, tool_calls TEXT, active INTEGER, "
+            f"compacted INTEGER, message_uid TEXT{', absorbed_message_uids TEXT' if with_absorbed else ''})")
+        conn.execute("CREATE TABLE session_turn_leases (conversation_id TEXT, expires_at REAL, acquired_at REAL)")
+        conn.execute("INSERT INTO sessions VALUES ('chat', 'Reminders', 0)")
+        self.client.post("/api/plugins/hermes-mini/app-chats", json={"id": "chat"})
+
+        def row(row_id, role, content, kind, ts, active, uid, absorbed=None):
+            values = [row_id, "chat", role, content, kind, None, ts, "stop" if role == "assistant" else None, None,
+                      active, 0, uid]
+            if with_absorbed:
+                values.append(absorbed)
+            conn.execute(f"INSERT INTO messages VALUES ({','.join('?' for _ in values)})", values)
+
+        row(1, "assistant", "Morning.", None, 1_800_000_000.0, 1, "u-a")
+        # Two job results, then the person's reply: the originals go inactive, the fold is a new active row.
+        row(2, "user", self.JOB + "Take your meds.", "job_delivery", 1_800_000_100.0, 0, "u-j1")
+        row(3, "user", self.JOB + "Sleep check: what time did you sleep?", "job_delivery", 1_800_000_200.0, 0, "u-j2")
+        row(4, "user", "Slept around 10:30.", None, 1_800_000_300.0, 0, "u-me")
+        merged = "\n\n".join([self.JOB + "Take your meds.", self.JOB + "Sleep check: what time did you sleep?",
+                                "Slept around 10:30."])
+        row(9, "user", merged, None, 1_800_000_100.0, 1, "u-j1", json.dumps(["u-j2", "u-me"]) if with_absorbed else None)
+        row(10, "assistant", "Logged.", None, 1_800_000_400.0, 1, "u-b")
+        conn.commit()
+        return conn
+
+    def parts(self):
+        response = self.client.get("/api/plugins/hermes-mini/merged-jobs?session=chat")
+        self.assertEqual(response.status_code, 200)
+        return response.json()["rows"]
+
+    def test_the_chat_gets_the_originals_of_a_folded_row(self):
+        self._merged_db()
+        parts = self.parts()
+        self.assertEqual(list(parts), ["9"])
+        self.assertEqual([(p["id"], p["display_kind"]) for p in parts["9"]],
+                         [(2, "job_delivery"), (3, "job_delivery"), (9, None)])
+        self.assertEqual(parts["9"][2]["content"], "Slept around 10:30.")
+        self.assertEqual(parts["9"][0]["timestamp"], 1_800_000_100.0)
+
+    def test_the_inbox_lists_folded_job_results_by_their_original_ids(self):
+        self._merged_db()
+        self.assertEqual(sorted(item["id"] for item in self.feed()), [1, 2, 3, 10])
+        texts = {item["id"]: item["text"] for item in self.feed()}
+        self.assertEqual(texts[3], "Sleep check: what time did you sleep?")
+        self.assertEqual(self.count(), 4)
+        self.mark("read", [2, 3], manual=False)
+        self.assertEqual(self.count(), 2)
+
+    def test_a_job_result_still_shown_by_an_active_copy_is_not_listed_twice(self):
+        conn = self._merged_db()
+        conn.execute("INSERT INTO messages VALUES (20, 'chat', 'user', ?, 'job_delivery', NULL, 1800000200.0, NULL, NULL,"
+                     " 1, 0, 'u-j2', NULL)", (self.JOB + "Sleep check: what time did you sleep?",))
+        conn.commit()
+        self.assertEqual(sorted(item["id"] for item in self.feed()), [1, 2, 10, 20])
+
+    def test_a_fold_without_a_job_or_with_a_missing_original_is_left_alone(self):
+        conn = self._merged_db()
+        conn.execute("DELETE FROM messages WHERE id = 3")
+        conn.commit()
+        self.assertEqual(self.parts(), {})
+        conn.execute("UPDATE messages SET display_kind = NULL WHERE id = 2")
+        conn.execute("INSERT INTO messages VALUES (3, 'chat', 'user', 'two', NULL, NULL, 1800000200.0, NULL, NULL, 0, 0,"
+                     " 'u-j2', NULL)")
+        conn.commit()
+        self.assertEqual(self.parts(), {})
+
+    def test_an_older_hermes_without_fold_records_changes_nothing(self):
+        self._merged_db(with_absorbed=False)
+        self.assertEqual(self.parts(), {})
+        self.assertEqual(sorted(item["id"] for item in self.feed()), [1, 10])
+
+    def test_the_route_wants_a_chat_id(self):
+        self._merged_db()
+        self.assertEqual(self.client.get("/api/plugins/hermes-mini/merged-jobs").status_code, 400)
+        self.assertEqual(self.client.get("/api/plugins/hermes-mini/merged-jobs?session=nope").json(), {"rows": {}})
 
 
 class InboxManualUnreadTest(InboxDbCase):
@@ -555,14 +648,15 @@ class DataRoutesTest(RouteTestCase):
         self.assertIn("seen", body)
         self.assertTrue((self.home / "data" / "hermes-mini" / "seen.json").is_file())
 
-    def test_seen_takes_the_reading_devices_push_endpoint(self):
+    def test_reading_a_chat_sends_no_push(self):
+        # Notifications are not retracted on read. An older cached page still sends its push endpoint: ignored.
         url = "/api/plugins/hermes-mini/seen"
-        ok = self.client.put(url, json={"id": "chat-a", "at": 1_800_000_000, "endpoint": "https://fcm.googleapis.com/fcm/send/x"})
+        with mock.patch.object(self.api._push_store(), "_queue") as queued:
+            ok = self.client.put(url, json={"id": "chat-a", "at": 1_800_000_000, "endpoint": "https://fcm.googleapis.com/fcm/send/x"})
+            self.assertEqual(self.client.put(url, json={"id": "chat-b", "at": 1_800_000_000}).status_code, 200)
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.json()["seen"]["chat-a"], 1_800_000_000)
-        self.assertEqual(self.client.put(url, json={"id": "chat-b", "at": 1_800_000_000}).status_code, 200)
-        self.assertEqual(self.client.put(url, json={"id": "chat-c", "at": 1, "endpoint": 7}).status_code, 400)
-        self.assertEqual(self.client.put(url, json={"id": "chat-c", "at": 1, "endpoint": "x" * 3000}).status_code, 400)
+        queued.put_nowait.assert_not_called()
 
     def test_app_chats_registry_is_empty_until_a_chat_is_added(self):
         body = self.client.get("/api/plugins/hermes-mini/app-chats").json()
@@ -591,6 +685,7 @@ class AppChatsHomeRoutesTest(RouteTestCase):
             "/api/plugins/hermes-mini/app-chats", json={"id": "home", "home": True},
         )
         conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.row_factory = sqlite3.Row
         conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
         conn.executemany(

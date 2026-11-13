@@ -54,8 +54,8 @@ class PushKeyTest(DisposableHome):
         self.assertEqual(raw[0], 0x04)
 
 
-class DismissTest(DisposableHome):
-    """A read chat's reply/job notification is retracted once, and only if one was actually sent."""
+class NoRetractionTest(DisposableHome):
+    """Notifications are never retracted by the server: a reply records nothing for a later read to act on."""
 
     def setUp(self):
         super().setUp()
@@ -67,57 +67,11 @@ class DismissTest(DisposableHome):
         put.start(); start.start()
         self.addCleanup(put.stop); self.addCleanup(start.stop)
 
-    def test_reply_then_read_sends_one_dismiss(self):
+    def test_a_reply_queues_one_push_and_writes_no_shown_record(self):
         self.assertTrue(self.push.notify("reply", "Mini", "hi", "chat-a", "reply:chat-a"))
-        stamp = self.push._read_shown()["chat-a"]
-        self.assertTrue(self.push.dismiss("chat-a", stamp + 5))
-        self.assertEqual(self.sent[-1]["kind"], "dismiss")
-        self.assertEqual(self.sent[-1]["session_id"], "chat-a")
-        # Already retracted: a second read sends nothing.
-        self.assertFalse(self.push.dismiss("chat-a", stamp + 10))
-        self.assertEqual(len(self.sent), 2)
-
-    def test_read_mark_older_than_the_notification_keeps_it(self):
-        self.push.notify("job", "Mini", "done", "chat-b", "job:7")
-        stamp = self.push._read_shown()["chat-b"]
-        self.assertFalse(self.push.dismiss("chat-b", stamp - 60))
-        self.assertIn("chat-b", self.push._read_shown())
-
-    def _subscribe(self, endpoint):
-        self.push.add_subscription({"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}})
-
-    def test_the_only_device_reading_gets_no_dismiss_push(self):
-        # It closes its own notification locally; a push that shows nothing would spend its silent-push allowance.
-        phone = "https://fcm.googleapis.com/fcm/send/phone"
-        self._subscribe(phone)
-        self.push.notify("reply", "Mini", "hi", "chat-d", "reply:chat-d")
-        stamp = self.push._read_shown()["chat-d"]
-        self.assertFalse(self.push.dismiss("chat-d", stamp + 5, phone))
         self.assertEqual([item["kind"] for item in self.sent], ["reply"])
-        self.assertNotIn("chat-d", self.push._read_shown())
-
-    def test_dismiss_skips_the_reader_and_reaches_the_other_devices(self):
-        phone = "https://fcm.googleapis.com/fcm/send/phone"
-        laptop = "https://fcm.googleapis.com/fcm/send/laptop"
-        self._subscribe(phone)
-        self._subscribe(laptop)
-        self.push.notify("reply", "Mini", "hi", "chat-e", "reply:chat-e")
-        stamp = self.push._read_shown()["chat-e"]
-        self.assertTrue(self.push.dismiss("chat-e", stamp + 5, phone))
-        posted = []
-        with mock.patch.object(self.push, "_encrypt_for", side_effect=lambda sub, data: data), \
-                mock.patch.object(self.push, "_post", side_effect=lambda endpoint, body: posted.append((endpoint, body)) or 201):
-            self.push._broadcast(self.sent[-1])
-        self.assertEqual([endpoint for endpoint, _ in posted], [laptop])
-        # The skip is queue-only: it never reaches a device.
-        self.assertNotIn(b"phone", posted[0][1])
-        self.assertNotIn(self.push._SKIP_KEY.encode(), posted[0][1])
-
-    def test_approvals_and_unnotified_chats_send_nothing(self):
-        self.push.notify("approval", "Mini", "rm -rf", "chat-c", "approval:chat-c")
-        self.assertFalse(self.push.dismiss("chat-c", 2_000_000_000))
-        self.assertFalse(self.push.dismiss("never-notified", 2_000_000_000))
-        self.assertEqual([item["kind"] for item in self.sent], ["approval"])
+        self.assertFalse(hasattr(self.push, "dismiss"))
+        self.assertFalse((self.home / "data" / "hermes-mini" / "push" / "shown.json").exists())
 
 
 @unittest.skipUnless(HAVE_FASTAPI, "FastAPI is not installed in this environment")

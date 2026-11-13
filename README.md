@@ -210,14 +210,9 @@ The VAPID `sub` claim uses, in order: your configured push contact, your configu
 Hermes' configured dashboard/gateway public URL, then the origin the request came from. No personal
 domain is baked into the source.
 
-Notifications are retracted once their chat is read. Opening a chat closes that device's reply and
-job notifications for it straight away. The read mark also reaches the server, which sends the other
-devices a "dismiss" push that closes the same notifications and shows nothing. A dismiss is sent
-only for a chat that was actually notified (recorded in `push/shown.json`), only once per
-notification, and never to the device that read the chat, so with one device subscribed no dismiss
-is sent at all. A chat only counts as read while the app is on screen: a reply that finishes in the
-background leaves its notification alone. Approval and question notifications are never retracted
-this way: they stay until answered.
+A notification stays until it is tapped or swiped away. Reading its chat in the app does not close
+it: on many Android launchers an app closing its own notification leaves the icon's count behind,
+and a web app cannot correct that count.
 
 ## Scheduled job results
 
@@ -274,13 +269,12 @@ not set up, the button is hidden; when it is, **Start Screen** asks Hermes to st
 Tested here against the real Hermes runtime: the plugin loads through Hermes' discovery and
 `register(ctx)`; the manifest passes `hermes plugins doctor` and `hermes plugins validate`; every
 app route in the suite; settings/identity/avatar validation; push key opt-in and endpoint gating;
-which notifications a read chat retracts;
 dictation delegation to Hermes' provider with a mocked provider; the app-chat scoping and the
 self-edit guard; scheduled-job target resolution across ids, names, archived chats and missing
 chats; the browser module graph and service-worker asset list.
 
 Not verified here, and worth trying yourself: a real desktop session through Bot Desktop, a real push
-delivery to a device (including a dismiss closing it), a real speech-to-text transcription, a live scheduled-job delivery, and the
+delivery to a device, a real speech-to-text transcription, a live scheduled-job delivery, and the
 app's appearance in a specific browser. Those require services and credentials this project does not
 ship. See
 [CHANGELOG.md](CHANGELOG.md) for the honest status list.

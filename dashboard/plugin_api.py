@@ -457,10 +457,6 @@ async def put_seen(request: Request):
     if isinstance(at, bool) or not isinstance(at, (int, float)) or at != at or at in (float("inf"), float("-inf")):
         return JSONResponse({"detail": "at must be a unix time in seconds"}, status_code=400)
     stamp = int(at)
-    # Optional: the reading device's push subscription, so its own retraction is not pushed back to it.
-    reader = body.get("endpoint")
-    if reader is not None and (not isinstance(reader, str) or len(reader) > 2048):
-        return JSONResponse({"detail": "endpoint must be a push subscription URL"}, status_code=400)
     try:
         with _SEEN_LOCK:
             data = _read_seen()
@@ -477,11 +473,6 @@ async def put_seen(request: Request):
     except Exception as exc:  # noqa: BLE001
         log.warning("seen store save failed: %s", exc)
         return JSONResponse({"detail": "could not save the seen marker"}, status_code=500)
-    # A read chat's notifications are retracted on the person's other devices (push_store.dismiss).
-    try:
-        _push_store().dismiss(session_id, stamp, reader or "")
-    except Exception as exc:  # noqa: BLE001 - the read mark is saved; a missed retraction is cosmetic
-        log.warning("push dismiss failed: %s", exc)
     return JSONResponse(data)
 
 
@@ -677,6 +668,104 @@ def _has_message_uid(conn: sqlite3.Connection) -> bool:
         return False
 
 
+# Hermes folds back-to-back user rows into one before a turn (agent/agent_runtime_helpers.py _merge_consecutive_users).
+# Job results stored by the bridge are user rows, so the person's reply after a run of job results folds them all into
+# one row, and the fold drops the job classification on purpose (Hermes keeps the person's turn addressable). The
+# app would draw that row as one bubble from the person. The originals stay in state.db, inactive: the survivor names
+# them by message_uid (its own uid, then absorbed_message_uids in text order). The chat redraws a merged row from
+# them (/merged-jobs) and the Inbox lists the job originals again (_candidate_rows).
+_MERGED_SURVIVOR_SQL = ("s.role = 'user' AND s.display_kind IS NULL AND s.absorbed_message_uids IS NOT NULL"
+                        " AND (s.active = 1 OR s.compacted = 1)")
+MERGED_MAX_ROWS = 500
+
+
+def _has_absorbed_uids(conn: sqlite3.Connection) -> bool:
+    try:
+        return any(row[1] == "absorbed_message_uids" for row in conn.execute("PRAGMA table_info(messages)"))
+    except sqlite3.Error:
+        return False
+
+
+def _merged_survivors(conn: sqlite3.Connection, session_ids: list[str]) -> list[tuple[sqlite3.Row, list[str]]]:
+    """Active folded user rows in these chats, each with its constituents' uids in text order."""
+    if not session_ids or not _has_message_uid(conn) or not _has_absorbed_uids(conn):
+        return []
+    marks = ",".join("?" for _ in session_ids)
+    rows = conn.execute(
+        f"SELECT s.id, s.session_id, s.message_uid, s.absorbed_message_uids FROM messages s"
+        f" WHERE s.session_id IN ({marks}) AND {_MERGED_SURVIVOR_SQL} ORDER BY s.id DESC LIMIT ?",
+        [*session_ids, MERGED_MAX_ROWS]).fetchall()
+    out = []
+    for row in rows:
+        try:
+            absorbed = json.loads(row["absorbed_message_uids"])
+        except (ValueError, TypeError):
+            continue
+        uids = [row["message_uid"], *(absorbed if isinstance(absorbed, list) else [])]
+        if len(uids) > 1 and all(isinstance(uid, str) and uid for uid in uids):
+            out.append((row, uids))
+    return out
+
+
+def _constituent_rows(conn: sqlite3.Connection, session_id: str, uids: list[str], survivor_id: int) -> dict[str, sqlite3.Row]:
+    """uid -> the earliest unfolded row carrying it (the original as it was stored)."""
+    marks = ",".join("?" for _ in uids)
+    found: dict[str, sqlite3.Row] = {}
+    for row in conn.execute(
+            f"SELECT id, message_uid, role, content, display_kind, timestamp, active, compacted FROM messages"
+            f" WHERE session_id = ? AND message_uid IN ({marks}) AND absorbed_message_uids IS NULL AND id != ?"
+            f" ORDER BY id ASC", [session_id, *uids, survivor_id]):
+        found.setdefault(row["message_uid"], row)
+    return found
+
+
+def _merged_job_ids(conn: sqlite3.Connection, session_ids: list[str]) -> list[int]:
+    """Ids of job results that live on only inside a folded row: the Inbox lists these originals."""
+    ids: list[int] = []
+    for survivor, uids in _merged_survivors(conn, session_ids):
+        marks = ",".join("?" for _ in uids)
+        jobs = conn.execute(
+            f"SELECT id, message_uid, active, compacted FROM messages WHERE session_id = ? AND message_uid IN ({marks})"
+            " AND role = 'user' AND display_kind = 'job_delivery' ORDER BY id ASC",
+            [survivor["session_id"], *uids]).fetchall()
+        shown = {row["message_uid"] for row in jobs if row["active"] or row["compacted"]}  # already in the feed
+        first: dict[str, int] = {}
+        for row in jobs:
+            first.setdefault(row["message_uid"], int(row["id"]))
+        ids.extend(row_id for uid, row_id in first.items() if uid not in shown)
+    return sorted(set(ids))
+
+
+def _merged_job_parts(conn: sqlite3.Connection, session_id: str) -> dict[str, list[dict[str, Any]]]:
+    """Folded rows in one chat that swallowed a job result, as their originals (app.js expandMerged).
+
+    A job part keeps its original id (the one its notification and Inbox entry name); every other part keeps the
+    folded row's id, the one Hermes addresses that turn by. A row whose originals are not all found is left alone.
+    """
+    out: dict[str, list[dict[str, Any]]] = {}
+    for survivor, uids in _merged_survivors(conn, [session_id]):
+        originals = _constituent_rows(conn, session_id, uids, int(survivor["id"]))
+        if len(originals) != len(set(uids)):
+            continue
+        parts: list[dict[str, Any]] = []
+        for uid in dict.fromkeys(uids):
+            row = originals[uid]
+            content = row["content"]
+            if not isinstance(content, str) or content.startswith("\x00"):
+                parts = []  # multimodal or undecodable: draw the folded row as Hermes stored it
+                break
+            job = row["display_kind"] == "job_delivery"
+            parts.append({
+                "id": int(row["id"]) if job else int(survivor["id"]),
+                "display_kind": row["display_kind"],
+                "content": content,
+                "timestamp": row["timestamp"],
+            })
+        if parts and any(part["display_kind"] == "job_delivery" for part in parts):
+            out[str(survivor["id"])] = parts
+    return out
+
+
 def _read_copies(conn: sqlite3.Connection, rows: list[sqlite3.Row], watermark: int, read: set[int],
                  unread: set[int] | None = None) -> set[int]:
     """Ids among ``rows`` whose message was already read under another row id.
@@ -755,15 +844,19 @@ def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before:
     marks = ",".join("?" for _ in session_ids)
     now = time.time()
     uid = "m.message_uid" if _has_message_uid(conn) else "NULL AS message_uid"
+    # Job results folded into the person's next message (_merged_job_ids) are listed by their originals.
+    merged = _merged_job_ids(conn, session_ids)
+    folded = f" OR m.id IN ({','.join('?' for _ in merged)})" if merged else ""
     sql = (
         "SELECT m.id, m.session_id, m.role, m.content, m.display_kind, m.display_metadata, m.timestamp, m.finish_reason, m.tool_calls,"
         f" {uid}"
         f" FROM messages m WHERE m.session_id IN ({marks})"
-        " AND (m.active = 1 OR m.compacted = 1)"
+        " AND (((m.active = 1 OR m.compacted = 1)"
         " AND ((m.role = 'assistant' AND COALESCE(m.display_kind, '') NOT IN ('hidden', 'failed_turn')"
         "       AND (m.finish_reason IS NULL OR m.finish_reason != 'tool_calls')"
         "       AND (m.tool_calls IS NULL OR m.tool_calls = '' OR m.tool_calls = '[]'))"
-        "      OR (m.role = 'user' AND m.display_kind = 'job_delivery'))"
+        "      OR (m.role = 'user' AND m.display_kind = 'job_delivery')))"
+        f"{folded})"
         " AND NOT EXISTS ("
         "     SELECT 1 FROM session_turn_leases stl"
         "     WHERE stl.conversation_id = m.session_id"
@@ -771,7 +864,7 @@ def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before:
         "       AND m.timestamp >= stl.acquired_at - 1.0"
         " )"
     )
-    params: list[Any] = list(session_ids) + [now]
+    params: list[Any] = list(session_ids) + merged + [now]
     if before is not None:
         sql += " AND (m.timestamp < ? OR (m.timestamp = ? AND m.id < ?))"
         params.extend([before[0], before[0], before[1]])
@@ -968,6 +1061,23 @@ async def get_inbox(before: str | None = None, limit: int = INBOX_PAGE, unread: 
         log.warning("inbox read failed: %s", exc)
         return JSONResponse({"detail": "inbox unavailable"}, status_code=503)
     return JSONResponse({"items": items, "next": next_cursor})
+
+
+@router.get("/merged-jobs")
+async def get_merged_jobs(session: str = ""):
+    """The chat's folded rows that swallowed a job result, as their originals (see _merged_job_parts)."""
+    if not 0 < len(session) <= 200:
+        return JSONResponse({"detail": "session must be a chat id"}, status_code=400)
+    try:
+        conn = _inbox_conn()
+        try:
+            rows = _merged_job_parts(conn, session)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        log.warning("merged-jobs read failed: %s", exc)
+        return JSONResponse({"detail": "history unavailable"}, status_code=503)
+    return JSONResponse({"rows": rows})
 
 
 async def _inbox_ids(request: Request) -> tuple[list[int] | None, bool, JSONResponse | None]:

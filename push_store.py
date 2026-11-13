@@ -100,10 +100,6 @@ def _muted_path() -> Path:
     return _push_dir() / "muted-sessions.json"
 
 
-def _shown_path() -> Path:
-    return _push_dir() / "shown.json"
-
-
 def _ensure_dir() -> Path:
     path = _push_dir()
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -528,13 +524,7 @@ def _host(endpoint: str) -> str:
         return endpoint[:60]
 
 
-# Queue-only field: a subscription endpoint the item must not be sent to (dismiss's reader). Never in the payload.
-_SKIP_KEY = "_skip_endpoint"
-
-
 def _broadcast(payload: dict[str, Any]) -> None:
-    payload = dict(payload)
-    skip = str(payload.pop(_SKIP_KEY, "") or "")
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     subscriptions = list_subscriptions()
     if not subscriptions:
@@ -542,8 +532,6 @@ def _broadcast(payload: dict[str, Any]) -> None:
         return
     for sub in subscriptions:
         endpoint = str(sub.get("endpoint") or "")
-        if skip and endpoint == skip:
-            continue
         try:
             body = _encrypt_for(sub, data)
             status = _post(endpoint, body)
@@ -624,102 +612,6 @@ def _fit_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-# ---------- retracting a notification once its chat is read ----------
-# A reply or job notification stays on a device until tapped or swiped. When the chat is read anywhere (the app's
-# /seen mark), every other device is sent a "dismiss" push that closes that chat's notifications and shows nothing
-# (the reader closes its own; /seen passes its endpoint so it is skipped). The
-# hooks (gateway process) record which chats have a notification out in shown.json; the /seen route (dashboard
-# process) reads it, so a dismiss is only sent for a chat that was actually notified, at most once per notification.
-# That keeps silent pushes rare, which browsers require of a push subscription.
-DISMISSABLE_KINDS = ("reply", "job")
-MAX_SHOWN = 200
-
-
-def _shown_lock():
-    """An exclusive lock across the gateway and dashboard processes (a no-op where fcntl is missing)."""
-    import contextlib
-
-    @contextlib.contextmanager
-    def held():
-        try:
-            import fcntl
-        except ImportError:
-            yield
-            return
-        _ensure_dir()
-        with open(_push_dir() / ".shown.lock", "a") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(handle, fcntl.LOCK_UN)
-
-    return held()
-
-
-def _read_shown() -> dict[str, int]:
-    try:
-        data = json.loads(_shown_path().read_bytes() or b"{}")
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError, UnicodeDecodeError) as exc:
-        log.warning("push: cannot read shown.json: %s", exc)
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {str(k): int(v) for k, v in data.items() if isinstance(k, str) and k and isinstance(v, (int, float))}
-
-
-def _write_shown(shown: dict[str, int]) -> None:
-    if len(shown) > MAX_SHOWN:
-        shown = dict(sorted(shown.items(), key=lambda item: item[1], reverse=True)[:MAX_SHOWN])
-    _atomic_write(_shown_path(), json.dumps(shown, ensure_ascii=False).encode("utf-8"))
-
-
-def _note_shown(session_id: str, now: float) -> None:
-    try:
-        with _shown_lock():
-            shown = _read_shown()
-            shown[session_id] = int(now)
-            _write_shown(shown)
-    except Exception as exc:  # noqa: BLE001 - only the later retraction is lost
-        log.warning("push: cannot record shown notification: %s", exc)
-
-
-def dismiss(session_id: str, seen_at: float, reader_endpoint: str = "") -> bool:
-    """Retract a read chat's notifications on the other devices. Returns True when a dismiss push was queued.
-
-    Sent only when a reply or job notification went out for this chat at or before ``seen_at`` (the read mark), and
-    only once: the record is cleared as the push is queued. ``reader_endpoint`` is the push subscription of the device
-    that read the chat: it closes its own notifications locally, so it is skipped, and when no other device is
-    subscribed nothing is sent at all. A push that shows nothing counts against the browser's silent-push allowance.
-    Never raises.
-    """
-    try:
-        session_id = str(session_id or "").strip()
-        reader_endpoint = str(reader_endpoint or "").strip()
-        if not session_id or not keys_exist():
-            return False
-        with _shown_lock():
-            shown = _read_shown()
-            sent = shown.get(session_id)
-            if sent is None or sent > int(seen_at):
-                return False
-            shown.pop(session_id, None)
-            _write_shown(shown)
-        if reader_endpoint and not any(sub.get("endpoint") != reader_endpoint for sub in list_subscriptions()):
-            return False  # the reader is the only device: it already closed its own
-        item: dict[str, Any] = {"kind": "dismiss", "session_id": session_id, "ts": int(time.time())}
-        if reader_endpoint:
-            item[_SKIP_KEY] = reader_endpoint
-        _queue.put_nowait(item)
-        _ensure_sender()
-        return True
-    except Exception as exc:  # noqa: BLE001
-        log.warning("push: dismiss failed: %s", exc)
-        return False
-
-
 def notify(kind: str, title: str, body: str, session_id: str = "", tag: str = "", **extra: Any) -> bool:
     """Queue one push for every subscription. Returns True when it was queued, never raises."""
     try:
@@ -750,8 +642,6 @@ def notify(kind: str, title: str, body: str, session_id: str = "", tag: str = ""
         payload = _fit_payload(payload)
         _queue.put_nowait(payload)
         _ensure_sender()
-        if session_id and payload["kind"] in DISMISSABLE_KINDS:
-            _note_shown(session_id, now)
         return True
     except Exception as exc:  # noqa: BLE001 - notifications are best effort, never a turn failure
         log.warning("push: notify failed: %s", exc)

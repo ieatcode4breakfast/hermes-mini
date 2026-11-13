@@ -23,10 +23,6 @@ All notable changes to this project are documented here. The format follows
   Hermes supports, with search, and saves or updates an API key through Hermes; sign-in providers show
   Hermes's own setup note. Everything goes through Hermes's own gateway methods; the app keeps no model
   state. A model switch shows in the chat as a muted line.
-- Reading a chat retracts its notifications: that device closes the chat's reply and job
-  notifications at once, and the server sends the other devices a silent "dismiss" push that closes
-  them too. Only chats that were actually notified get one, once. Approvals and questions stay until
-  answered.
 - The picture viewer has a back button and a download button, and slides between pictures like a
   carousel. Pinch and double-tap zoom.
 - The Inbox shows the chat list's home icon on main-chat messages.
@@ -87,15 +83,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Scheduled job results no longer turn into one big message from you. When you reply right after
+  job results, Hermes folds them and your reply into one stored message and drops the job label, so
+  the app drew it all as your bubble and the job results left the Inbox. The app now looks up the
+  originals Hermes keeps: the job results are drawn on the agent's side again, your reply as its own
+  bubble, and the Inbox lists the job results again.
 - Already-read replies no longer come back as unread in the Inbox. When Hermes compacts a long chat
   it writes the messages it keeps back out under new ids; the Inbox kept read state by id, so every
   compaction brought a batch of read replies back. A copy now counts as read when its original was
   (same chat, same Hermes message id).
-- A reply that finishes while the app is in the background no longer marks its chat read. The
-  page keeps running for a while after it is left, so the read retracted the reply's notification a
-  second after it was shown, leaving a home-screen badge count with no notification behind it.
-- The device that reads a chat is no longer sent its own "dismiss" push; it closes its notifications
-  itself. With one device subscribed, reading a chat sends no push at all.
+- A reply that finishes while the app is in the background no longer marks its chat read; a chat
+  only counts as read while the app is on screen.
 - Tapping a notification after a while away no longer says "Message not found" for a message that
   is there. The app now checks that its connection is alive before reading the chat; a connection
   that died in the background left the reply looking unfinished, so the chat was not reloaded.

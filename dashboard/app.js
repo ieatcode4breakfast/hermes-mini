@@ -584,9 +584,43 @@ function clarifyAnswerText(value) {
   return Array.isArray(answer) ? answer.map((item) => String(item)).join(", ") : String(answer ?? "");
 }
 
+// Hermes folds back-to-back user rows into one before a turn, and the fold drops the job label, so a run of job results
+// followed by the person's reply comes back as one user row. The server names its originals (plugin_api.py
+// _merged_job_parts); the row is drawn as those instead: job results on the agent's side under their own ids, the
+// person's text as their own bubble under the folded row's id. Filled by loadHistory; row ids are unique per install.
+const mergedParts = new Map();
+
+async function loadMergedParts(sessionId) {
+  try {
+    const data = await api(`/api/plugins/hermes-mini/merged-jobs?session=${encodeURIComponent(sessionId)}`);
+    for (const [rowId, parts] of Object.entries((data && data.rows) || {})) {
+      if (Array.isArray(parts) && parts.length) mergedParts.set(Number(rowId), parts);
+    }
+  } catch {
+    /* an older server or a failed read: folded rows are drawn as stored */
+  }
+}
+
+function expandMerged(messages) {
+  if (!mergedParts.size) return messages;
+  const out = [];
+  for (const message of messages) {
+    const parts = message.role === "user" && !message.display_kind ? mergedParts.get(message.id) : null;
+    if (!parts) {
+      out.push(message);
+      continue;
+    }
+    for (const part of parts) {
+      out.push({ ...message, id: part.id, content: part.content, display_kind: part.display_kind || null,
+        display_content: undefined, timestamp: part.timestamp ?? message.timestamp });
+    }
+  }
+  return out;
+}
+
 function chatEntries(messages, { notices = false } = {}) {
   const entries = [];
-  for (const message of messages) {
+  for (const message of expandMerged(messages)) {
     if (message.role === "tool") {
       const clarify = clarifyHistoryItems(message);
       if (clarify) entries.push({ message, text: "", images: [], files: [], kind: "clarify", clarify });
@@ -1461,7 +1495,11 @@ async function loadHistory(messageCount = null) {
   // An empty thread has no transcript to fetch (the REST page 404s until its first message).
   let data = { messages: [] };
   if (messageCount !== 0) {
-    data = await api(`/api/sessions/${encodeURIComponent(state.storedId)}/messages?limit=${HISTORY_PAGE}&order=latest&include_compacted=true`);
+    const sid = state.storedId;
+    [data] = await Promise.all([
+      api(`/api/sessions/${encodeURIComponent(sid)}/messages?limit=${HISTORY_PAGE}&order=latest&include_compacted=true`),
+      loadMergedParts(sid),
+    ]);
   }
   state.turn = null;
   clearLog();
@@ -1484,7 +1522,7 @@ async function loadHistory(messageCount = null) {
   // message itself, so the end-of-chat scroll and the fill would only yank the view away.
   if (!pendingTarget) scrollToBottom(true);
   // The chat on screen counts as read once its history is in, but only when it is actually on screen: a reconnect in
-  // the background must not read it (and retract its notification); coming back to the app marks it.
+  // the background must not read it; coming back to the app marks it.
   if (pageVisible()) drawerApi.markSeen(state.viewedId);
   if (!pendingTarget) void fillOlder(); // a page that is mostly tool rows may not fill the screen: keep loading until it scrolls
 }
@@ -3341,8 +3379,7 @@ function finishTurn() {
   state.turn = null;
   updateComposer();
   // A reply that finished on screen is read. One that finished while the app was in the background is not: the page
-  // keeps running for a while after it is left, and reading here retracted the reply's notification a second after it
-  // was shown (a launcher badge with no notification behind it). Coming back to the app marks it.
+  // keeps running for a while after it is left, and nobody saw the reply. Coming back to the app marks it.
   if (!state.viewedUnsent && pageVisible()) drawerApi.markSeen(state.viewedId);
   refreshDockedDrawer(); // a finished reply may have set the chat's title
 }
