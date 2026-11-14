@@ -1829,7 +1829,8 @@ body:not(.tools-open) .fab.fab-tray {
 }
 /* Tools looks pressed while its tray is out, the way Computer does while the computer is open. */
 body.tools-open #toolsBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
-#toolsBtn svg { transition: rotate 380ms var(--ease-out); }
+/* The wrench is a thin diagonal, so it is drawn larger than the other 20px icons to look the same size. */
+#toolsBtn svg { width: 24px; height: 24px; transition: rotate 380ms var(--ease-out); }
 body.tools-open #toolsBtn svg { rotate: -20deg; }
 @media (prefers-reduced-motion: reduce) {
   .fab.fab-tray, body:not(.tools-open) .fab.fab-tray { transition: opacity 120ms ease, visibility 0s linear 120ms; translate: none; scale: none; }
