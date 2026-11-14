@@ -13,6 +13,7 @@ import { render as renderMarkdown, enhance, copyText, makeCopyButton, COPY_ICON 
 import { createDrawer, sourceLabel } from "./drawer.js";
 import { confirmDialog } from "./confirm.js";
 import { createTodo } from "./todo.js";
+import { createSchedules } from "./schedules.js";
 import { createInbox } from "./inbox.js";
 import { showToast } from "./toast.js";
 import * as identityApi from "./identity.js";
@@ -5233,14 +5234,20 @@ const inbox = createInbox({
   isPhone: () => window.matchMedia("(max-width: 640px)").matches,
   openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
 });
-// The two panels close each other, waiting for the first one's history entry so the two never race.
+// The Schedules panel: Hermes's scheduled jobs, read-only, fetched on every open (schedules.js).
+const schedules = createSchedules({ api });
+// The panels close each other, waiting for each one's history entry so they never race.
 els.todoBtn.addEventListener("click", () => {
-  void inbox.close().then(() => todo.open());
+  void inbox.close().then(() => schedules.close()).then(() => todo.open());
+});
+document.getElementById("schedBtn").addEventListener("click", () => {
+  if (schedules.isOpen()) void schedules.close();
+  else void inbox.close().then(() => todo.close()).then(() => schedules.open());
 });
 // the agent's photo and name are the Inbox's button: a tap opens it, a second tap closes it.
 const toggleInbox = () => {
   if (inbox.isOpen()) void inbox.close();
-  else void todo.close().then(() => inbox.open());
+  else void todo.close().then(() => schedules.close()).then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
 els.inboxBtn.addEventListener("keydown", (event) => {

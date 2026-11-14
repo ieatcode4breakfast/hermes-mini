@@ -255,8 +255,11 @@ input, textarea, select { font-family: inherit; }
   right: auto;
   left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
 }
-/* To-do list: a second 46px button directly under the computer, same right edge, 10px gap. */
-.fab.fab-todo { top: calc(env(safe-area-inset-top) + 19px + 46px + 10px); }
+/* Right column, top to bottom: Schedules (level with the photo), Computer, To-do; 46px buttons with a 10px gap, same
+   right edge. With the computer unavailable (its button hidden), the to-do button moves up into its place. */
+.fab#screenBtn { top: calc(env(safe-area-inset-top) + 19px + 56px); }
+.fab.fab-todo { top: calc(env(safe-area-inset-top) + 19px + 112px); }
+#screenBtn[hidden] + .fab.fab-todo { top: calc(env(safe-area-inset-top) + 19px + 56px); }
 /* Number of open to-dos on the button's top-right corner; hidden when there are none (todo.js sets both). */
 .fab-count {
   position: absolute; top: -2px; right: -2px; box-sizing: border-box; min-width: 18px; height: 18px;
@@ -1411,6 +1414,25 @@ body.bot-screen-open #screenBtn {
 }
 /* The to-do button looks pressed the same way while its panel is open. */
 body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+
+/* Schedules panel (schedules.js): the to-do card (todo-dialog), with plain read-only rows. Each row is the job's name,
+   then one muted line with when it runs and when it runs next. */
+.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.sched-row { padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.sched-row:first-child { border-top: 0; }
+.sched-name { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.sched-meta { display: flex; flex-wrap: wrap; column-gap: 10px; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.sched-row.running .sched-status { color: var(--accent); font-weight: 600; }
+.sched-row.running .sched-status::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%;
+  background: var(--accent); animation: sched-pulse 1.4s ease-in-out infinite;
+}
+@keyframes sched-pulse { 50% { opacity: 0.35; } }
+.sched-row.paused .sched-name { color: var(--muted); }
+.sched-failed { margin-top: 2px; font-size: 13px; color: var(--danger); }
+.sched-empty { margin: 24px 0; text-align: center; color: var(--muted); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .sched-row.running .sched-status::before { animation: none; } }
 
 /* Appearance switch at the bottom of the chats panel: System / Light / Dark as one small segmented pill. */
 .drawer-foot {
