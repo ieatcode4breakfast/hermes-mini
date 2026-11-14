@@ -283,5 +283,19 @@ class InboxUnreadToggleTest(unittest.TestCase):
         self.assertIn("setUnread(Math.max(0, unread + (markAsRead ? 1 : -1)));", toggle_fn)
 
 
+
+class PinnedOrderTest(unittest.TestCase):
+    """A newly pinned chat always lands at the bottom of the existing pinned chats."""
+
+    def test_new_pin_goes_to_bottom_in_set_pinned_and_order_pinned(self):
+        drawer = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
+        order_fn = drawer[drawer.index("function orderPinned"):drawer.index("\n  const sentinel =")]
+        self.assertIn("return [...placed, ...fresh];", order_fn)
+        self.assertNotIn("return [...fresh, ...placed];", order_fn)
+
+        set_fn = drawer[drawer.index("async function setPinned"):drawer.index("\n  // ---------- row menu")]
+        self.assertIn("st.pinOrder = [...kept, ...unplacedExisting, item.id];", set_fn)
+        self.assertNotIn("[item.id, ...kept]", set_fn)
+
 if __name__ == "__main__":
     unittest.main()

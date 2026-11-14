@@ -175,12 +175,21 @@ export function createDrawer(deps) {
     seenLoaded: false, // the first /seen reply has not landed yet: show no dots rather than guess
   };
 
-  // The saved Pinned order arrives once at start; the list re-renders when it lands.
+  // The saved Pinned order arrives at start and on drawer refreshes; pinOrderSeq stops an older GET from overwriting
+  // a newer local pin or drag-sort.
   const PIN_ORDER_URL = "/api/plugins/hermes-mini/pin-order";
-  deps.api(PIN_ORDER_URL).then((data) => {
-    st.pinOrder = Array.isArray(data && data.order) ? data.order : [];
-    if (st.rows.length) render({ keepScroll: true }); // before the first page there is nothing to reorder
-  }).catch(() => {});
+  let pinOrderSeq = 0;
+
+  function loadPinOrder() {
+    const seq = ++pinOrderSeq;
+    return deps.api(PIN_ORDER_URL).then((data) => {
+      if (seq !== pinOrderSeq) return;
+      st.pinOrder = Array.isArray(data && data.order) ? data.order : [];
+      if (st.rows.length) render({ keepScroll: true }); // before the first page there is nothing to reorder
+    }).catch(() => {});
+  }
+
+  void loadPinOrder();
 
   // Muted sessions arrive once at start; shared across devices.
   const PUSH_MUTED_URL = "/api/plugins/hermes-mini/push/muted";
@@ -266,6 +275,7 @@ export function createDrawer(deps) {
   }
 
   function savePinOrder() {
+    pinOrderSeq += 1;
     return deps.api(PIN_ORDER_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -273,13 +283,13 @@ export function createDrawer(deps) {
     }).catch((error) => note((error && error.message) || "Could not save the pinned order."));
   }
 
-  // Pinned chats in the manual order. A chat pinned before it had a place (or on another client) goes first, newest
-  // first, like a fresh pin.
+  // Pinned chats in the manual order. A chat pinned before it had a place (or on another client) goes at the bottom
+  // after the existing ordered pins.
   function orderPinned(pinned) {
     const rank = new Map(st.pinOrder.map((id, index) => [id, index]));
     const fresh = pinned.filter((row) => !rank.has(row.id)).sort((a, b) => b.last_active - a.last_active);
     const placed = pinned.filter((row) => rank.has(row.id)).sort((a, b) => rank.get(a.id) - rank.get(b.id));
-    return [...fresh, ...placed];
+    return [...placed, ...fresh];
   }
 
   const sentinel = el("div", "list-sentinel");
@@ -339,7 +349,7 @@ export function createDrawer(deps) {
       if (st.open && st.rows.length) render({ keepScroll: true });
     }).catch(() => {});
     try {
-      const [page] = await Promise.all([fetchPage(0), loadAppChats()]);
+      const [page] = await Promise.all([fetchPage(0), loadAppChats(), loadPinOrder()]);
       if (seq !== st.seq) return;
       const raws = page.sessions || [];
       const home = homeId();
@@ -885,10 +895,19 @@ export function createDrawer(deps) {
       note((error && error.message) || "Could not change the pin.");
       return;
     }
-    for (const row of st.rows) if (row.id === item.id) row.pinned = pinned;
-    // A new pin goes to the top of the manual order; an unpin leaves it.
+    // A new pin always goes to the bottom of the existing pinned chats; an unpin leaves the rest in order.
+    const home = homeId();
     const kept = st.pinOrder.filter((id) => id !== item.id);
-    st.pinOrder = pinned ? [item.id, ...kept] : kept;
+    if (pinned) {
+      const keptSet = new Set(kept);
+      const unplacedExisting = orderPinned(
+        st.rows.filter((row) => row.pinned && row.id !== item.id && row.id !== home && !keptSet.has(row.id)),
+      ).map((row) => row.id);
+      st.pinOrder = [...kept, ...unplacedExisting, item.id];
+    } else {
+      st.pinOrder = kept;
+    }
+    for (const row of st.rows) if (row.id === item.id) row.pinned = pinned;
     void savePinOrder();
     note("");
     render({ keepScroll: true });
