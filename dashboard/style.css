@@ -132,21 +132,21 @@ input, textarea, select { font-family: inherit; }
    scrollbar-width or scrollbar-color on these: Chrome 121+ uses those instead of ::-webkit-scrollbar. The composer
    textarea keeps its scrollbar hidden (it is an auto-growing pill). Android uses native overlay bars and ignores this. */
 .log::-webkit-scrollbar, .drawer-list::-webkit-scrollbar, .bubble pre::-webkit-scrollbar, .card pre::-webkit-scrollbar,
-.bubble .table-wrap::-webkit-scrollbar, .tray::-webkit-scrollbar, .todo-list::-webkit-scrollbar, .inbox-list::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+.bubble .table-wrap::-webkit-scrollbar, .tray::-webkit-scrollbar, .todo-list::-webkit-scrollbar, .inbox-list::-webkit-scrollbar, .sched-list::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
 .log::-webkit-scrollbar-track, .drawer-list::-webkit-scrollbar-track, .bubble pre::-webkit-scrollbar-track,
-.card pre::-webkit-scrollbar-track, .bubble .table-wrap::-webkit-scrollbar-track, .tray::-webkit-scrollbar-track, .todo-list::-webkit-scrollbar-track, .inbox-list::-webkit-scrollbar-track { background: transparent; }
+.card pre::-webkit-scrollbar-track, .bubble .table-wrap::-webkit-scrollbar-track, .tray::-webkit-scrollbar-track, .todo-list::-webkit-scrollbar-track, .inbox-list::-webkit-scrollbar-track, .sched-list::-webkit-scrollbar-track { background: transparent; }
 .log::-webkit-scrollbar-thumb, .drawer-list::-webkit-scrollbar-thumb, .bubble pre::-webkit-scrollbar-thumb,
-.card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb {
+.card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb, .sched-list::-webkit-scrollbar-thumb {
   background: var(--sb-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
 }
 .log::-webkit-scrollbar-thumb:hover, .drawer-list::-webkit-scrollbar-thumb:hover, .bubble pre::-webkit-scrollbar-thumb:hover,
-.card pre::-webkit-scrollbar-thumb:hover, .bubble .table-wrap::-webkit-scrollbar-thumb:hover, .tray::-webkit-scrollbar-thumb:hover, .todo-list::-webkit-scrollbar-thumb:hover, .inbox-list::-webkit-scrollbar-thumb:hover {
+.card pre::-webkit-scrollbar-thumb:hover, .bubble .table-wrap::-webkit-scrollbar-thumb:hover, .tray::-webkit-scrollbar-thumb:hover, .todo-list::-webkit-scrollbar-thumb:hover, .inbox-list::-webkit-scrollbar-thumb:hover, .sched-list::-webkit-scrollbar-thumb:hover {
   background: var(--sb-thumb-hover); background-clip: padding-box;
 }
 .log::-webkit-scrollbar-corner, .drawer-list::-webkit-scrollbar-corner, .bubble pre::-webkit-scrollbar-corner,
-.card pre::-webkit-scrollbar-corner, .bubble .table-wrap::-webkit-scrollbar-corner, .tray::-webkit-scrollbar-corner, .todo-list::-webkit-scrollbar-corner, .inbox-list::-webkit-scrollbar-corner { background: transparent; }
+.card pre::-webkit-scrollbar-corner, .bubble .table-wrap::-webkit-scrollbar-corner, .tray::-webkit-scrollbar-corner, .todo-list::-webkit-scrollbar-corner, .inbox-list::-webkit-scrollbar-corner, .sched-list::-webkit-scrollbar-corner { background: transparent; }
 .log::-webkit-scrollbar-button, .drawer-list::-webkit-scrollbar-button, .bubble pre::-webkit-scrollbar-button,
-.card pre::-webkit-scrollbar-button, .bubble .table-wrap::-webkit-scrollbar-button, .tray::-webkit-scrollbar-button, .todo-list::-webkit-scrollbar-button, .inbox-list::-webkit-scrollbar-button { display: none; }
+.card pre::-webkit-scrollbar-button, .bubble .table-wrap::-webkit-scrollbar-button, .tray::-webkit-scrollbar-button, .todo-list::-webkit-scrollbar-button, .inbox-list::-webkit-scrollbar-button, .sched-list::-webkit-scrollbar-button { display: none; }
 
 .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); }
 
@@ -1418,7 +1418,11 @@ body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, va
 
 /* Schedules panel (schedules.js): the to-do card (todo-dialog), with plain read-only rows. Each row is the job's name,
    then one muted line with when it runs and when it runs next. */
-.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+/* The slim scrollbar (10px) sits in the card's right padding, so the rows end in line with the title and the close
+   button: the list reaches 14px into the padding and keeps 4px of it, the bar takes the other 10px. Phones overlay their
+   scrollbars, so there the list keeps the card's edges. */
+.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
+@media (max-width: 640px) { .sched-list { margin: 0; padding: 0; } }
 .sched-row { padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
 .sched-row:first-child { border-top: 0; }
 .sched-name { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
