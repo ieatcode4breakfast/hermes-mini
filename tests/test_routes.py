@@ -739,5 +739,85 @@ class HomeTargetSeedTest(RouteTestCase):
         )
 
 
+class AudioMetaTest(RouteTestCase):
+    URL = "/api/plugins/hermes-mini/audio-meta"
+
+    def _clip(self, name="clip.m4a"):
+        path = self.home / name
+        path.write_bytes(b"not really audio")
+        return path
+
+    def test_peaks_scale_to_the_loudest_bucket(self):
+        from array import array
+
+        peaks = self.api.audio_peaks(array("h", [0, 10, -10, 0] + [0, 1000, -2000, 0]), 2)
+        self.assertEqual(len(peaks), 2)
+        self.assertEqual(peaks, [0.2, 1.0])  # quietest bucket at the floor, loudest at full height
+        self.assertEqual(self.api.audio_peaks(array("h"), 3), [0.0, 0.0, 0.0])
+        self.assertEqual(self.api.audio_peaks(array("h", [0] * 8), 2), [0.0, 0.0])
+        self.assertEqual(self.api.audio_peaks(array("h", [300, -300] * 4), 2), [1.0, 1.0])
+
+    def test_duration_and_peaks_come_from_the_decoded_samples(self):
+        import struct
+
+        clip = self._clip()
+        pcm = struct.pack("<4000h", *([500] * 2000 + [-4000] * 2000))  # two seconds at 2 kHz
+        done = types.SimpleNamespace(returncode=0, stdout=pcm)
+        with (
+            mock.patch.object(self.api, "_ffmpeg_binary", return_value="/usr/bin/ffmpeg"),
+            mock.patch.object(self.api.subprocess, "run", return_value=done) as run,
+        ):
+            first = self.client.get(self.URL, params={"path": str(clip)})
+            again = self.client.get(self.URL, params={"path": str(clip)})
+        self.assertEqual(first.status_code, 200)
+        body = first.json()
+        self.assertEqual(body["duration"], 2.0)
+        self.assertEqual(len(body["peaks"]), self.api.AUDIO_BARS)
+        self.assertEqual(max(body["peaks"]), 1.0)
+        self.assertLess(body["peaks"][0], body["peaks"][-1])
+        self.assertEqual(again.json(), body)
+        self.assertEqual(run.call_count, 1)  # cached by path, size and mtime
+
+    def test_refuses_non_audio_missing_and_relative_paths(self):
+        text = self.home / "notes.txt"
+        text.write_text("hi", encoding="utf-8")
+        for path in (str(text), str(self.home / "gone.mp3"), "clip.mp3", ""):
+            self.assertEqual(self.client.get(self.URL, params={"path": path}).status_code, 404, path)
+
+    def test_missing_ffmpeg_and_bad_audio_are_reported(self):
+        clip = self._clip("talk.mp3")
+        with mock.patch.object(self.api, "_ffmpeg_binary", return_value=None):
+            self.assertEqual(self.client.get(self.URL, params={"path": str(clip)}).status_code, 503)
+        failed = types.SimpleNamespace(returncode=1, stdout=b"")
+        with (
+            mock.patch.object(self.api, "_ffmpeg_binary", return_value="/usr/bin/ffmpeg"),
+            mock.patch.object(self.api.subprocess, "run", return_value=failed),
+        ):
+            self.assertEqual(self.client.get(self.URL, params={"path": str(clip)}).status_code, 422)
+
+    def test_hermes_tools_ffmpeg_is_found_when_not_on_path(self):
+        binary = self.home / "tools" / "ffmpeg-9.0.1-linux-arm64" / "bin" / "ffmpeg"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(0o755)
+        import shutil
+
+        with mock.patch.object(shutil, "which", return_value=None):
+            self.assertEqual(self.api._ffmpeg_binary(), str(binary))
+
+    def test_macos_tools_layout_is_found_too(self):
+        binary = self.home / "tools" / "ffmpeg-9.0.1-darwin-arm64" / "ffmpeg"  # single binary at the root
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(0o755)
+        import shutil
+
+        with mock.patch.object(shutil, "which", return_value=None):
+            self.assertEqual(self.api._ffmpeg_binary(), str(binary))
+        with mock.patch.object(shutil, "which", return_value=None):
+            binary.unlink()
+            self.assertIsNone(self.api._ffmpeg_binary())
+
+
 if __name__ == "__main__":
     unittest.main()

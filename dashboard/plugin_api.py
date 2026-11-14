@@ -2074,6 +2074,116 @@ async def get_avatar(filename: str):
                         headers={"Cache-Control": "private, max-age=300"})
 
 
+AUDIO_EXTENSIONS = frozenset({".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".wav", ".flac"})
+AUDIO_BARS = 40
+_AUDIO_RATE = 2000  # Hz: enough for a waveform's shape, small enough to decode an hour in a few seconds
+_AUDIO_MAX_BYTES = 1 << 30
+_audio_meta_cache: dict[tuple[str, int, int, int], dict[str, Any]] = {}
+_audio_meta_lock = threading.Lock()
+
+
+def _ffmpeg_binary() -> str | None:
+    """ffmpeg on PATH, else the copy Hermes installs under its own tools directory: ``bin/ffmpeg`` on Linux,
+    ``bin/ffmpeg.exe`` on Windows, a bare ``ffmpeg`` at the package root on macOS. Newest version first."""
+    import shutil
+
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    tools = core.hermes_home() / "tools"
+    for package in sorted(tools.glob("ffmpeg-*"), reverse=True):
+        for rel in ("bin/ffmpeg", "bin/ffmpeg.exe", "ffmpeg"):
+            candidate = package / rel
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
+
+
+def _audio_target(raw: str) -> Path | None:
+    """The audio file a MEDIA: tag names: absolute or ~/, a regular file, an audio extension."""
+    value = str(raw or "").strip()
+    if value.startswith("~/"):
+        value = str(Path.home() / value[2:])
+    if not value.startswith("/") or "\0" in value:
+        return None
+    try:
+        target = Path(value).resolve()
+    except (OSError, RuntimeError):
+        return None
+    if target.suffix.lower() not in AUDIO_EXTENSIONS or not target.is_file():
+        return None
+    return target
+
+
+def audio_peaks(samples: "array", bars: int) -> list[float]:
+    """*bars* heights in 0..1 from 16-bit mono samples: each bucket's loudness (RMS), stretched between the
+    quietest and loudest bucket. A long recording's raw loudness is nearly flat bucket to bucket, so the stretch is
+    what makes its real variation visible; the quietest bar still shows at 0.2."""
+    import math
+
+    if not samples:
+        return [0.0] * bars
+    sumprod = getattr(math, "sumprod", None) or (lambda a, b: sum(x * y for x, y in zip(a, b)))  # 3.12+ is fast
+    step = len(samples) / bars
+    levels = []
+    for i in range(bars):
+        chunk = samples[int(i * step):max(int((i + 1) * step), int(i * step) + 1)]
+        levels.append(math.sqrt(sumprod(chunk, chunk) / len(chunk)) if chunk else 0.0)
+    lo, hi = min(levels), max(levels)
+    if hi <= 0:
+        return [0.0] * bars
+    if hi - lo < hi * 1e-6:
+        return [1.0] * bars
+    return [round(0.2 + 0.8 * (level - lo) / (hi - lo), 3) for level in levels]
+
+
+def _audio_meta(target: Path) -> dict[str, Any]:
+    from array import array
+
+    st = target.stat()
+    key = (str(target), st.st_mtime_ns, st.st_size, AUDIO_BARS)
+    with _audio_meta_lock:
+        if key in _audio_meta_cache:
+            return _audio_meta_cache[key]
+    if st.st_size > _AUDIO_MAX_BYTES:
+        raise ValueError("too large")
+    binary = _ffmpeg_binary()
+    if binary is None:
+        raise FileNotFoundError("ffmpeg")
+    done = subprocess.run(
+        [binary, "-v", "error", "-nostdin", "-i", str(target), "-vn", "-ac", "1", "-ar", str(_AUDIO_RATE),
+         "-f", "s16le", "-"],
+        capture_output=True, timeout=90, check=False,
+    )
+    if done.returncode != 0 or not done.stdout:
+        raise ValueError("undecodable")
+    samples = array("h")
+    samples.frombytes(done.stdout[: len(done.stdout) // 2 * 2])
+    if sys.byteorder != "little":
+        samples.byteswap()
+    meta = {"duration": round(len(samples) / _AUDIO_RATE, 2), "peaks": audio_peaks(samples, AUDIO_BARS)}
+    with _audio_meta_lock:
+        if len(_audio_meta_cache) > 64:
+            _audio_meta_cache.clear()
+        _audio_meta_cache[key] = meta
+    return meta
+
+
+@router.get("/audio-meta")
+async def get_audio_meta(path: str):
+    """Duration and a small waveform for an audio file a reply attached, so the player draws before it loads."""
+    target = _audio_target(path)
+    if target is None:
+        return JSONResponse({"detail": "Audio file not found"}, status_code=404)
+    try:
+        meta = await asyncio.to_thread(_audio_meta, target)
+    except FileNotFoundError:
+        return JSONResponse({"detail": "ffmpeg is not installed"}, status_code=503)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return JSONResponse({"detail": "Could not read that audio file"}, status_code=422)
+    return JSONResponse(meta, headers={"Cache-Control": "private, max-age=3600"})
+
+
 @router.get("/settings")
 async def get_settings():
     """The app's own external settings (no secrets are stored in this file)."""

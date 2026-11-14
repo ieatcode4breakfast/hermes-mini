@@ -2895,6 +2895,232 @@ async function downloadFile(path, name, card) {
   }
 }
 
+// Audio a reply attaches with MEDIA: plays inline: play/pause, a waveform you tap or drag to seek, the time, and a
+// download button. The waveform and duration come from the plugin (ffmpeg) before anything loads; the sound itself
+// is fetched only on the first play or seek, through the same authenticated route as a download.
+const AUDIO_EXT = /\.(?:mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i;
+const AUDIO_BAR_COUNT = 40;
+const AUDIO_TYPES = {
+  mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg",
+  opus: 'audio/ogg; codecs="opus"', wav: "audio/wav", flac: "audio/flac",
+};
+const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>';
+const audioMetaCache = new Map();
+let playingAudio = null; // the one card's <audio> that is playing: starting another pauses it
+
+function audioMeta(path) {
+  if (!audioMetaCache.has(path)) {
+    const pending = api(`/api/plugins/hermes-mini/audio-meta?path=${encodeURIComponent(path)}`).catch(() => null);
+    audioMetaCache.set(path, pending);
+  }
+  return audioMetaCache.get(path);
+}
+
+function clockText(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60));
+  const ss = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${mm.padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
+}
+
+// The plain attachment: a download card. Also what an audio card falls back to when it cannot play.
+function fileCard(path, name) {
+  const card = el("button", "file-attach");
+  card.type = "button";
+  card.dataset.fileSrc = path;
+  card.title = `Download ${name}`;
+  card.setAttribute("aria-label", `Download ${name}`);
+  card.innerHTML = `${FILE_ICON}<span class="file-attach-name"></span>${DOWNLOAD_ICON}`;
+  card.querySelector(".file-attach-name").textContent = name;
+  card.addEventListener("click", () => void downloadFile(path, name, card));
+  return card;
+}
+
+// Anything the player cannot do (no ffmpeg on this Hermes, an older plugin API, an undecodable file, a format this
+// browser will not play) turns the card back into the plain download card, in place.
+function audioCard(path, name) {
+  const card = el("div", "audio-card loading-meta");
+  const fallBack = () => {
+    if (card.isConnected) card.replaceWith(fileCard(path, name));
+  };
+  card.dataset.fileSrc = path;
+  card.title = name;
+  const play = el("button", "audio-play");
+  play.type = "button";
+  play.setAttribute("aria-label", `Play ${name}`);
+  play.innerHTML = PLAY_ICON;
+  const wave = el("div", "audio-wave");
+  wave.setAttribute("role", "slider");
+  wave.tabIndex = 0;
+  wave.setAttribute("aria-label", `Seek ${name}`);
+  wave.setAttribute("aria-valuemin", "0");
+  const bars = [];
+  for (let i = 0; i < AUDIO_BAR_COUNT; i += 1) {
+    const bar = el("span", "audio-bar");
+    bar.style.setProperty("--h", "0.18");
+    bars.push(bar);
+    wave.append(bar);
+  }
+  const time = el("span", "audio-time", "--:--");
+  const down = el("button", "audio-down");
+  down.type = "button";
+  down.title = `Download ${name}`;
+  down.setAttribute("aria-label", `Download ${name}`);
+  down.innerHTML = DOWNLOAD_ICON;
+  down.addEventListener("click", () => void downloadFile(path, name, down));
+  card.append(play, wave, time, down);
+
+  let duration = NaN;
+  let audio = null;
+  let loading = null;
+  let scrub = null; // fraction shown while a finger or mouse drags, before the seek lands
+
+  const fraction = () => (scrub !== null ? scrub
+    : audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.currentTime / audio.duration : 0);
+  const paint = () => {
+    const f = fraction();
+    const lit = Math.round(f * bars.length);
+    bars.forEach((bar, i) => bar.classList.toggle("on", i < lit));
+    const total = audio && Number.isFinite(audio.duration) ? audio.duration : duration;
+    const started = scrub !== null || (audio && (audio.currentTime > 0 || !audio.paused));
+    time.textContent = clockText(started ? f * total : total);
+    wave.setAttribute("aria-valuemax", String(Math.round(total) || 0));
+    wave.setAttribute("aria-valuenow", String(Math.round(f * total) || 0));
+    wave.setAttribute("aria-valuetext", `${clockText(f * total)} of ${clockText(total)}`);
+  };
+  const setPlaying = (on) => {
+    card.classList.toggle("playing", on);
+    play.innerHTML = on ? PAUSE_ICON : PLAY_ICON;
+    play.setAttribute("aria-label", `${on ? "Pause" : "Play"} ${name}`);
+  };
+
+  audioMeta(path).then((meta) => {
+    card.classList.remove("loading-meta");
+    if (!meta || !Array.isArray(meta.peaks) || !(Number(meta.duration) > 0)) {
+      fallBack();
+      return;
+    }
+    if (typeof Audio !== "function" || !new Audio().canPlayType(AUDIO_TYPES[path.split(".").pop().toLowerCase()] || "")) {
+      fallBack(); // this browser cannot decode the format (for example Opus on an older iPhone)
+      return;
+    }
+    duration = Number(meta.duration);
+    meta.peaks.slice(0, bars.length).forEach((peak, i) => {
+      bars[i].style.setProperty("--h", String(Math.max(0.12, Math.min(1, Number(peak) || 0))));
+    });
+    paint();
+  });
+
+  const ensureAudio = () => {
+    if (audio) return Promise.resolve(audio);
+    if (loading) return loading;
+    card.classList.add("loading");
+    play.disabled = true;
+    loading = apiBlob(`/api/fs/download?path=${encodeURIComponent(path)}`)
+      .then((blob) => new Promise((resolve, reject) => {
+        const node = new Audio();
+        node.preload = "auto";
+        node.addEventListener("loadedmetadata", () => resolve(node), { once: true });
+        node.addEventListener("error", () => reject(new Error("unplayable")), { once: true });
+        node.src = URL.createObjectURL(blob);
+      }))
+      .then((node) => {
+        audio = node;
+        audio.addEventListener("timeupdate", () => {
+          if (!card.isConnected) audio.pause(); // the message was redrawn: no sound without its controls
+          else paint();
+        });
+        audio.addEventListener("play", () => {
+          if (playingAudio && playingAudio !== audio) playingAudio.pause();
+          playingAudio = audio;
+          setPlaying(true);
+        });
+        audio.addEventListener("pause", () => { setPlaying(false); paint(); });
+        audio.addEventListener("ended", () => { audio.currentTime = 0; setPlaying(false); paint(); });
+        return audio;
+      })
+      .catch((error) => {
+        loading = null;
+        if (error && error.status === 404) showToast("Audio file not found", "error");
+        else fallBack(); // fetched but unplayable here: offer the file instead
+        throw error;
+      })
+      .finally(() => {
+        card.classList.remove("loading");
+        play.disabled = false;
+      });
+    return loading;
+  };
+
+  play.addEventListener("click", async () => {
+    if (audio && !audio.paused) {
+      audio.pause();
+      return;
+    }
+    try {
+      const node = await ensureAudio();
+      await node.play();
+    } catch {
+      /* reported by ensureAudio, or the browser refused autoplay */
+    }
+  });
+
+  const seekTo = async (f) => {
+    try {
+      const node = await ensureAudio();
+      if (Number.isFinite(node.duration)) node.currentTime = Math.max(0, Math.min(1, f)) * node.duration;
+      if (node.paused) await node.play();
+    } catch {
+      /* reported by ensureAudio */
+    }
+    scrub = null;
+    paint();
+  };
+  const at = (event) => {
+    const box = wave.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (event.clientX - box.left) / box.width));
+  };
+  wave.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    wave.setPointerCapture(event.pointerId);
+    card.classList.add("scrubbing");
+    scrub = at(event);
+    paint();
+  });
+  wave.addEventListener("pointermove", (event) => {
+    if (scrub === null || !wave.hasPointerCapture(event.pointerId)) return;
+    scrub = at(event);
+    paint();
+  });
+  const release = (event) => {
+    if (scrub === null) return;
+    card.classList.remove("scrubbing");
+    const f = event.type === "pointercancel" ? null : scrub;
+    if (f === null) {
+      scrub = null;
+      paint();
+      return;
+    }
+    void seekTo(f);
+  };
+  wave.addEventListener("pointerup", release);
+  wave.addEventListener("pointercancel", release);
+  wave.addEventListener("keydown", (event) => {
+    const step = { ArrowLeft: -5, ArrowRight: 5, Home: -Infinity, End: Infinity }[event.key];
+    if (step === undefined) return;
+    event.preventDefault();
+    const total = audio && Number.isFinite(audio.duration) ? audio.duration : duration;
+    if (!Number.isFinite(total) || total <= 0) return;
+    const now = audio ? audio.currentTime : 0;
+    void seekTo(Math.max(0, Math.min(total, now + step)) / total);
+  });
+  return card;
+}
+
 // One renderer for inline pictures, shared by the agent's replies and the person's own messages. A source is either
 // { path } (a server path, fetched through fetchMedia) or { url } (a local blob/data URL, shown at once), plus an
 // optional alt. It returns the .media block: small square thumbnails, a 2-up/3-up grid for several, tap = viewer.
@@ -2961,15 +3187,7 @@ function inlineMediaTags(bubble) {
       frag.append(document.createTextNode(node.nodeValue.slice(at, tag.start)));
       if (tag.kind === "file") {
         const name = tag.path.split("/").pop() || "file";
-        const card = el("button", "file-attach");
-        card.type = "button";
-        card.dataset.fileSrc = tag.path;
-        card.title = `Download ${name}`;
-        card.setAttribute("aria-label", `Download ${name}`);
-        card.innerHTML = `${FILE_ICON}<span class="file-attach-name"></span>${DOWNLOAD_ICON}`;
-        card.querySelector(".file-attach-name").textContent = name;
-        card.addEventListener("click", () => void downloadFile(tag.path, name, card));
-        frag.append(card);
+        frag.append(AUDIO_EXT.test(tag.path) ? audioCard(tag.path, name) : fileCard(tag.path, name));
       } else {
         const slot = el("span", "md-media-slot");
         slot.dataset.mdSrc = tag.path;
