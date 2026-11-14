@@ -236,7 +236,7 @@ input, textarea, select { font-family: inherit; }
   /* 19px = 10px topbar padding + (64px avatar - 46px button) / 2, so the button centres on the avatar.
      The extra 6px is the composer pill's inset, so the button's right edge lines up with the send button. */
   position: absolute; top: calc(env(safe-area-inset-top) + 19px);
-  right: calc(max(calc(env(safe-area-inset-right) + 16px), calc((100% - var(--col)) / 2)) + 6px);
+  right: calc(env(safe-area-inset-right) + 22px);
   width: 46px; height: 46px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
   color: var(--fg);
   background: var(--glass-bg);
@@ -587,8 +587,8 @@ input, textarea, select { font-family: inherit; }
   border-top: 1px solid var(--line); background: var(--bg);
   padding-top: 8px;
   padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
-  padding-left: max(calc(env(safe-area-inset-left) + 16px), calc((100% - 700px) / 2));
-  padding-right: max(calc(env(safe-area-inset-right) + 16px), calc((100% - 700px) / 2));
+  padding-left: max(calc(env(safe-area-inset-left) + 16px), calc((100% - 800px) / 2));
+  padding-right: max(calc(env(safe-area-inset-right) + 16px), calc((100% - 800px) / 2));
 }
 .tray { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
 .tray[hidden] { display: none; }

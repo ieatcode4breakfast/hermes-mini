@@ -248,5 +248,40 @@ class DockedOverlaysTest(unittest.TestCase):
         self.assertIn(".model-scrim { z-index: 60; }", css)
 
 
+
+class RenameFastPathTest(unittest.TestCase):
+    """Renaming a chat uses WS session.mutate directly instead of HTTP PATCH -> connect_gateway."""
+
+    def test_rename_uses_ws_session_mutate_and_drawer_caches_revision(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        drawer = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
+        self.assertIn("runtimeRevision: Number.isInteger(raw.runtime_revision) ? raw.runtime_revision : null", drawer)
+        self.assertIn("runtimeGeneration: Number.isInteger(raw.runtime_generation) ? raw.runtime_generation : null", drawer)
+
+        rename_fn = app[app.index("async function renameSession"):app.index("\nasync function deleteSessionFenced")]
+        self.assertIn('rpc("session.list", { title })', rename_fn)
+        self.assertIn('rpc("session.mutate", params)', rename_fn)
+        self.assertIn('operation: "sidebar"', rename_fn)
+        self.assertIn('reason === "revision_conflict" || reason === "stale_generation"', rename_fn)
+        self.assertIn("data.revision", rename_fn)
+        self.assertIn("item.runtimeRevision = result.revision", rename_fn)
+        self.assertIn("code !== -32601", rename_fn)
+
+
+class InboxUnreadToggleTest(unittest.TestCase):
+    """Marking an item read on the Unread tab removes it immediately and rolls back cleanly on error."""
+
+    def test_unread_tab_toggle_removes_row_and_rolls_back_on_error(self):
+        inbox = (DASHBOARD / "inbox.js").read_text(encoding="utf-8")
+        toggle_fn = inbox[inbox.index("async function toggleRead"):inbox.index("\n  // Tapping a row")]
+        self.assertNotIn("const next =", toggle_fn)
+        self.assertIn('const removeOnUnread = filter === "unread" && markAsRead;', toggle_fn)
+        self.assertIn("items.splice(removedIndex, 1);", toggle_fn)
+        self.assertIn("renderAll();", toggle_fn)
+        self.assertIn("if (next !== null && listEl.scrollHeight <= listEl.clientHeight + 240) void loadMore();", toggle_fn)
+        self.assertIn("items.splice(Math.min(removedIndex, items.length), 0, item);", toggle_fn)
+        self.assertIn("setUnread(Math.max(0, unread + (markAsRead ? 1 : -1)));", toggle_fn)
+
+
 if __name__ == "__main__":
     unittest.main()

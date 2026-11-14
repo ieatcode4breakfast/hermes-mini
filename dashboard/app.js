@@ -1295,29 +1295,69 @@ async function switchSession(id) {
   }
 }
 
-// Renames a chat. The open chat goes through session.title on its live id. Any other chat is renamed by stored id
-// through the revision-checked mutation the desktop uses, so renaming never has to resume it.
+// Renames a chat directly through the gateway's revision-checked session.mutate RPC on the open WebSocket so
+// renaming skips HTTP PATCH -> connect_gateway overhead. Falls back only when the gateway lacks session.mutate.
 async function renameSession(item, title) {
   // Titles are unique. The server would hand a name over from an EMPTY chat that holds it (its "ghost" rule), so
   // refuse every taken name here instead: an exact-title lookup, no resume.
   const holders = await rpc("session.list", { title });
   const holder = (holders.sessions || []).find((row) => row.title === title && row.id !== item.id && row.resolved_id !== item.id);
   if (holder) throw new Error("Another chat already uses that name.");
-  if (item.id === state.viewedId && state.liveSid && state.ready && !state.readOnly) {
-    await rpc("session.title", { session_id: state.liveSid, title });
-  } else {
-    const snapshot = await api(`/api/sessions/${encodeURIComponent(item.id)}/mutation-snapshot`);
-    if (!snapshot.exists) throw new Error("Session not found");
-    await api(`/api/sessions/${encodeURIComponent(item.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        request_id: newRequestId(),
-        expected_revision: snapshot.runtime_revision,
-        expected_generation: snapshot.runtime_generation,
-        title,
-      }),
-    });
+  const mutateRename = async (expectedRevision, expectedGeneration) => {
+    const params = {
+      session_id: item.id,
+      request_id: newRequestId(),
+      expected_revision: expectedRevision,
+      operation: "sidebar",
+      payload: { title },
+    };
+    if (expectedGeneration !== null && expectedGeneration !== undefined) {
+      params.expected_generation = expectedGeneration;
+    }
+    return rpc("session.mutate", params);
+  };
+  let result = null;
+  try {
+    const initRev = Number.isInteger(item.runtimeRevision) ? item.runtimeRevision : 0;
+    const initGen = Number.isInteger(item.runtimeGeneration) ? item.runtimeGeneration : undefined;
+    try {
+      result = await mutateRename(initRev, initGen);
+    } catch (error) {
+      const data = error && error.data;
+      const reason = (data && data.reason) || (error && error.message);
+      if ((reason === "revision_conflict" || reason === "stale_generation") && data && Number.isInteger(data.revision)) {
+        result = await mutateRename(
+          data.revision,
+          Number.isInteger(data.execution_generation) ? data.execution_generation : undefined,
+        );
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    const code = error && error.code;
+    const msg = (error && error.message) || "";
+    if (code !== -32601 && !/unknown_method/i.test(msg)) throw error;
+    if (item.id === state.viewedId && state.liveSid && state.ready && !state.readOnly) {
+      await rpc("session.title", { session_id: state.liveSid, title });
+    } else {
+      const snapshot = await api(`/api/sessions/${encodeURIComponent(item.id)}/mutation-snapshot`);
+      if (!snapshot.exists) throw new Error("Session not found");
+      await api(`/api/sessions/${encodeURIComponent(item.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_id: newRequestId(),
+          expected_revision: snapshot.runtime_revision,
+          expected_generation: snapshot.runtime_generation,
+          title,
+        }),
+      });
+    }
+  }
+  if (result && typeof result === "object") {
+    if (Number.isInteger(result.revision)) item.runtimeRevision = result.revision;
+    if (Number.isInteger(result.execution_generation)) item.runtimeGeneration = result.execution_generation;
   }
   if (item.id === state.viewedId) {
     state.viewedTitle = title;

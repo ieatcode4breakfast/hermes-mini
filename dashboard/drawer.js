@@ -95,6 +95,8 @@ function normalize(raw) {
     last_active: Number(raw.last_active || raw.session_started || raw.started_at || 0),
     pinned: Boolean(raw.pinned),
     archived: Boolean(raw.archived), // the pin back-fill can return an archived pinned row; the list never shows one
+    runtimeRevision: Number.isInteger(raw.runtime_revision) ? raw.runtime_revision : null,
+    runtimeGeneration: Number.isInteger(raw.runtime_generation) ? raw.runtime_generation : null,
   };
 }
 

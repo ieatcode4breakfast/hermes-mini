@@ -108,7 +108,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
   const agentName = document.querySelector('meta[name="agent-name"]')?.content || "Hermes";
   emptyEl.textContent = `No messages from ${agentName} yet`;
   // All | Unread tabs. Unread asks the server for unread rows only (?unread=1), so it pages the
-  // same way All does. A row read while the Unread tab is showing stays until the list reloads.
+  // same way All does. Marking a row read on the Unread tab removes it immediately and rolls back on error.
   const tabAll = $("inboxTabAll");
   const tabUnread = $("inboxTabUnread");
   let filter = "all";
@@ -436,30 +436,48 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     }
   }
 
-  // The swipe and the hover toggle: flip one message without opening it. The row and the badge change at once; a
-  // failed save puts the row back. On the Unread tab a row marked read stays until the list reloads, like a tapped one.
+  // The swipe and the hover toggle: flip one message without opening it. On the Unread tab a row marked read
+  // disappears immediately (including orphaned date headers) and rolls back cleanly if the save fails.
   async function toggleRead(item) {
     if (item.pending) return; // one save at a time per message, so the server always ends where the screen does
     let settle;
     item.pending = new Promise((resolve) => {
       settle = resolve;
     });
-    const next = !item.read;
+    const markAsRead = !item.read;
     const held = item.markedUnread;
-    item.read = next;
-    item.markedUnread = !next;
-    syncReadMarks();
-    setUnread(Math.max(0, unread + (next ? -1 : 1)));
+    const removeOnUnread = filter === "unread" && markAsRead;
+    const removedIndex = removeOnUnread ? items.indexOf(item) : -1;
+    item.read = markAsRead;
+    item.markedUnread = !markAsRead;
+    if (removeOnUnread && removedIndex !== -1) {
+      items.splice(removedIndex, 1);
+      const scrollTop = listEl.scrollTop;
+      renderAll();
+      listEl.scrollTop = scrollTop;
+      if (next !== null && listEl.scrollHeight <= listEl.clientHeight + 240) void loadMore();
+    } else {
+      syncReadMarks();
+    }
+    setUnread(Math.max(0, unread + (markAsRead ? -1 : 1)));
     try {
-      await api(`${INBOX_API}/${next ? "read" : "unread"}`, {
+      await api(`${INBOX_API}/${markAsRead ? "read" : "unread"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [item.id], manual: true }),
       });
     } catch {
-      item.read = !next;
+      item.read = !markAsRead;
       item.markedUnread = held;
-      syncReadMarks();
+      setUnread(Math.max(0, unread + (markAsRead ? 1 : -1)));
+      if (removeOnUnread && filter === "unread" && removedIndex !== -1 && !items.includes(item)) {
+        items.splice(Math.min(removedIndex, items.length), 0, item);
+        const scrollTop = listEl.scrollTop;
+        renderAll();
+        listEl.scrollTop = scrollTop;
+      } else {
+        syncReadMarks();
+      }
     } finally {
       item.pending = null;
       settle();
