@@ -130,7 +130,7 @@ input, textarea, select { font-family: inherit; }
    attachment tray. A 10px lane with a transparent track and no arrows; the thumb is a 6px pill, because its 2px
    transparent border is kept out of the paint by background-clip, so it floats inside the lane. Do not set
    scrollbar-width or scrollbar-color on these: Chrome 121+ uses those instead of ::-webkit-scrollbar. The composer
-   textarea keeps its scrollbar hidden (it is an auto-growing pill). Mouse devices only: a touch screen keeps its own
+   textarea keeps its scrollbar hidden (it is an auto-growing pill). The thumb is hidden until the pointer is over its area. Mouse devices only: a touch screen keeps its own
    overlay bars, which show only while scrolling - a styled ::-webkit-scrollbar would stay on screen there. */
 @media (hover: hover) and (pointer: fine) {
 .log::-webkit-scrollbar, .drawer-list::-webkit-scrollbar, .bubble pre::-webkit-scrollbar, .card pre::-webkit-scrollbar,
@@ -139,7 +139,19 @@ input, textarea, select { font-family: inherit; }
 .card pre::-webkit-scrollbar-track, .bubble .table-wrap::-webkit-scrollbar-track, .tray::-webkit-scrollbar-track, .todo-list::-webkit-scrollbar-track, .inbox-list::-webkit-scrollbar-track, .sched-list::-webkit-scrollbar-track { background: transparent; }
 .log::-webkit-scrollbar-thumb, .drawer-list::-webkit-scrollbar-thumb, .bubble pre::-webkit-scrollbar-thumb,
 .card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb, .sched-list::-webkit-scrollbar-thumb {
-  background: var(--sb-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
+  background: transparent; background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
+}
+/* Hidden until the pointer is over that scrolling area (thumb hover/drag stays inside it, so it stays shown). */
+.log:hover::-webkit-scrollbar-thumb,
+.drawer-list:hover::-webkit-scrollbar-thumb,
+.bubble pre:hover::-webkit-scrollbar-thumb,
+.card pre:hover::-webkit-scrollbar-thumb,
+.bubble .table-wrap:hover::-webkit-scrollbar-thumb,
+.tray:hover::-webkit-scrollbar-thumb,
+.todo-list:hover::-webkit-scrollbar-thumb,
+.inbox-list:hover::-webkit-scrollbar-thumb,
+.sched-list:hover::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb); background-clip: padding-box;
 }
 .log::-webkit-scrollbar-thumb:hover, .drawer-list::-webkit-scrollbar-thumb:hover, .bubble pre::-webkit-scrollbar-thumb:hover,
 .card pre::-webkit-scrollbar-thumb:hover, .bubble .table-wrap::-webkit-scrollbar-thumb:hover, .tray::-webkit-scrollbar-thumb:hover, .todo-list::-webkit-scrollbar-thumb:hover, .inbox-list::-webkit-scrollbar-thumb:hover, .sched-list::-webkit-scrollbar-thumb:hover {
