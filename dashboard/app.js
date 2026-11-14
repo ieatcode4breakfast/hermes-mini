@@ -5234,7 +5234,7 @@ const inbox = createInbox({
   isPhone: () => window.matchMedia("(max-width: 640px)").matches,
   openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
 });
-// Desktop scrollbars show only while the mouse is over their area (style.css .sb-on). Every scrolling area under the
+// Desktop scrollbars show only while the mouse is over their area, touch ones only while scrolling (style.css .sb-on). Every scrolling area under the
 // pointer gets .sb-on - a code block in the chat lights both - and loses it when the pointer leaves it or the window.
 // A class, not :hover: Chrome does not reliably repaint a styled scrollbar when only the hover state changes.
 const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list";
@@ -5254,6 +5254,16 @@ if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
   });
   document.documentElement.addEventListener("pointerleave", () => lightScrollbars(null));
   window.addEventListener("blur", () => lightScrollbars(null));
+} else {
+  // Touch: an area's bar shows while it scrolls and fades out 900 ms after the last scroll (style.css, touch block).
+  const scrollFade = new WeakMap();
+  document.addEventListener("scroll", (event) => {
+    const area = event.target instanceof Element && event.target.matches(SCROLL_AREAS) ? event.target : null;
+    if (!area) return;
+    area.classList.add("sb-on");
+    clearTimeout(scrollFade.get(area));
+    scrollFade.set(area, setTimeout(() => area.classList.remove("sb-on"), 900));
+  }, { capture: true, passive: true });
 }
 
 // Tools: folds the Schedules, Computer and To-do buttons into the Tools button and brings them back. Folded by default;
@@ -5290,7 +5300,17 @@ toolsBtn.addEventListener("click", () => setToolsOpen(!document.body.classList.c
 new MutationObserver(syncToolsCount).observe(todoCountEl, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
 
 // The Schedules panel: Hermes's scheduled jobs, read-only, fetched on every open (schedules.js).
-const schedules = createSchedules({ api });
+const schedules = createSchedules({
+  api,
+  // "Add to message": the job's reference goes into the draft at the cursor, ready to discuss or change it.
+  mention: {
+    available: () => !state.readOnly && !els.input.disabled,
+    insert: (text) => {
+      insertIntoComposer(text);
+      els.input.focus();
+    },
+  },
+});
 // The panels close each other, waiting for each one's history entry so they never race.
 els.todoBtn.addEventListener("click", () => {
   void inbox.close().then(() => schedules.close()).then(() => todo.open());

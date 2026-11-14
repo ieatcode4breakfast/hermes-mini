@@ -1,15 +1,25 @@
-// Schedules: the agent's scheduled jobs, opened from the button above the Computer button. It reads Hermes's own cron
-// list (GET /api/cron/jobs) on every open. Each row says what the job is, when it runs in plain words, and when it runs
-// next; a job running right now says so. Two buttons per row pause/resume or delete the job through Hermes's own
-// routes; delete asks first. Nothing else is editable here.
+// Schedules: the agent's scheduled jobs, opened from the Tools tray. It reads Hermes's own cron list (GET
+// /api/cron/jobs) on every open. Each row says what the job is, when it runs in plain words, and when it runs next; a
+// job running right now says so. Each row's ⋮ menu (also a right click, or a long press on touch) offers: Add to
+// message (puts a reference to the job into the chat draft at the cursor), Pause/Resume, and Delete (asks first).
+// Pause, resume and delete go through Hermes's own routes. Nothing else is editable here.
 
 import { confirmDialog } from "./confirm.js";
 import { showToast } from "./toast.js";
 
 const $ = (id) => document.getElementById(id);
-const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>';
-const RESUME_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
-const DELETE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const MENTION_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/></svg>';
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+const RESUME_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const DELETE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>';
+const DOTS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+const LONG_PRESS_MS = 480;
+
+// The text "Add to message" puts in the draft: enough for the agent to find the job (its id) and for the person to
+// read (its name).
+export function mentionText(item) {
+  return `"${item.title}" schedule (job ${item.id})`;
+}
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -162,7 +172,7 @@ export function scheduleRows(jobs, now = new Date()) {
   return rows;
 }
 
-export function createSchedules({ api }) {
+export function createSchedules({ api, mention = null }) {
   const btn = $("schedBtn");
   const scrim = $("schedScrim");
   const dialog = $("schedDialog");
@@ -176,17 +186,106 @@ export function createSchedules({ api }) {
 
   const busy = new Set(); // job ids with a pause, resume or delete in flight
 
-  function actionButton(cls, label, icon, onClick) {
+  // ---------- the row menu: the chat list's ⋮ card (style.css .row-menu), filled per row ----------
+  const menuScrim = document.createElement("div");
+  menuScrim.className = "scrim sched-menu-scrim";
+  menuScrim.setAttribute("aria-hidden", "true");
+  const menuEl = document.createElement("div");
+  menuEl.className = "row-menu sched-menu";
+  menuEl.setAttribute("role", "menu");
+  menuEl.setAttribute("aria-label", "Schedule actions");
+  document.body.append(menuScrim, menuEl);
+  let menu = null; // { item, anchor, row } while open
+  let pressOpenedAt = 0; // when a long press opened the menu: the lifting finger's click must not close it
+  let menuBack = null;
+  let resolveMenuBack = null;
+
+  function menuItem(label, icon, pick, danger = false) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `sched-act ${cls}`;
-    button.title = label;
-    button.setAttribute("aria-label", label);
-    button.innerHTML = icon;
-    button.addEventListener("click", onClick);
+    button.className = `row-menu-item${danger ? " danger" : ""}`;
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `${icon}<span>${label}</span>`;
+    button.addEventListener("click", () => {
+      if (Date.now() - pressOpenedAt < 600) return; // the long press's own lift, not a choice
+      void closeMenu().then(pick);
+    });
     return button;
   }
 
+  // Under the ⋮ (right edges together), flipped above it near the bottom, kept 8px inside the screen.
+  function placeMenu(anchor) {
+    const r = anchor.getBoundingClientRect();
+    const w = menuEl.offsetWidth;
+    const h = menuEl.offsetHeight;
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - 6 - h);
+    const left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8);
+    menuEl.style.left = `${left}px`;
+    menuEl.style.top = `${top}px`;
+  }
+
+  function openMenu(item, row) {
+    if (menu || busy.has(item.id)) return;
+    if (menuBack) {
+      menuBack.then(() => openMenu(item, row));
+      return;
+    }
+    const anchor = row.querySelector(".sched-dots") || row;
+    menu = { item, anchor, row };
+    const items = [];
+    if (mention && mention.available()) items.push(menuItem("Add to message", MENTION_ICON, () => addToMessage(item)));
+    items.push(menuItem(item.paused ? "Resume" : "Pause", item.paused ? RESUME_ICON : PAUSE_ICON, () => togglePause(item)));
+    items.push(menuItem("Delete", DELETE_ICON, () => void remove(item), true));
+    menuEl.replaceChildren(...items);
+    row.classList.add("menu-open");
+    anchor.setAttribute("aria-expanded", "true");
+    menuScrim.classList.add("open");
+    menuEl.classList.add("open");
+    placeMenu(anchor);
+    if (!(history.state && history.state.hermesMiniSchedMenu === true)) history.pushState({ hermesMiniSchedMenu: true }, "");
+    items[0].focus({ preventScroll: true });
+  }
+
+  function closeMenu({ viaPop = false } = {}) {
+    const m = menu;
+    if (!m) return Promise.resolve();
+    menu = null;
+    m.row.classList.remove("menu-open");
+    m.anchor.setAttribute("aria-expanded", "false");
+    menuScrim.classList.remove("open");
+    menuEl.classList.remove("open");
+    if (m.anchor.isConnected) m.anchor.focus({ preventScroll: true });
+    if (!viaPop && history.state && history.state.hermesMiniSchedMenu === true) {
+      menuBack = new Promise((resolve) => {
+        resolveMenuBack = resolve;
+      });
+      history.back();
+      return menuBack;
+    }
+    return Promise.resolve();
+  }
+
+  menuScrim.addEventListener("click", () => {
+    if (Date.now() - pressOpenedAt < 600) return; // the long press's own lift lands here
+    void closeMenu();
+  });
+  menuEl.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      void closeMenu();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...menuEl.querySelectorAll(".row-menu-item")];
+    const i = items.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+      : (i + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  });
+
+  // ---------- actions ----------
   async function act(item, run, failure) {
     if (busy.has(item.id)) return;
     busy.add(item.id);
@@ -217,6 +316,12 @@ export function createSchedules({ api }) {
     if (!ok) return;
     void act(item, () => api(`/api/cron/jobs/${encodeURIComponent(item.id)}`, { method: "DELETE" }),
       "Couldn't delete that schedule");
+  }
+
+  // Closes the panel and puts a reference to the job into the chat draft at the cursor (app.js insertIntoComposer).
+  async function addToMessage(item) {
+    await closePanel();
+    mention.insert(mentionText(item));
   }
 
   let rows = [];
@@ -250,16 +355,49 @@ export function createSchedules({ api }) {
       note.textContent = "Last run didn't finish";
       text.append(note);
     }
-    const actions = document.createElement("div");
-    actions.className = "sched-actions";
-    if (item.id) {
-      actions.append(
-        actionButton("sched-pause", item.paused ? "Resume" : "Pause", item.paused ? RESUME_ICON : PAUSE_ICON,
-          () => togglePause(item)),
-        actionButton("sched-delete", "Delete", DELETE_ICON, () => void remove(item)),
-      );
-    }
-    node.append(text, actions);
+    node.append(text);
+    if (!item.id) return node;
+    const dots = document.createElement("button");
+    dots.type = "button";
+    dots.className = "sched-dots";
+    dots.setAttribute("aria-label", `Options for ${item.title}`);
+    dots.setAttribute("aria-haspopup", "menu");
+    dots.setAttribute("aria-expanded", "false");
+    dots.innerHTML = DOTS_ICON;
+    dots.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openMenu(item, node);
+    });
+    node.append(dots);
+    // The chat list's other ways in: a right click, or a long press on touch (a move of more than 8px is a scroll).
+    node.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openMenu(item, node);
+    });
+    let press = null;
+    node.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch" || event.target.closest(".sched-dots")) return;
+      const start = { x: event.clientX, y: event.clientY };
+      press = { start, timer: setTimeout(() => {
+        press = null;
+        try {
+          navigator.vibrate?.(10);
+        } catch {
+          /* optional */
+        }
+        pressOpenedAt = Date.now();
+        openMenu(item, node);
+      }, LONG_PRESS_MS) };
+    });
+    const cancel = () => {
+      if (press) clearTimeout(press.timer);
+      press = null;
+    };
+    node.addEventListener("pointermove", (event) => {
+      if (press && Math.hypot(event.clientX - press.start.x, event.clientY - press.start.y) > 8) cancel();
+    });
+    node.addEventListener("pointerup", cancel);
+    node.addEventListener("pointercancel", cancel);
     return node;
   }
 
@@ -312,6 +450,8 @@ export function createSchedules({ api }) {
 
   function closePanel({ viaPop = false } = {}) {
     if (!open) return Promise.resolve();
+    if (menu && !viaPop) return closeMenu().then(() => closePanel());
+    if (menu) void closeMenu({ viaPop: true });
     open = false;
     scrim.classList.remove("open");
     dialog.classList.remove("open");
@@ -336,6 +476,19 @@ export function createSchedules({ api }) {
   });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", () => open && place());
   window.addEventListener("popstate", (event) => {
+    if (resolveMenuBack) {
+      const resolve = resolveMenuBack;
+      resolveMenuBack = null;
+      menuBack = null;
+      resolve();
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (menu && !(event.state && event.state.hermesMiniSchedMenu === true)) {
+      void closeMenu({ viaPop: true });
+      event.stopImmediatePropagation();
+      return;
+    }
     if (resolveBack) {
       const resolve = resolveBack;
       resolveBack = null;

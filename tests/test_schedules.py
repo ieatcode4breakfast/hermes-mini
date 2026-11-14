@@ -48,6 +48,7 @@ assert.deepEqual(rows.map((r) => [r.title, r.when, r.next, r.running, r.paused, 
   ['Weekly', 'Mondays at 9:00 am', '', false, true, false],
 ]);
 assert.deepEqual(m.scheduleRows(null), []);
+assert.equal(m.mentionText({ title: 'Morning briefing', id: '666a4ca6070b' }), '"Morning briefing" schedule (job 666a4ca6070b)');
 '''
 
 CRON = [
@@ -89,6 +90,9 @@ class SchedulesPanelTest(unittest.TestCase):
         self.assertEqual(sorted(set(__import__("re").findall(r'method: "([A-Z]+)"', source))), ["DELETE", "POST"])
         self.assertIn("/${verb}`", source)
         self.assertIn("confirmDialog(", source)
+        for label in ("Add to message", "Pause", "Resume", "Delete"):
+            self.assertIn(f'"{label}"', source)
+        self.assertIn("insertIntoComposer(text)", (DASHBOARD / "app.js").read_text(encoding="utf-8"))
         self.assertNotIn('method: "PUT"', source)
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
         self.assertLess(html.index('id="schedBtn"'), html.index('id="screenBtn"'))
