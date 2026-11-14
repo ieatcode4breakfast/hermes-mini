@@ -1831,7 +1831,7 @@ body:not(.tools-open) .fab.fab-tray {
 body.tools-open #toolsBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 /* A solid hammer-and-screwdriver glyph in the icon colour; drawn at 24px so it reads as large as the 20px line icons. */
 #toolsBtn svg { width: 24px; height: 24px; transition: rotate 380ms var(--ease-out); }
-body.tools-open #toolsBtn svg { rotate: -45deg; }
+body.tools-open #toolsBtn svg { rotate: -90deg; }
 @media (prefers-reduced-motion: reduce) {
   .fab.fab-tray, body:not(.tools-open) .fab.fab-tray { transition: opacity 120ms ease, visibility 0s linear 120ms; translate: none; scale: none; }
   body.tools-open .fab.fab-tray { transition: opacity 120ms ease; }
