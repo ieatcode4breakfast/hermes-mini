@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Inline audio player. An audio file a reply attaches with `MEDIA:` (mp3, m4a, aac, ogg, opus, wav, flac)
+  shows as a voice-note pill: play/pause, a waveform you tap or drag to seek, the time, and download.
+  The waveform and length come from a new `GET /audio-meta` route (decoded with ffmpeg, from PATH or
+  Hermes' own tools directory, and cached per file), so they draw before anything loads; the sound is
+  fetched on the first play. When the player cannot work (no ffmpeg, a file ffmpeg cannot read, a format
+  the browser cannot play) the card falls back to the plain download card. Needs a dashboard restart.
 - Schedules panel. A clock button lists the agent's scheduled jobs (read from Hermes' cron list on each
   open): the job's name, when it runs in plain words ("Every day at 7:45 am", "Weekdays at 1:00 pm",
   "Every 30 minutes") and when it runs next, running jobs first and paused ones last. Each row's ⋮ menu
