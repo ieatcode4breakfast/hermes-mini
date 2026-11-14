@@ -1419,11 +1419,26 @@ body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, va
 /* Schedules panel (schedules.js): the to-do card (todo-dialog), with plain read-only rows. Each row is the job's name,
    then one muted line with when it runs and when it runs next. */
 /* The slim scrollbar (10px) sits in the card's right padding, so the rows end in line with the title and the close
-   button: the list reaches 14px into the padding and keeps 4px of it, the bar takes the other 10px. Phones overlay their
+   button: the list reaches 14px into the padding and keeps 4px of it, the bar takes the other 10px (reserved even when
+   the list is short, so the rows line up either way). Phones overlay their
    scrollbars, so there the list keeps the card's edges. */
-.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
-@media (max-width: 640px) { .sched-list { margin: 0; padding: 0; } }
-.sched-row { padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
+@media (max-width: 640px) { .sched-list { margin: 0; padding: 0; scrollbar-gutter: auto; } }
+.sched-row { display: flex; align-items: center; gap: 8px; padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.sched-text { flex: 1 1 auto; min-width: 0; }
+/* Pause/Resume and Delete: two quiet round icon buttons at the row's right, always visible (phones have no hover). */
+.sched-actions { flex: none; display: flex; gap: 2px; }
+.sched-act {
+  display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer;
+}
+.sched-act svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sched-act.sched-pause svg path[d^="M8 5.5"] { fill: currentColor; stroke: none; }
+:where(:root[data-input="mouse"]) .sched-act:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+:where(:root[data-input="mouse"]) .sched-act.sched-delete:hover { color: var(--danger); }
+.sched-act:active { transform: scale(0.92); }
+.sched-row.busy { opacity: 0.55; }
+.sched-row.busy .sched-act { pointer-events: none; }
 .sched-row:first-child { border-top: 0; }
 .sched-name { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
 .sched-meta { display: flex; flex-wrap: wrap; column-gap: 10px; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--muted); }

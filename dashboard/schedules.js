@@ -1,8 +1,15 @@
-// Schedules: a read-only list of the agent's scheduled jobs, opened from the button above the Computer button.
-// It reads Hermes's own cron list (GET /api/cron/jobs) on every open and changes nothing. Each row says what the job
-// is, when it runs in plain words, and when it runs next; a job running right now says so.
+// Schedules: the agent's scheduled jobs, opened from the button above the Computer button. It reads Hermes's own cron
+// list (GET /api/cron/jobs) on every open. Each row says what the job is, when it runs in plain words, and when it runs
+// next; a job running right now says so. Two buttons per row pause/resume or delete the job through Hermes's own
+// routes; delete asks first. Nothing else is editable here.
+
+import { confirmDialog } from "./confirm.js";
+import { showToast } from "./toast.js";
 
 const $ = (id) => document.getElementById(id);
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>';
+const RESUME_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
+const DELETE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -167,9 +174,61 @@ export function createSchedules({ api }) {
   let backPending = null; // a history.back() from an in-app close is still in flight
   let resolveBack = null;
 
+  const busy = new Set(); // job ids with a pause, resume or delete in flight
+
+  function actionButton(cls, label, icon, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `sched-act ${cls}`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.innerHTML = icon;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  async function act(item, run, failure) {
+    if (busy.has(item.id)) return;
+    busy.add(item.id);
+    render();
+    try {
+      await run();
+    } catch {
+      showToast(failure, "error");
+    } finally {
+      busy.delete(item.id);
+      await refresh();
+    }
+  }
+
+  function togglePause(item) {
+    const verb = item.paused ? "resume" : "pause";
+    void act(item, () => api(`/api/cron/jobs/${encodeURIComponent(item.id)}/${verb}`, { method: "POST" }),
+      item.paused ? "Couldn't resume that schedule" : "Couldn't pause that schedule");
+  }
+
+  async function remove(item) {
+    const ok = await confirmDialog({
+      title: "Delete schedule?",
+      message: `"${item.title}" won't run again.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    void act(item, () => api(`/api/cron/jobs/${encodeURIComponent(item.id)}`, { method: "DELETE" }),
+      "Couldn't delete that schedule");
+  }
+
+  let rows = [];
+  function render() {
+    listEl.replaceChildren(...rows.map(row));
+  }
+
   function row(item) {
     const node = document.createElement("div");
-    node.className = `sched-row${item.paused ? " paused" : ""}${item.running ? " running" : ""}`;
+    node.className = `sched-row${item.paused ? " paused" : ""}${item.running ? " running" : ""}${busy.has(item.id) ? " busy" : ""}`;
+    const text = document.createElement("div");
+    text.className = "sched-text";
     const title = document.createElement("div");
     title.className = "sched-name";
     title.textContent = item.title;
@@ -184,18 +243,29 @@ export function createSchedules({ api }) {
     else if (item.paused) status.textContent = "Paused";
     else if (item.next) status.textContent = `Next: ${item.next}`;
     if (status.textContent) meta.append(status);
-    node.append(title, meta);
+    text.append(title, meta);
     if (item.failed) {
       const note = document.createElement("div");
       note.className = "sched-failed";
       note.textContent = "Last run didn't finish";
-      node.append(note);
+      text.append(note);
     }
+    const actions = document.createElement("div");
+    actions.className = "sched-actions";
+    if (item.id) {
+      actions.append(
+        actionButton("sched-pause", item.paused ? "Resume" : "Pause", item.paused ? RESUME_ICON : PAUSE_ICON,
+          () => togglePause(item)),
+        actionButton("sched-delete", "Delete", DELETE_ICON, () => void remove(item)),
+      );
+    }
+    node.append(text, actions);
     return node;
   }
 
-  function show(message, rows = []) {
-    listEl.replaceChildren(...rows.map(row));
+  function show(message, list = []) {
+    rows = list;
+    render();
     emptyEl.textContent = message;
     emptyEl.hidden = !message;
   }
@@ -206,8 +276,8 @@ export function createSchedules({ api }) {
     try {
       const data = await api("/api/cron/jobs");
       if (seq !== loadSeq) return;
-      const rows = scheduleRows(Array.isArray(data) ? data : (data && data.jobs) || []);
-      show(rows.length ? "" : "Nothing scheduled", rows);
+      const list = scheduleRows(Array.isArray(data) ? data : (data && data.jobs) || []);
+      show(list.length ? "" : "Nothing scheduled", list);
     } catch {
       if (seq !== loadSeq) return;
       if (!listEl.childElementCount) show("Couldn't load schedules");

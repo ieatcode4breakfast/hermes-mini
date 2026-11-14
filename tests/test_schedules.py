@@ -1,4 +1,4 @@
-"""The read-only Schedules panel (dashboard/schedules.js): plain-English schedule wording and row selection."""
+"""The Schedules panel (dashboard/schedules.js): plain-English schedule wording and row selection."""
 
 from __future__ import annotations
 
@@ -12,7 +12,11 @@ from tests.support import DASHBOARD
 SCRIPT = r'''
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-const m = await import('data:text/javascript;base64,' + fs.readFileSync(process.argv[1]).toString('base64'));
+import { pathToFileURL } from 'node:url';
+// confirm.js and toast.js register page listeners when loaded; the wording helpers need no page.
+globalThis.window = { addEventListener() {} };
+globalThis.document = { addEventListener() {}, getElementById() { return null; } };
+const m = await import(pathToFileURL(process.argv[1]).href);
 const cases = JSON.parse(fs.readFileSync(0, 'utf8'));
 for (const [expr, words] of cases.cron) assert.equal(m.cronWords(expr), words, expr);
 assert.equal(m.scheduleWords({ schedule: { kind: 'interval', minutes: 10 } }), 'Every 10 minutes');
@@ -78,11 +82,14 @@ class SchedulesPanelTest(unittest.TestCase):
                              input=json.dumps({"cron": CRON}), text=True, capture_output=True)
         self.assertEqual(run.returncode, 0, run.stderr)
 
-    def test_the_panel_is_read_only_and_wired(self):
+    def test_the_panel_only_reads_pauses_resumes_and_deletes(self):
         source = (DASHBOARD / "schedules.js").read_text(encoding="utf-8")
         self.assertIn('api("/api/cron/jobs")', source)
-        # Read-only: the panel never sends a method other than the default GET.
-        self.assertNotIn("method:", source)
+        # The only changes it can make: pause/resume (POST) and delete (DELETE), delete behind a confirm.
+        self.assertEqual(sorted(set(__import__("re").findall(r'method: "([A-Z]+)"', source))), ["DELETE", "POST"])
+        self.assertIn("/${verb}`", source)
+        self.assertIn("confirmDialog(", source)
+        self.assertNotIn('method: "PUT"', source)
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
         self.assertLess(html.index('id="schedBtn"'), html.index('id="screenBtn"'))
         self.assertIn('id="schedDialog"', html)
