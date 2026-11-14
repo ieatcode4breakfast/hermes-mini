@@ -139,7 +139,7 @@ const state = {
   cards: new Map(), // server request id -> { el, method, params, ... }
   attachments: [], // { file, kind: "image" | "file", url }
   pastes: [], // collapsed large pastes: { label, text }. The label stays in the textarea and the text is swapped back in on send.
-  mentions: [], // schedules added to the draft: { token, tag, title }. "@Name" stays in the textarea (drawn as a pill) and
+  mentions: [], // schedules added to the draft: { token, tag, title }. " Name" stays in the textarea (drawn as a pill) and
   //               becomes the full "[Schedule: … · job …]" tag on send, like a collapsed paste.
   sending: false,
   editing: null, // Edit & resend in progress: { row, saved } (see beginEdit)
@@ -4271,8 +4271,9 @@ function insertIntoComposer(text) {
 }
 
 // ---------- schedule mentions in the draft ----------
-// "Add to message" puts "@Name" at the caret. A layer laid exactly over the textarea (same box, font and wrapping,
-// text invisible, pointer-events off) paints a pill under each mention, so it reads as a chip inline with the text.
+// "Add to message" puts an em space and the name at the caret. A layer laid exactly over the textarea (same box, font and
+// wrapping, text invisible, pointer-events off) paints a pill under each mention and the clock icon over its em space,
+// so it looks the way the sent bubble draws it (appendWithSchedules).
 // Backspace right after a mention removes all of it. On send each mention becomes its full tag (expandMentions).
 const mentionLayer = el("div", "mention-layer");
 mentionLayer.setAttribute("aria-hidden", "true");
@@ -4314,7 +4315,9 @@ function syncMentions() {
     }
     if (plain) mentionLayer.append(document.createTextNode(plain));
     plain = "";
-    mentionLayer.append(el("mark", "mention", hit));
+    const mark = el("mark", "mention", hit);
+    mark.insertAdjacentHTML("afterbegin", `<span class="mention-icon">${CLOCK_ICON}</span>`);
+    mentionLayer.append(mark);
     i += hit.length;
   }
   mentionLayer.append(document.createTextNode(`${plain}\u200b`)); // the zero-width tail keeps a trailing newline's line
@@ -4322,12 +4325,19 @@ function syncMentions() {
   mentionLayer.hidden = false;
 }
 
+// The em space (U+2003, one em wide) is where the layer draws the clock, and the thin space after it is the gap before the
+// name; nobody types that pair, so the token stays unique.
+const MENTION_MARK = "\u2003\u2009";
+
 function addMention(job) {
   const title = String(job.title || "Schedule");
-  let token = `@${title}`;
-  if (state.mentions.some((m) => m.token === token && m.tag !== mentionText(job))) token = `@${title} (${job.id})`;
+  let token = `${MENTION_MARK}${title}`;
+  if (state.mentions.some((m) => m.token === token && m.tag !== mentionText(job))) token = `${MENTION_MARK}${title} (${job.id})`;
   if (!state.mentions.some((m) => m.token === token)) state.mentions.push({ token, tag: mentionText(job), title });
-  insertIntoComposer(token);
+  // A plain space before it when it would touch a word (the em space itself counts as whitespace for insertIntoComposer).
+  const input = els.input;
+  const before = input.selectionStart > 0 ? input.value.charAt(input.selectionStart - 1) : "";
+  insertIntoComposer(before && !/\s/.test(before) ? ` ${token}` : token);
   syncMentions();
 }
 
@@ -5417,7 +5427,7 @@ const schedules = createSchedules({
   // "Add to message": the job goes into the message being written, ready to discuss or change it.
   mention: {
     available: () => !state.readOnly && !els.input.disabled,
-    // "@Name" goes in at the caret and reads as an inline pill (addMention); the full tag is sent.
+    // The schedule goes in at the caret as an inline pill (addMention); the full tag is sent.
     add: (job) => {
       addMention(job);
       els.input.focus();
