@@ -1253,6 +1253,13 @@ body.docked.computer-docked .rename-scrim, body.docked.computer-docked .rename-d
    the right half of every row and the ends of long rows sat under the pane. Still below the confirm dialog (74/75),
    and the card comes later in the page than its scrim, so it paints on top. */
 body.docked.computer-docked .todo-scrim, body.docked.computer-docked .todo-dialog { z-index: 73; }
+/* The Inbox card and the model sheet rise above the computer pane as well: with the computer docked they were drawn
+   behind it, so their right side sat under the pane. The scrims stay where they are (the pane is not dimmed or
+   blocked); only the card is lifted. The Inbox's photo and name rise above it as they do undocked. Same level as the
+   to-do card (73), below the confirm dialog (74/75). */
+body.docked.computer-docked .inbox-dialog,
+body.docked.computer-docked .model-sheet { z-index: 73; }
+body.docked.computer-docked.inbox-open .topbar { z-index: 74; }
 
 /* Resizable seam between the chat and the docked computer. Invisible until hovered or dragged,
    then a thin grey line. --chat-w is the chat column's width (app.js, remembered per device). */

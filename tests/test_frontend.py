@@ -231,5 +231,22 @@ class InboxTapReadTest(unittest.TestCase):
         self.assertNotIn("!item.markedUnread", activate)
 
 
+class DockedOverlaysTest(unittest.TestCase):
+    """The Inbox and model sheet paint over the docked computer pane; their scrims stay behind it."""
+
+    def test_the_cards_rise_but_the_scrims_do_not(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        rule = re.search(
+            r"body\.docked\.computer-docked \.inbox-dialog,\s*"
+            r"body\.docked\.computer-docked \.model-sheet \{ z-index: 73; \}",
+            css,
+        )
+        self.assertIsNotNone(rule, "the docked Inbox/model card rule is missing")
+        self.assertIn("body.docked.computer-docked.inbox-open .topbar { z-index: 74; }", css)
+        # The scrims stay under the computer pane: the pane is not dimmed or blocked.
+        self.assertIn(".inbox-scrim { z-index: 65; }", css)
+        self.assertIn(".model-scrim { z-index: 60; }", css)
+
+
 if __name__ == "__main__":
     unittest.main()

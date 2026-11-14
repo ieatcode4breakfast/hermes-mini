@@ -84,6 +84,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The Inbox and the model sheet now paint in front of the docked computer pane instead of under its
+  right edge. Only the cards' stacking changed; the pane and the Inbox's photo and name keep their
+  places.
 - Scheduled job results no longer turn into one big message from you. When you reply right after
   job results, Hermes folds them and your reply into one stored message and drops the job label, so
   the app drew it all as your bubble and the job results left the Inbox. The app now looks up the
