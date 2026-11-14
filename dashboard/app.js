@@ -5234,6 +5234,39 @@ const inbox = createInbox({
   isPhone: () => window.matchMedia("(max-width: 640px)").matches,
   openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
 });
+// Tools: folds the Schedules, Computer and To-do buttons into the Tools button and brings them back. Folded by default;
+// the choice is remembered on this device. While folded, Tools repeats the open to-do count so it is not lost.
+const TOOLS_KEY = "hermes-mini-tools-open";
+const toolsBtn = document.getElementById("toolsBtn");
+const toolsCount = document.getElementById("toolsCount");
+const todoCountEl = document.getElementById("todoCount");
+function syncToolsCount() {
+  const show = !document.body.classList.contains("tools-open") && !todoCountEl.hidden && todoCountEl.textContent !== "";
+  toolsCount.textContent = show ? todoCountEl.textContent : "";
+  toolsCount.hidden = !show;
+}
+function setToolsOpen(openTools, { remember = true } = {}) {
+  document.body.classList.toggle("tools-open", openTools);
+  toolsBtn.setAttribute("aria-expanded", String(openTools));
+  syncToolsCount();
+  if (!remember) return;
+  try {
+    if (openTools) localStorage.setItem(TOOLS_KEY, "1");
+    else localStorage.removeItem(TOOLS_KEY);
+  } catch {
+    /* a private window: the choice lasts until reload */
+  }
+}
+let toolsRemembered = false;
+try {
+  toolsRemembered = localStorage.getItem(TOOLS_KEY) === "1";
+} catch {
+  /* unavailable storage: start folded */
+}
+setToolsOpen(toolsRemembered, { remember: false });
+toolsBtn.addEventListener("click", () => setToolsOpen(!document.body.classList.contains("tools-open")));
+new MutationObserver(syncToolsCount).observe(todoCountEl, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
+
 // The Schedules panel: Hermes's scheduled jobs, read-only, fetched on every open (schedules.js).
 const schedules = createSchedules({ api });
 // The panels close each other, waiting for each one's history entry so they never race.

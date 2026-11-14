@@ -96,6 +96,18 @@ class SchedulesPanelTest(unittest.TestCase):
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('import { createSchedules } from "./schedules.js";', app)
 
+    def test_tools_button_folds_the_three_buttons(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "schedBtn", "screenBtn", "todoBtn")]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(html.count("fab fab-tray"), 3)
+        self.assertIn('aria-controls="schedBtn screenBtn todoBtn"', html)
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn("body:not(.tools-open) .fab.fab-tray", css)
+        self.assertIn("body.tools-open #toolsBtn", css)
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn('document.body.classList.toggle("tools-open", openTools)', app)
+
 
 if __name__ == "__main__":
     unittest.main()
