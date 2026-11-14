@@ -2129,12 +2129,13 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .mention-layer[hidden] { display: none; }
 .mention-layer .mention {
-  position: relative; color: transparent; border-radius: 6px;
+  color: transparent; border-radius: 8px;
   /* Solid (tint mixed into the box colour) so the edge and the fill never stack into darker bands. */
   background: color-mix(in srgb, var(--accent) 26%, var(--surface));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, var(--surface));
 }
-/* The clock sits over the mention's leading em space (one em wide), the way the sent pill shows it. */
+/* The clock sits over the mention's em space (one em wide), the way the sent pill shows it. */
+.mention-layer .mention-icon-space { position: relative; }
 .mention-layer .mention-icon {
   position: absolute; left: 0; top: 0; bottom: 0; width: 1em; display: flex; align-items: center; justify-content: center;
   color: var(--fg);

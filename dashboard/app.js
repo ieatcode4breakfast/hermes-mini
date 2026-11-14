@@ -4315,8 +4315,10 @@ function syncMentions() {
     }
     if (plain) mentionLayer.append(document.createTextNode(plain));
     plain = "";
-    const mark = el("mark", "mention", hit);
-    mark.insertAdjacentHTML("afterbegin", `<span class="mention-icon">${CLOCK_ICON}</span>`);
+    const mark = el("mark", "mention");
+    const iconSpace = el("span", "mention-icon-space", MENTION_ICON_SPACE);
+    iconSpace.insertAdjacentHTML("beforeend", `<span class="mention-icon">${CLOCK_ICON}</span>`);
+    mark.append(document.createTextNode(MENTION_LEAD), iconSpace, document.createTextNode(hit.slice(MENTION_LEAD.length + 1)));
     mentionLayer.append(mark);
     i += hit.length;
   }
@@ -4325,19 +4327,25 @@ function syncMentions() {
   mentionLayer.hidden = false;
 }
 
-// The em space (U+2003, one em wide) is where the layer draws the clock, and the thin space after it is the gap before the
-// name; nobody types that pair, so the token stays unique.
-const MENTION_MARK = "\u2003\u2009";
+// A mention in the textarea: thin space (the pill's left padding), em space (where the layer draws the clock), thin
+// space (the gap before the name), the name, then thin + hair space (the right padding). Those widths match the sent
+// pill's padding (style.css .sched-pill), and nobody types that run, so the token stays unique.
+const MENTION_LEAD = "\u2009";
+const MENTION_ICON_SPACE = "\u2003";
+const MENTION_MARK = `${MENTION_LEAD}${MENTION_ICON_SPACE}\u2009`;
+const MENTION_TRAIL = "\u2009\u200a";
 
 function addMention(job) {
   const title = String(job.title || "Schedule");
-  let token = `${MENTION_MARK}${title}`;
-  if (state.mentions.some((m) => m.token === token && m.tag !== mentionText(job))) token = `${MENTION_MARK}${title} (${job.id})`;
+  let token = `${MENTION_MARK}${title}${MENTION_TRAIL}`;
+  if (state.mentions.some((m) => m.token === token && m.tag !== mentionText(job))) token = `${MENTION_MARK}${title} (${job.id})${MENTION_TRAIL}`;
   if (!state.mentions.some((m) => m.token === token)) state.mentions.push({ token, tag: mentionText(job), title });
-  // A plain space before it when it would touch a word (the em space itself counts as whitespace for insertIntoComposer).
+  // Plain spaces around it where it would touch a word, and always one after it at the end of the text, so the caret
+  // lands outside the pill (the padding spaces count as whitespace for insertIntoComposer, so they are added here).
   const input = els.input;
   const before = input.selectionStart > 0 ? input.value.charAt(input.selectionStart - 1) : "";
-  insertIntoComposer(before && !/\s/.test(before) ? ` ${token}` : token);
+  const after = input.value.charAt(input.selectionEnd);
+  insertIntoComposer(`${before && !/\s/.test(before) ? " " : ""}${token}${!after || !/\s/.test(after) ? " " : ""}`);
   syncMentions();
 }
 
@@ -4354,9 +4362,13 @@ els.input.addEventListener("beforeinput", (event) => {
   const m = mentionBeforeCaret();
   if (!m) return;
   event.preventDefault();
-  const end = els.input.selectionStart;
-  els.input.setRangeText("", end - m.token.length, end, "end");
-  els.input.dispatchEvent(new Event("input", { bubbles: true }));
+  const input = els.input;
+  const end = input.selectionStart;
+  let start = end - m.token.length;
+  // The plain spaces added around it would be left doubled: take the one before it too.
+  if (start > 0 && input.value.charAt(start - 1) === " " && (end >= input.value.length || input.value.charAt(end) === " ")) start -= 1;
+  input.setRangeText("", start, end, "end");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 });
 els.input.addEventListener("scroll", () => {
   mentionLayer.scrollTop = els.input.scrollTop;
