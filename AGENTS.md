@@ -7,8 +7,9 @@ the plugin installable, replaceable and honest. Read them before changing anythi
 
 - Do not edit, patch, monkeypatch, wrap or `setattr` anything in the Hermes source tree, the installed
   runtime, `sys.modules`, or a registry owned by Hermes. Use documented plugin surfaces:
-  `register_hook`, `register_auxiliary_task`, `register_platform`, the dashboard `router`, and the
-  documented helpers those paths are allowed to call.
+  `register_hook`, `register_auxiliary_task`, `register_system_prompt_section`,
+  `register_platform`, the dashboard `router`, and the documented helpers those paths are allowed to
+  call.
 - If a hook or helper you need is genuinely missing, open an issue upstream. Do not add a private
   seam here and hope it survives an upgrade.
 - The plugin must load through Hermes' own discovery (`hermes plugins doctor`) with no changes to the
@@ -44,8 +45,10 @@ the plugin installable, replaceable and honest. Read them before changing anythi
 
 - Never read `.env`, `auth.json`, private keys, or any credential file directly, and never print or
   log one.
-- Secrets come from Hermes' credential store / environment through the supported seams, and the
-  browser never receives a secret value.
+- Secrets come from Hermes' credential store / environment through the supported seams. The plugin
+  never sends a provider key or credential to the browser; the page carries only Hermes' own
+  dashboard session (its cookie, plus the dashboard's page token where one is injected). A provider
+  key typed into the model sheet goes straight to Hermes' gateway and is not kept by the app.
 - Push keys are generated **only** when a person explicitly turns notifications on. Importing a
   module, reading a public key, or probing a capability must not create a key.
 

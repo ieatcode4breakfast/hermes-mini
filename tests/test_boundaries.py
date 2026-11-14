@@ -1,8 +1,8 @@
 """Capability probes, the read-only package, reload safety and update durability.
 
-These cover the boundaries the roadmap calls out: the capability route is booleans only and
-authenticates through the mount; the plugin package is never written at runtime; reloading is
-idempotent; and replacing the package code leaves external settings, assets and data intact.
+These cover the boundaries the contributor constraints call out: the capability route is booleans
+only and authenticates through the mount; the plugin package is never written at runtime; reloading
+is idempotent; and replacing the package code leaves external settings, assets and data intact.
 """
 
 from __future__ import annotations

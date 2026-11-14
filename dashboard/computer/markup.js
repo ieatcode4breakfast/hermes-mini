@@ -1,5 +1,5 @@
-// Computer markup, shared by both pages that host the viewer (the chat app and the standalone page). screen.js
-// inserts it into <body> when the page does not already have #botScreen.
+// Computer markup for the viewer inside the chat app. screen.js inserts it into <body> when the page does not
+// already have #botScreen.
 // The agent's name fills NAME; screen.js escapes it.
 export const botScreenHtml = (NAME) => `
 <section id="botScreen" class="bot-screen" role="dialog" aria-modal="true" aria-labelledby="bsTitle" hidden>

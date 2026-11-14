@@ -9,7 +9,7 @@ import { createTrackpad } from "./trackpad.js";
 import { showToast } from "../toast.js";
 import { botScreenHtml } from "./markup.js";
 
-// Works from either page that hosts it: the chat app or the standalone computer page.
+// The app may sit under a path prefix (a reverse proxy): everything before /dashboard-plugins/.
 const PREFIX = (() => {
   const at = location.pathname.indexOf("/dashboard-plugins/");
   return at > 0 ? location.pathname.slice(0, at) : "";
@@ -63,8 +63,8 @@ function isDisplayUnavailable(error) {
   );
 }
 
-// The agent whose computer this is (deps.agentName; the host page passes the user's agent name).
-let AGENT = "Mini";
+// The agent whose computer this is (deps.agentName, the app's agent name; "Hermes" like the rest of the app).
+let AGENT = "Hermes";
 
 function readableError(error) {
   const message = String((error && error.message) || error || "");
@@ -110,12 +110,9 @@ async function viewerHash(viewerId) {
 }
 
 export function createBotScreen(deps) {
-  AGENT = String(deps.agentName || "Mini");
+  AGENT = String(deps.agentName || "Hermes");
   const safeName = AGENT.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   if (!$("botScreen")) document.body.insertAdjacentHTML("beforeend", botScreenHtml(safeName));
-  // Standalone (the computer page): the computer is the whole page, so it never closes, slides or touches
-  // history. Inside the chat app it opens and closes as before.
-  const standalone = Boolean(deps.standalone);
   const shell = $("botScreen");
   if (!shell) {
     const noop = () => undefined;
@@ -1202,7 +1199,7 @@ export function createBotScreen(deps) {
     renderChrome();
     startFloatWatch();
     backBtn.focus({ preventScroll: true });
-    if (!standalone && !(history.state && history.state.hermesMiniScreen === true)) history.pushState({ hermesMiniScreen: true }, "");
+    if (!(history.state && history.state.hermesMiniScreen === true)) history.pushState({ hermesMiniScreen: true }, "");
     if (rpcReady()) void refreshStatus();
     else setBanner("Waiting for Hermes to reconnect…");
     return Promise.resolve();
@@ -1212,7 +1209,7 @@ export function createBotScreen(deps) {
   // back out on close. Reduced motion skips it. Returns the Animation, or null when there is none.
   function slide(entering) {
     if (typeof shell.animate !== "function") return null;
-    if (standalone || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
     const frames = [{ transform: "translateX(100%)" }, { transform: "translateX(0)" }];
     return shell.animate(entering ? frames : frames.reverse(), {
       duration: entering ? 320 : 240,
@@ -1245,7 +1242,6 @@ export function createBotScreen(deps) {
   }
 
   function closeScreen({ viaPop = false } = {}) {
-    if (standalone) return Promise.resolve();
     if (!openFlag) return closeBack || Promise.resolve();
     openFlag = false;
     generation += 1;
@@ -1499,10 +1495,10 @@ export function createBotScreen(deps) {
   keyboardBtn.addEventListener("mousedown", (event) => event.preventDefault());
   // ---------- clipboard ----------
   // Paste: your clipboard goes to the remote computer, then Ctrl+V is pressed there. Text rides RFB cut text
-  // (sendPaste); images ride the plugin route, which puts them on the remote's CLIPBOARD selection as image/png
-  //. Copy: her clipboard comes from the plugin route (the RFB stream never carries it: Hermes runs
-  // Xvnc with -SendCutText=0) and lands on yours. Both need control: pressed while watching, they take it first, then
-  // run (the server checks the same lease).
+  // (sendPaste); images ride the plugin route, which puts them on the remote's CLIPBOARD selection (PNG when Pillow
+  // can convert, else the uploaded type). Copy: her clipboard comes from the plugin route (the RFB stream never
+  // carries it: Hermes runs Xvnc with -SendCutText=0) and lands on yours. Both need control: pressed while watching,
+  // they take it first, then run (the server checks the same lease).
   const CLIPBOARD_URL = `${PREFIX}/api/plugins/hermes-mini/computer/clipboard`;
   const CLIPBOARD_IMAGE_URL = `${CLIPBOARD_URL}-image`;
   // Feedback is a toast, "Copied" or "Pasted"; text failures stay quiet, an image upload says so
@@ -1587,8 +1583,7 @@ export function createBotScreen(deps) {
       showToast("Pasted");
       return;
     }
-    // Neither an image nor text: on a phone, offer a screenshot instead. The standalone page does
-    // not set data-input, so the coarse-pointer query covers it too.
+    // Neither an image nor text: on a phone, offer a screenshot instead (a touch layout, or a coarse pointer).
     if (touchLayout() || (touchQuery && touchQuery.matches)) openImagePicker();
   }
 

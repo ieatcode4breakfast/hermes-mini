@@ -3,7 +3,7 @@
 These are cheap, honest checks on the files the browser actually loads: every relative import
 resolves, the service worker only lists files that exist, its optional/required split is real, and
 nothing outside the app's own scope is referenced. They do not claim the UI has been exercised in a
-browser beyond what the recorded manual/headless checks say in the README.
+browser beyond what the README's verified/not-verified list says.
 """
 
 from __future__ import annotations

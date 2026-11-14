@@ -1,4 +1,5 @@
-"""Hermes Mini hook half: turn agent lifecycle moments into Web Push notifications.
+"""Hermes Mini hook half: app-chat scoping, Web Push notifications, app-only prompt sections,
+periodic progress nudges and the self-edit guard.
 
 Registered by Hermes' plugin loader; the app half (``dashboard/plugin_api.py``) serves the browser
 routes. Both halves load ``mini_core.py`` and ``push_store.py`` under fixed module names so they

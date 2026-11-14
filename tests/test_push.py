@@ -119,12 +119,12 @@ class VapidSubjectTest(DisposableHome):
         super().setUp()
         self.push = load_push()
 
-    def test_subject_prefers_configured_origin_then_request_origin(self):
-        self.assertEqual(self.push.vapid_subject("https://app.example.com"), "https://app.example.com")
+    def test_subject_is_the_configured_contact_else_the_reserved_fallback(self):
+        self.assertEqual(self.push.vapid_subject(), self.push.SUB_FALLBACK)
         settings = self.core.load_settings()
         settings["push"]["contact"] = "https://contact.example.com"
         self.core.save_settings(settings)
-        self.assertEqual(self.push.vapid_subject("https://app.example.com"), "https://contact.example.com")
+        self.assertEqual(self.push.vapid_subject(), "https://contact.example.com")
 
     def test_subject_is_https_with_a_host_and_no_identity(self):
         subject = self.push.vapid_subject()
@@ -135,7 +135,7 @@ class VapidSubjectTest(DisposableHome):
 
     def test_vapid_headers_carry_the_key_and_a_subject(self):
         self.push.ensure_public_key_b64url()
-        headers = self.push.vapid_headers("https://fcm.googleapis.com/x", origin="https://app.example.com")
+        headers = self.push.vapid_headers("https://fcm.googleapis.com/x")
         self.assertTrue(headers["Authorization"].startswith("vapid t="))
         self.assertIn(", k=", headers["Authorization"])
         self.assertEqual(headers["Content-Encoding"], "aes128gcm")

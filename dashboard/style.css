@@ -126,7 +126,7 @@ input, textarea, select { font-family: inherit; }
 /* Phone-width screens: 14px base text. */
 @media (max-width: 600px) { body { font-size: 14px; } }
 
-/* Slim scrollbars (PC Chrome) on every scrollable area: the chat log, the drawer list, the to-do list, the Inbox list, code blocks, wide tables and the
+/* Slim scrollbars (PC Chrome) on every scrollable area: the chat log, the drawer list, the to-do list, the Inbox list, the Schedules list, code blocks, wide tables and the
    attachment tray. A 10px lane with a transparent track and no arrows; the thumb is a 6px pill, because its 2px
    transparent border is kept out of the paint by background-clip, so it floats inside the lane. Do not set
    scrollbar-width or scrollbar-color on these: Chrome 121+ uses those instead of ::-webkit-scrollbar. The composer
@@ -931,14 +931,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .drawer.open { transform: none; visibility: visible; transition: transform 340ms var(--ease-out), visibility 0s; }
 .drawer.dragging { transition: none; }
-/* One horizontal system. The gutter (8px) is the list's padding and the outer edge of every row, the computer,
-   New chat and the row menu. Inside each, content starts 12px in (x=20): the "+" circle, the row titles and the group
-   headers all share that line. There is no visible drawer title (the dialog is named by aria-label); --drawer-gap is
+/* One horizontal system. The gutter (8px) is the list's padding and the outer edge of every row, New chat and the row
+   menu. Inside each, content starts 12px in (x=20): the New chat label, the row titles and the group headers all share
+   that line. There is no visible drawer title (the dialog is named by aria-label); --drawer-gap is
    the small inset above the list. --drawer-sb is the list's scrollbar width (set by drawer.js), so New chat keeps the
    same right edge as the rows when it scrolls. */
 .drawer { --drawer-gap: 10px; --drawer-sb: 0px; }
-/* New chat is a plain row in the list, directly under the computer and the home row (drawer.js moves the element
-   there on every render). It looks like the other rows: transparent, same 14px radius, same hover tint and press tint,
+/* New chat is a plain row in the list, directly under the home row (drawer.js moves the element there on every
+   render). It looks like the other rows: transparent, same 14px radius, same hover tint and press tint,
    with a neutral pencil instead of the old accent pill. Its 8px list gutter plus 12px row padding put the content at
    x = 20. */
 .drawer-new {
@@ -1487,8 +1487,9 @@ body.bot-screen-open #screenBtn {
 body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 
-/* Schedules panel (schedules.js): the to-do card (todo-dialog), with plain read-only rows. Each row is the job's name,
-   then one muted line with when it runs and when it runs next. */
+/* Schedules panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
+   when it runs and when it runs next (or "Running now" and "Paused"), a failure note when the last run failed, and the
+   row's ⋮ menu. */
 /* The slim scrollbar (10px) sits in the card's right padding, so the rows end in line with the title and the close
    button: the list reaches 14px into the padding and keeps 4px of it, the bar takes the other 10px (reserved even when
    the list is short, so the rows line up either way). Touch screens overlay
@@ -1655,11 +1656,12 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
 .bubble.long:not(.collapsed) .bubble-toggle svg { transform: rotate(180deg); }
 
 
-/* A scheduled job's result in the main chat (the bridge, the person 6 Nov 2026): the agent's bubble with a small label. */
+/* A scheduled job's result in the main chat (the bridge, the person 6 Nov 2026): drawn as an ordinary agent bubble,
+   with no label; the row keeps a "job" class. */
 
 /* Take a photo is a phone/tablet item: with a mouse it would only reopen the photo picker. */
 :where(:root[data-input="mouse"]) #takePhoto { display: none; }
-/* A to-do still being saved: shown at once, its buttons wait for the server's id (todo.js add). */
+/* A to-do still being saved: shown at once, its buttons wait for the server's id (todo.js postNew). */
 .todo-row.pending { opacity: 0.6; }
 .todo-row.pending button { pointer-events: none; }
 
@@ -1790,7 +1792,8 @@ body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color
 /* Today / Yesterday / "Mon 3 Nov". */
 .inbox-date { padding: 14px var(--inbox-gutter) 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
 .inbox-date:first-child { padding-top: 2px; }
-/* One row: thread name, then the chat's own timestamp, then the message, clamped to two lines. No labels or icons. */
+/* One row: the home icon on the main chat, the thread name, then the chat's own timestamp, then the message, clamped to
+   two lines. */
 .inbox-row {
   display: block; width: 100%; margin: 0; padding: 11px var(--inbox-gutter); border: 0; /* no dividers between rows */
   border-radius: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;

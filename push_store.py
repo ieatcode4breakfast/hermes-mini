@@ -284,7 +284,7 @@ def _load_private_key():
 
 
 def generate_key() -> Any:
-    """Create the VAPID key on explicit opt-in. Called only from the enable/subscribe routes."""
+    """Create the VAPID key on explicit opt-in. Called only from the enable route's key creation."""
     global _private_key, _private_key_path
     with _lock:
         existing = _load_private_key()
@@ -467,18 +467,15 @@ def _b64url_json(value: Any) -> str:
     return b64url_encode(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
-def vapid_subject(origin: str = "") -> str:
-    """The VAPID ``sub`` claim: an app/operator-set contact or Hermes' configured public URL, else the
-    request origin."""
-    configured = mini_core.configured_public_origin()
-    for candidate in (configured, origin):
-        url = mini_core.clean_public_url(candidate)
-        if url:
-            return url
-    return SUB_FALLBACK
+def vapid_subject() -> str:
+    """The VAPID ``sub`` claim: the app's push contact or public URL, else Hermes' configured public
+    URL (``mini_core.configured_public_origin``), else the reserved ``.invalid`` fallback. A push is
+    sent from a hook, with no request in hand, so no request origin is ever used."""
+    url = mini_core.clean_public_url(mini_core.configured_public_origin())
+    return url or SUB_FALLBACK
 
 
-def vapid_jwt(endpoint: str, now: float | None = None, *, origin: str = "") -> str:
+def vapid_jwt(endpoint: str, now: float | None = None) -> str:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
@@ -487,7 +484,7 @@ def vapid_jwt(endpoint: str, now: float | None = None, *, origin: str = "") -> s
     aud = f"{parts.scheme}://{parts.netloc}"
     issued = int(now if now is not None else time.time())
     header = {"typ": "JWT", "alg": "ES256"}
-    claims = {"aud": aud, "exp": issued + VAPID_TTL, "sub": vapid_subject(origin)}
+    claims = {"aud": aud, "exp": issued + VAPID_TTL, "sub": vapid_subject()}
     signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}".encode("ascii")
     der = _private_key_obj().sign(signing_input, ec.ECDSA(hashes.SHA256()))
     r, s = decode_dss_signature(der)
@@ -495,8 +492,8 @@ def vapid_jwt(endpoint: str, now: float | None = None, *, origin: str = "") -> s
     return f"{signing_input.decode('ascii')}.{b64url_encode(signature)}"
 
 
-def vapid_headers(endpoint: str, *, origin: str = "") -> dict[str, str]:
-    token = vapid_jwt(endpoint, origin=origin)
+def vapid_headers(endpoint: str) -> dict[str, str]:
+    token = vapid_jwt(endpoint)
     return {
         "Authorization": f"vapid t={token}, k={public_key_b64url()}",
         "Content-Encoding": "aes128gcm",
@@ -506,11 +503,11 @@ def vapid_headers(endpoint: str, *, origin: str = "") -> dict[str, str]:
     }
 
 
-def _post(endpoint: str, body: bytes, *, origin: str = "") -> int:
+def _post(endpoint: str, body: bytes) -> int:
     import httpx
 
     with httpx.Client(timeout=10.0) as client:
-        response = client.post(endpoint, content=body, headers=vapid_headers(endpoint, origin=origin))
+        response = client.post(endpoint, content=body, headers=vapid_headers(endpoint))
         return int(response.status_code)
 
 

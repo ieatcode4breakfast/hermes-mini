@@ -50,7 +50,7 @@
 <body>
   <div class="app">
     <!-- Floating header over the chat: chats menu (left), the agent's picture with a name pill (centre),
-         the computer and to-do buttons (right). -->
+         the Tools button with the Schedules, Computer and to-do buttons folded under it (right). -->
     <header class="topbar">
       <button id="menuBtn" class="fab fab-menu" type="button" aria-label="Chats" aria-controls="drawer" aria-expanded="false" title="Chats">
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -192,7 +192,7 @@
     </div>
   </aside>
 
-  <!-- Row menu for a chat (long press or right click on a row): Pin/Unpin, Rename, Delete chat. -->
+  <!-- Row menu for a chat (⋮, long press or right click on a row): Pin/Unpin, Mute notifications, Rename, Delete chat. -->
   <div id="rowMenuScrim" class="scrim row-menu-scrim" aria-hidden="true"></div>
   <div id="rowMenu" class="row-menu" role="menu" aria-label="Chat actions">
     <button id="rowMenuPin" class="row-menu-item" type="button" role="menuitem">
@@ -261,8 +261,9 @@
     <div id="todoList" class="todo-list"></div>
   </div>
 
-  <!-- Schedules panel, opened from the button above the Computer button. Read-only: it lists Hermes's cron jobs. Shares
-       the to-do panel's card (todo-* classes) so the two look the same. -->
+  <!-- Schedules panel, opened from the button above the Computer button. It lists Hermes's cron jobs; each row's ⋮
+       menu (or a right click, or a long press) pauses, resumes or deletes one, or adds it to the message being written.
+       Shares the to-do panel's card (todo-* classes) so the two look the same. -->
   <div id="schedScrim" class="scrim todo-scrim" aria-hidden="true"></div>
   <div id="schedDialog" class="todo-dialog sched-dialog" role="dialog" aria-modal="true" aria-labelledby="schedTitle">
     <div class="todo-head">

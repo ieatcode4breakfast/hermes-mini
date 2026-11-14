@@ -2897,7 +2897,8 @@ async function downloadFile(path, name, card) {
 
 // Audio a reply attaches with MEDIA: plays inline: play/pause, a waveform you tap or drag to seek, the time, and a
 // download button. The waveform and duration come from the plugin (ffmpeg) before anything loads; the sound itself
-// is fetched only on the first play or seek, through the same authenticated route as a download.
+// is fetched only on the first play, seek or download, through the same authenticated route as a download, and that one
+// copy is shared by every card for the same file (audioSource).
 const AUDIO_EXT = /\.(?:mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i;
 const AUDIO_BAR_COUNT = 40;
 const AUDIO_TYPES = {
@@ -2908,6 +2909,54 @@ const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v1
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>';
 const audioMetaCache = new Map();
 let playingAudio = null; // the one card's <audio> that is playing: starting another pauses it
+
+// One downloaded copy per audio file for the life of the page: every card that names the same path (twice in one
+// reply, again in another message, or redrawn when a chat is reopened) plays and downloads that copy instead of
+// fetching the file again. Only the AUDIO_KEEP most recently used files are kept; an older one is released once no
+// card on screen still uses it. A failed fetch is forgotten, so the next tap tries again.
+const AUDIO_KEEP = 3;
+const audioSources = new Map(); // path -> { url: Promise<string> (blob: URL), cards: Set<card element> }
+
+function audioSource(path, card) {
+  let entry = audioSources.get(path);
+  if (entry) {
+    audioSources.delete(path); // re-insert: the Map's order is least to most recently used
+  } else {
+    entry = { cards: new Set(), url: null };
+    entry.url = apiBlob(`/api/fs/download?path=${encodeURIComponent(path)}`).then((blob) => URL.createObjectURL(blob));
+    entry.url.catch(() => { if (audioSources.get(path) === entry) audioSources.delete(path); });
+  }
+  audioSources.set(path, entry);
+  entry.cards.add(card);
+  for (const [key, old] of audioSources) {
+    if (audioSources.size <= AUDIO_KEEP) break;
+    if (old === entry || [...old.cards].some((node) => node.isConnected)) continue;
+    audioSources.delete(key);
+    old.url.then((url) => URL.revokeObjectURL(url), () => {});
+  }
+  return entry.url;
+}
+
+// The audio card's download button: saves the shared copy, fetching it only if no card has yet.
+async function downloadAudio(path, name, button, card) {
+  if (button.classList.contains("busy")) return;
+  button.classList.add("busy");
+  button.disabled = true;
+  try {
+    const link = document.createElement("a");
+    link.href = await audioSource(path, card);
+    link.download = name || "audio";
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    showToast(error && error.status === 404 ? "File not found" : "Couldn't download that file", "error");
+  } finally {
+    button.classList.remove("busy");
+    button.disabled = false;
+  }
+}
 
 function audioMeta(path) {
   if (!audioMetaCache.has(path)) {
@@ -2970,7 +3019,7 @@ function audioCard(path, name) {
   down.title = `Download ${name}`;
   down.setAttribute("aria-label", `Download ${name}`);
   down.innerHTML = DOWNLOAD_ICON;
-  down.addEventListener("click", () => void downloadFile(path, name, down));
+  down.addEventListener("click", () => void downloadAudio(path, name, down, card));
   card.append(play, wave, time, down);
 
   let duration = NaN;
@@ -3019,13 +3068,13 @@ function audioCard(path, name) {
     if (loading) return loading;
     card.classList.add("loading");
     play.disabled = true;
-    loading = apiBlob(`/api/fs/download?path=${encodeURIComponent(path)}`)
-      .then((blob) => new Promise((resolve, reject) => {
+    loading = audioSource(path, card)
+      .then((url) => new Promise((resolve, reject) => {
         const node = new Audio();
         node.preload = "auto";
         node.addEventListener("loadedmetadata", () => resolve(node), { once: true });
         node.addEventListener("error", () => reject(new Error("unplayable")), { once: true });
-        node.src = URL.createObjectURL(blob);
+        node.src = url;
       }))
       .then((node) => {
         audio = node;
@@ -5498,9 +5547,10 @@ els.screenBtn.addEventListener("click", () => {
 });
 
 // ---------- Inbox: read by seeing it in chat ----------
-// The Inbox has its own per-message read tracker; these marks are the ONLY thing that writes to it, and the drawer's
-// seen.json is never touched. A row counts as seen once 60% of it has been on screen for 600 ms; batches go out after
-// about a second, so a fast scroll is one small POST instead of one per bubble.
+// The Inbox has its own per-message read tracker: seeing a reply here marks it read, and the Inbox
+// panel's own toggle writes the same tracker. The drawer's seen.json is never touched. A row counts
+// as seen once 60% of it has been on screen for 600 ms; batches go out after about a second, so a
+// fast scroll is one small POST instead of one per bubble.
 const INBOX_READ_API = "/api/plugins/hermes-mini/inbox/read";
 const INBOX_VISIBLE_RATIO = 0.6;
 const INBOX_VISIBLE_MS = 600;
@@ -5651,7 +5701,8 @@ setToolsOpen(toolsRemembered, { remember: false });
 toolsBtn.addEventListener("click", () => setToolsOpen(!document.body.classList.contains("tools-open")));
 new MutationObserver(syncToolsCount).observe(todoCountEl, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
 
-// The Schedules panel: Hermes's scheduled jobs, read-only, fetched on every open (schedules.js).
+// The Schedules panel: Hermes's scheduled jobs, fetched on every open; pause, resume, delete and
+// add-to-message go through it (schedules.js).
 const schedules = createSchedules({
   api,
   // "Add to message": the job goes into the message being written, ready to discuss or change it.
@@ -5950,7 +6001,7 @@ if (restartBtn) {
     try {
       const res = await api("/api/plugins/hermes-mini/gateway/restart", { method: "POST" });
       showRestartNotice();
-      // The button restarts the gateway and then the dashboard (plugin_api.py _RESTART_ALL): done when both report a
+      // The button restarts the gateway and then the dashboard (plugin_api.py _restart_all_command): done when both report a
       // new pid AND this app is attached to the new gateway. Reads fail while the dashboard is down; the loop just
       // waits. The pill stays up for the whole loop.
       const before = res.pid_before;
@@ -5999,8 +6050,9 @@ function applyDockedLayout() {
   if (state.viewedEmpty) layoutEmpty();
 }
 
-// Drag the seam between the chat and the docked computer to resize them. The chat keeps at least
-// 320px and the computer at least 420px; the width is a per-device convenience in localStorage.
+// Drag the seam between the chat and the docked computer to resize them. While the computer is
+// docked the chat keeps at least its readable 600px and the computer at least 420px; the width is a
+// per-device convenience in localStorage.
 const CHAT_W_MIN = 320;
 // Three panes only make sense when the chat itself stays readable; below this the chats column hides.
 const THREE_PANE_CHAT_MIN = 600;

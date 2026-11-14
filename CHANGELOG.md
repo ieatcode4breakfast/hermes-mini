@@ -12,7 +12,8 @@ All notable changes to this project are documented here. The format follows
   shows as a voice-note pill: play/pause, a waveform you tap or drag to seek, the time, and download.
   The waveform and length come from a new `GET /audio-meta` route (decoded with ffmpeg, from PATH or
   Hermes' own tools directory, and cached per file), so they draw before anything loads; the sound is
-  fetched on the first play. When the player cannot work (no ffmpeg, a file ffmpeg cannot read, a format
+  fetched on the first play, seek or download, and that one copy is shared by every player for the
+  same file while the page is open (the three most recent files are kept). When the player cannot work (no ffmpeg, a file ffmpeg cannot read, a format
   the browser cannot play) the card falls back to the plain download card. Needs a dashboard restart.
 - Schedules panel. A clock button lists the agent's scheduled jobs (read from Hermes' cron list on each
   open): the job's name, when it runs in plain words ("Every day at 7:45 am", "Weekdays at 1:00 pm",
@@ -55,6 +56,11 @@ All notable changes to this project are documented here. The format follows
   scheduled-job delivery and image handling; other surfaces do not.
 
 ### Changed
+
+- The computer viewer falls back to the name "Hermes", like the rest of the app, when no agent name is
+  known (it said "Mini").
+- Push: the VAPID subject is the app's push contact or public URL, else Hermes' configured public
+  URL, else the reserved `.invalid` address. The unused request-origin parameter is gone.
 
 - Scrollbars: on desktop the slim bars show only while the pointer is over their area; on phones
   Chrome's own bar is off until the area scrolls and goes again shortly after (it used to show as soon
@@ -130,6 +136,11 @@ All notable changes to this project are documented here. The format follows
 - The home chat is now the id the app recorded, not whichever session carries the `Hermes Mini`
   title. A terminal, desktop or Discord chat that takes the title can no longer capture the main
   chat; resetting the main chat records the replacement id.
+
+### Removed
+
+- `dashboard/computer/computer.css` and the computer viewer's standalone-page mode: no page in the
+  plugin used them.
 
 ## [0.1.0] — first release
 

@@ -1,8 +1,9 @@
 """Hermes Mini app backend — mounted at /api/plugins/hermes-mini/.
 
 The chat itself rides Hermes' own authenticated ``/api/ws`` and REST routes; this router adds the
-app's own data (to-dos, pins, seen markers, inbox read state), first-run identity, capability
-advertisement, live narration, Web Push and dictation. It also records the app's main chat as the
+app's own data (to-dos, pins, seen markers, inbox read state, the app-chat registry, the folded-job
+lookup and audio metadata), identity and settings, capability advertisement, live narration, Web
+Push, dictation and the gateway restart. It also records the app's main chat as the
 platform's default scheduled-job delivery target once, so a bare ``hermes-mini`` address has a
 destination. The dashboard's dashboard-auth dependency is
 attached by ``web_server_dashboard._mount_one_plugin_api`` (the same cookie auth as the rest of
@@ -512,7 +513,7 @@ def _inbox_read_path() -> Path:
 
 
 def _inbox_conn() -> sqlite3.Connection:
-    """The same read-only handle style app_chats.py uses; no other code shares it."""
+    """A read-only handle to state.db; no other code shares it."""
     conn = sqlite3.connect(f"file:{_state_db_path()}?mode=ro", uri=True, timeout=5)
     conn.row_factory = sqlite3.Row
     return conn

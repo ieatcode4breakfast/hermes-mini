@@ -4,8 +4,8 @@ Jobs use ``deliver: hermes-mini`` (main chat), ``hermes-mini:<session_id>`` or
 ``hermes-mini:<title>`` for a named chat, or ``discord:...,hermes-mini`` for both. The gateway owns
 cron delivery, so this registers a minimal gateway platform: nothing inbound, ``send`` only.
 
-Targets resolve at delivery time, in this order: a live chat id, the reserved ``main``/``home``
-words, an exact live title, then a case-insensitive title only when one live chat carries it. A
+Targets resolve at delivery time, in this order: the reserved ``main``/``home`` words, a live chat
+id, an exact live title, then a case-insensitive title only when one live chat carries it. A
 missing, renamed, archived or ambiguous target falls back to the app's main chat, so the result is
 never lost. The fallback is logged, not shown in the app. The plugin records the main chat as the
 platform's default address the first time the app loads, so bare ``hermes-mini`` resolves too.
@@ -145,7 +145,7 @@ def _home_session_id(db) -> Optional[str]:
 def _resolve_session_id(db, target: str) -> tuple[Optional[str], str]:
     """``(session_id, how)`` for a delivery target: 'id', 'title' or 'home'.
 
-    Resolution order: a live chat id, the reserved main-chat words, an exact live title, then a
+    Resolution order: the reserved main-chat words, a live chat id, an exact live title, then a
     case-insensitive title only when exactly one live chat carries it. Anything else - missing,
     renamed, archived, or ambiguous - falls back to the main chat, so a result is never lost. The
     fallback is logged, not shown to the person.

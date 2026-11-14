@@ -1,7 +1,7 @@
 // Schedules: the agent's scheduled jobs, opened from the Tools tray. It reads Hermes's own cron list (GET
 // /api/cron/jobs) on every open. Each row says what the job is, when it runs in plain words, and when it runs next; a
 // job running right now says so. Each row's ⋮ menu (also a right click, or a long press on touch) offers: Add to
-// message (the job goes into the message being written, as a chip), Pause/Resume, and Delete (asks first).
+// message (the job goes into the draft at the caret as an inline pill), Pause/Resume, and Delete (asks first).
 // Pause, resume and delete go through Hermes's own routes. Nothing else is editable here.
 
 import { confirmDialog } from "./confirm.js";
@@ -16,7 +16,7 @@ const DOTS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" c
 const LONG_PRESS_MS = 480;
 
 // What the agent receives for a schedule added to a message: its name and its job id, in a tag the app turns back into
-// a chip in the sent bubble and in history (app.js SCHEDULE_REF). A "]" in a name would end the tag early, so it is
+// a pill in the sent bubble and in history (app.js SCHEDULE_REF). A "]" in a name would end the tag early, so it is
 // swapped for ")".
 export function mentionText(item) {
   return `[Schedule: ${String(item.title).replace(/\]/g, ")")} · job ${item.id}]`;
@@ -319,7 +319,7 @@ export function createSchedules({ api, mention = null }) {
       "Couldn't delete that schedule");
   }
 
-  // Closes the panel and adds the job to the message being written, as a chip above the input (app.js).
+  // Closes the panel and adds the job to the draft at the caret, as an inline pill (app.js addMention).
   async function addToMessage(item) {
     await closePanel();
     mention.add({ id: item.id, title: item.title });

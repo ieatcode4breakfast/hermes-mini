@@ -38,8 +38,11 @@ own and does not weaken the one Hermes has.
   Hermes session is refused by Hermes before it reaches this plugin.
 - **The plugin backend routes are mounted by Hermes only for an enabled plugin**, and Hermes
   re-checks that on every request.
-- **The app never receives a secret.** No API key, token or credential value is sent to the browser;
-  capabilities are reported as booleans only.
+- **The plugin never hands the browser a secret.** No API key or credential value is sent to the
+  browser by this plugin, and capabilities are reported as booleans only. The page authenticates
+  with Hermes' dashboard session (its cookie, plus the dashboard's own page token where the
+  dashboard injects one). A provider API key typed into the model sheet goes straight to Hermes'
+  gateway and is not kept by the app.
 - **Push is opt-in and constrained.** The VAPID key is generated only when a person turns
   notifications on. Subscription endpoints must be HTTPS and must belong to a known push service
   (FCM, Mozilla, Apple, Windows); this prevents the route being used to POST to arbitrary hosts.
@@ -55,8 +58,10 @@ own and does not weaken the one Hermes has.
 - **The package is not writable at runtime.** Settings, pictures and state live outside the plugin
   directory, so a compromised app cannot rewrite its own code. A guard also blocks an agent turn
   running inside an app chat from writing to the plugin directory.
-- **Path handling is resolved, not concatenated.** A request path may not escape the assets
-  directory, and no absolute or `..` file path from a client is trusted.
+- **Path handling is resolved, not concatenated.** The avatar route may not escape the assets
+  directory. The audio-metadata route accepts an absolute or `~/` path only when its extension is a
+  known audio type and it resolves to a regular file, and it hands that file to ffmpeg rather than
+  reading it into the app.
 
 ## Out of scope
 

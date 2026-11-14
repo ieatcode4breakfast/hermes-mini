@@ -154,7 +154,8 @@ def find_hermes_executable() -> str | None:
     """Locate the Hermes launcher for the restart route without hard-coding a user path.
 
     Order: ``$HERMES_BIN``, the executable that started this process's server if it is a Hermes
-    launcher, ``shutil.which("hermes")``, then the conventional wrapper beside the running Python.
+    launcher, ``shutil.which("hermes")``, the conventional wrapper beside the running Python, then
+    ``~/.local/bin/hermes``.
     """
     env = os.environ.get("HERMES_BIN", "").strip()
     if env and Path(env).is_file():
@@ -536,7 +537,11 @@ def _jpeg_size(data: bytes) -> tuple[int, int] | None:
 
 
 def image_size(data: bytes, mime: str) -> tuple[int, int] | None:
-    """Decode the image and return ``(width, height)``; ``None`` means it did not decode."""
+    """``(width, height)`` for an image; ``None`` when it does not decode.
+
+    Pillow is used when it is installed. Without it, PNG and JPEG dimensions are read from their
+    headers and any other accepted type answers ``(1, 1)`` (the magic-byte check has already passed).
+    """
     try:
         import io
 
@@ -656,8 +661,7 @@ def configured_public_origin(configured: dict[str, Any] | None = None) -> str:
     """A stable contact origin for the VAPID ``sub`` claim.
 
     The app's own external settings win (push contact, then public URL), then Hermes' configured
-    dashboard or gateway public URL, then the request origin (the route supplies it). No personal
-    domain is ever baked in.
+    dashboard or gateway public URL; ``""`` when none is set. No personal domain is ever baked in.
     """
     settings = load_settings()
     for candidate in (settings["push"]["contact"], settings["server"]["public_url"]):

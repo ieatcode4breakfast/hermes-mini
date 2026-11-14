@@ -101,11 +101,11 @@ You do not need to open the default dashboard page first.
 
 There is none. Open the app and it is ready to use: the header and composer take the name Hermes
 already has for the bot — the default profile's bot title, then the serving profile's, then its
-display name or a named profile id, and finally **Hermes**. The app never renames the agent, and it
-stores no name or picture of its own.
+display name or a named profile id, and finally **Hermes**. The app never renames the agent, and
+nothing on the page asks for a name or picture of its own.
 
-If Hermes has no model configured yet, there is no reply to show until one is set up in Hermes;
-history, to-dos and the inbox still work.
+If Hermes has no model configured yet, there is no reply to show until one is connected from the
+model tab or in Hermes; history, to-dos and the inbox still work.
 
 Reading the page and every capability probe are pure reads. Opening the app may create its own
 state files under `$HERMES_HOME/data/hermes-mini/`, and it records the default delivery target once
@@ -113,16 +113,23 @@ state files under `$HERMES_HOME/data/hermes-mini/`, and it records the default d
 
 ### Configure a model
 
-Hermes Mini does not configure providers. Use Hermes itself, for example `hermes model` or the
-dashboard's Config page. See the [Hermes documentation](https://hermes-agent.nousresearch.com/docs/).
-Until a model is configured, there is no reply to show.
+Use the model tab on the input box: it lists Hermes's connected providers and their models, lets a
+pick switch the chat (and become the default for new chats), and sets the reasoning level and, where
+the model supports it, fast mode. **Providers +** lists every provider Hermes supports and saves or
+updates an API key through Hermes; a sign-in provider shows Hermes's own setup note. Everything goes
+through Hermes's own gateway methods, and the app keeps no model state.
+
+You can also use Hermes itself, for example `hermes model` or the dashboard's Config page. See the
+[Hermes documentation](https://hermes-agent.nousresearch.com/docs/). Until a model is configured,
+there is no reply to show.
 
 ## What's in it
 
 - **Chats**: multiple conversations, a main chat, new chat, rename, pin (with a shared manual
   order), delete, reset of the main chat, and a read-only view of a chat that belongs to another
   source.
-- **Inbox**: every agent message across the app's chats, newest first, with unread tracking. The
+- **Inbox**: every agent message across the app's chats, newest first, with unread tracking. A swipe
+  on a phone or an envelope button on hover marks a message read or unread without opening it. The
   main chat's messages carry the same home icon as the chat list.
 - **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
 - **Schedules**: the agent's scheduled jobs (Hermes cron), each with what it is, when it runs in plain
@@ -131,16 +138,21 @@ Until a model is configured, there is no reply to show.
   reaches the agent as `[Schedule: <name> · job <id>]`.
 - **Tools tray**: the hammer-and-screwdriver button folds the Schedules, Computer and To-do buttons
   away under it and brings them back; folded is the default, remembered per device.
+- **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning
+  level. The sheet lists Hermes's connected providers and their models (search, prices where Hermes
+  has them), with a five-bar reasoning level meter and fast mode where the model supports it; a pick
+  switches the chat and becomes the default for new chats. **Providers +** can add or update a
+  provider's API key through Hermes.
 - **Live streaming**: replies appear as they arrive, with a short quiet narration line and
   tool-step progress. Narration uses Hermes' auxiliary model slots and stays silent if that is not
   configured.
 - **Steering**: send while a reply is running to steer the current turn.
-- **Approvals and questions**: answer them in the app; the same cards can be answered from a push
-  notification.
+- **Approvals and questions**: answer them in the app; an approval can also be approved or denied
+  from its notification.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
   agent sends with `MEDIA:` show inline; audio plays inline in a voice-note player (play/pause, a
-  waveform to tap or drag, download; the waveform needs ffmpeg, which Hermes installs); other files
-  arrive as cards that download only when tapped.
+  waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools
+  directory); other files arrive as cards that download only when tapped.
 - **Picture viewer**: full screen, with a back button and a download button; swipe, the arrows or
   the arrow keys slide between a message's pictures; pinch or double-tap to zoom.
 - **Markdown**: GitHub-flavoured markdown with sanitised HTML and syntax highlighting.
@@ -176,7 +188,7 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 |---|---|
 | `$HERMES_HOME/hermes-mini/config.yaml` | Your agent name, home label, uploaded picture's filename, first-run completion, optional public URL and push contact. |
 | `$HERMES_HOME/hermes-mini/assets/` | Your uploaded picture. |
-| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen markers, inbox read state, the app-chat registry and recorded main-chat id, push key, subscriptions and which chats have a notification out. |
+| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen markers, inbox read state, the app-chat registry and recorded main-chat id, push key, subscriptions and muted chats. |
 
 `config.yaml` is written atomically with mode `0600`, and unknown keys are dropped. Everything is
 per profile: a second Hermes profile gets its own name, picture and data, and one profile's app never
@@ -215,7 +227,7 @@ time you press the bell and confirm. The key and your subscription stay in
 accepted as subscription endpoints, and the request must be HTTPS.
 
 The VAPID `sub` claim uses, in order: your configured push contact, your configured public URL,
-Hermes' configured dashboard/gateway public URL, then the origin the request came from. No personal
+Hermes' configured dashboard/gateway public URL, then a reserved `.invalid` fallback. No personal
 domain is baked into the source.
 
 A notification stays until it is tapped or swiped away. Reading its chat in the app does not close
@@ -275,8 +287,8 @@ not set up, the button is hidden; when it is, **Start Screen** asks Hermes to st
 ## Verified, and not
 
 Tested here against the real Hermes runtime: the plugin loads through Hermes' discovery and
-`register(ctx)`; the manifest passes `hermes plugins doctor` and `hermes plugins validate`; every
-app route in the suite; settings/identity/avatar validation; push key opt-in and endpoint gating;
+`register(ctx)`; the manifest passes `hermes plugins doctor` and `hermes plugins validate`; the app
+routes the suite exercises; settings/identity/avatar validation; push key opt-in and endpoint gating;
 dictation delegation to Hermes' provider with a mocked provider; the app-chat scoping and the
 self-edit guard; scheduled-job target resolution across ids, names, archived chats and missing
 chats; the browser module graph and service-worker asset list.
