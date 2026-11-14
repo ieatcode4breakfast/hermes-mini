@@ -94,7 +94,8 @@ class SchedulesPanelTest(unittest.TestCase):
         for label in ("Add to message", "Pause", "Resume", "Delete"):
             self.assertIn(f'"{label}"', source)
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
-        self.assertIn('refs.push(mentionText(item))', app)
+        self.assertIn('expandMentions(expandPastes(els.input.value))', app)
+        self.assertIn('appendWithSchedules(body, text)', app)
         self.assertIn("SCHEDULE_REF", app)
         self.assertNotIn('method: "PUT"', source)
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")

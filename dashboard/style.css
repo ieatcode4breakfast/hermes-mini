@@ -635,14 +635,6 @@ input, textarea, select { font-family: inherit; }
    tray keeps its 56px footprint; the × stays a separate sibling above it. */
 .tray .item-view { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; appearance: none; -webkit-appearance: none; cursor: zoom-in; }
 .tray .item-view:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* A schedule in the tray (app.js renderTray): a chip with a clock and the schedule's name, not a 56px tile. */
-.tray .item.sched-item {
-  width: auto; max-width: 240px; height: 40px; gap: 6px; padding: 0 30px 0 10px; font-size: 13px; word-break: normal;
-  border-radius: 12px;
-}
-.tray .item.sched-item svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
-.sched-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tray .item.sched-item .x { top: 50%; transform: translateY(-50%); right: 6px; }
 .tray .x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 14px; line-height: 20px; padding: 0; }
 .row { display: flex; align-items: flex-end; gap: 8px; }
 /* "+" attach menu: a small popover above the button with Photos and Files. */
@@ -1387,7 +1379,6 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
   border: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 .file-chip svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
-.sched-chip svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .file-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* A file delivered with MEDIA: (app.js): a compact download card. Tap fetches and saves it; nothing is
@@ -2124,4 +2115,28 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
   .model-refresh.spin svg, .identity:not(.flying):not(.lowering) .avatar, .card:not(.resolved), .todo-check.checked, .inbox-new, .tray .item { animation: none; }
   .avatar, .media-img, .file-attach, .menu-icon, .jump-latest, .push-btn, .theme-switch button { transition: none; }
   .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
+}
+
+/* Schedule mentions in the draft (app.js syncMentions): a layer over the textarea with the same box and text, the text
+   invisible, painting a soft pill under each "@Name". It never takes a tap. */
+.composer .row { position: relative; }
+.mention-layer {
+  position: absolute; z-index: 2; margin: 0; overflow: hidden; pointer-events: none; color: transparent;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; border-style: solid; border-color: transparent;
+  background: transparent;
+}
+.mention-layer[hidden] { display: none; }
+.mention-layer .mention {
+  color: transparent; border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+/* The same schedule in a sent bubble: an inline pill with a clock and the name. */
+.sched-pill {
+  display: inline; padding: 2px 7px 2px 5px; margin: 0 1px; border-radius: 8px; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.2); -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.sched-pill svg {
+  width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px;
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
 }

@@ -139,6 +139,8 @@ const state = {
   cards: new Map(), // server request id -> { el, method, params, ... }
   attachments: [], // { file, kind: "image" | "file", url }
   pastes: [], // collapsed large pastes: { label, text }. The label stays in the textarea and the text is swapped back in on send.
+  mentions: [], // schedules added to the draft: { token, tag, title }. "@Name" stays in the textarea (drawn as a pill) and
+  //               becomes the full "[Schedule: … · job …]" tag on send, like a collapsed paste.
   sending: false,
   editing: null, // Edit & resend in progress: { row, saved } (see beginEdit)
   resettingMain: false, // a main-chat reset is between its confirmation and its finish
@@ -537,8 +539,24 @@ const ATTACHED_CONTEXT_TAIL = /(?:^|\n)--- Attached Context ---\s*\n[\s\S]*$/;
 const CONTEXT_WARNINGS_TAIL = /(?:^|\n)--- Context Warnings ---[\s\S]*$/;
 const LEGACY_HEARTBEAT = /^\[Background process \S+ heartbeat #\d+ /;
 const JOB_PREFIX = /^\[Scheduled job result\]\s*/; // bridge.py PREFIX
-// A schedule added to a message (schedules.js mentionText): "[Schedule: <name> · job <id>]". Drawn as a chip.
-const SCHEDULE_REF = /\s*\[Schedule: ([^\]\n]+?) · job ([\w-]+)\]/g;
+// A schedule mentioned in a message (schedules.js mentionText): "[Schedule: <name> · job <id>]". The user bubble draws
+// it inline as a pill with the schedule's name (appendWithSchedules).
+const SCHEDULE_REF = /\[Schedule: ([^\]\n]+?) · job ([\w-]+)\]/g;
+
+// Text with any schedule tags drawn as inline pills.
+function appendWithSchedules(parent, text) {
+  let last = 0;
+  for (const m of text.matchAll(SCHEDULE_REF)) {
+    if (m.index > last) parent.append(document.createTextNode(text.slice(last, m.index)));
+    const pill = el("span", "sched-pill");
+    pill.insertAdjacentHTML("beforeend", CLOCK_ICON);
+    pill.append(el("span", "", m[1]));
+    pill.title = `Schedule: ${m[1]}`;
+    parent.append(pill);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+}
 const CLOCK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 // Gateway shutdown/restart notices delivered as job results before bridge.py dropped them.
 const LIFECYCLE_NOTICE = /^\W{0,4}(?:Hermes is (?:shutting down|restarting)\b|Restarting gateway\b)/; // bridge.py _LIFECYCLE_NOTICE
@@ -675,7 +693,6 @@ function chatEntries(messages, { notices = false } = {}) {
     if (message.role === "user" && LEGACY_HEARTBEAT.test(raw)) continue;
     const images = [];
     const files = [];
-    const schedules = [];
     let text = message.role === "assistant" ? displayText(raw) : raw;
     if (message.role === "user") {
       text = text.replace(ATTACHED_CONTEXT_TAIL, "").replace(CONTEXT_WARNINGS_TAIL, "");
@@ -683,13 +700,12 @@ function chatEntries(messages, { notices = false } = {}) {
       // an @file: reference for an attached file (rendered as a chip). Pull them out, then treat the rest as the text.
       for (const m of text.matchAll(/@image:(\S+)/g)) images.push(m[1]);
       for (const m of text.matchAll(FILE_REF)) files.push(m[1] || m[2] || m[3] || m[4]);
-      for (const m of text.matchAll(SCHEDULE_REF)) schedules.push({ title: m[1], id: m[2] });
-      text = text.replace(/@image:\S+/g, "").replace(FILE_REF, "").replace(OTHER_REF, "").replace(SCHEDULE_REF, "");
+      text = text.replace(/@image:\S+/g, "").replace(FILE_REF, "").replace(OTHER_REF, "");
       // A steer stored without the server's display_content still carries the out-of-band markers.
       text = text.replace(STEER_WRAP, "$1");
     }
     text = text.trim();
-    if (!text && !images.length && !files.length && !schedules.length) continue; // empty assistant tool-call stubs and similar
+    if (!text && !images.length && !files.length) continue; // empty assistant tool-call stubs and similar
     if (message.role === "assistant" && isSilenceMarker(text)) continue;
     // Hermes concatenates multiple mid-turn steers during one tool batch with newlines into a single steer row;
     // split them back into individual user bubbles so history matches how they were sent live.
@@ -699,7 +715,7 @@ function chatEntries(messages, { notices = false } = {}) {
       }
       continue;
     }
-    entries.push({ message, text, images, files, schedules });
+    entries.push({ message, text, images, files });
   }
   return entries;
 }
@@ -1525,7 +1541,7 @@ const HISTORY_PAGE = 500;
 const older = { sid: null, offset: 0, minId: Infinity, done: true, busy: false, gen: 0 };
 
 function renderHistoryEntries(messages) {
-  for (const { message, text, images, files, schedules, kind, clarify } of chatEntries(messages, { notices: true })) {
+  for (const { message, text, images, files, kind, clarify } of chatEntries(messages, { notices: true })) {
     if (kind === "clarify") {
       // The saved question(s) come back where they were asked, as the resolved card.
       addResolvedClarify(clarify);
@@ -1542,7 +1558,6 @@ function renderHistoryEntries(messages) {
       attached: carriesAttachments(message),
       images,
       files,
-      schedules,
     };
     if (message.role === "user") addUserBubble(text, [], false, meta);
     else if (kind === "job") addJobBubble(text, meta);
@@ -1901,17 +1916,8 @@ function addUserBubble(text, attachments, animateIn = false, meta = {}) {
   const names = [];
   for (const item of attachments) if (item.kind !== "image" && item.file) names.push(item.file.name);
   for (const path of meta.files || []) names.push(String(path).split("/").pop() || String(path));
-  // Schedules added to the message (schedules.js "Add to message"): a clock chip with the schedule's name.
-  const schedules = [...attachments.filter((item) => item.kind === "schedule"), ...(meta.schedules || [])];
-  if (names.length || schedules.length) {
+  if (names.length) {
     const chips = el("div", "file-chips");
-    for (const item of schedules) {
-      const chip = el("span", "file-chip sched-chip");
-      chip.insertAdjacentHTML("beforeend", CLOCK_ICON);
-      chip.append(el("span", "file-chip-name", item.title));
-      chip.title = `Schedule: ${item.title}`;
-      chips.append(chip);
-    }
     for (const name of names) {
       const chip = el("span", "file-chip");
       chip.insertAdjacentHTML("beforeend",
@@ -1925,7 +1931,7 @@ function addUserBubble(text, attachments, animateIn = false, meta = {}) {
   if (text) {
     const bubble = el("div", "bubble");
     const body = el("span", "bubble-text");
-    body.append(document.createTextNode(text));
+    appendWithSchedules(body, text);
     bubble.append(body);
     row.append(bubble);
   }
@@ -2664,9 +2670,10 @@ function beginEdit(row) {
   if (!editable(meta) || !row.isConnected || state.streaming || state.sending || state.switching) return;
   if (!state.ready || state.readOnly) return;
   if (state.editing) endEdit();
-  state.editing = { row, saved: { text: els.input.value, attachments: state.attachments, pastes: state.pastes } };
+  state.editing = { row, saved: { text: els.input.value, attachments: state.attachments, pastes: state.pastes, mentions: state.mentions } };
   state.attachments = [];
   state.pastes = [];
+  state.mentions = [];
   renderTray();
   row.classList.add("editing");
   els.editBar.hidden = false;
@@ -2687,6 +2694,7 @@ function endEdit() {
   els.input.value = edit.saved.text;
   state.attachments = edit.saved.attachments;
   state.pastes = edit.saved.pastes;
+  state.mentions = edit.saved.mentions || [];
   renderTray();
   autosize();
 }
@@ -4100,23 +4108,6 @@ function renderTray() {
   els.tray.replaceChildren();
   els.tray.hidden = state.attachments.length === 0;
   state.attachments.forEach((item, index) => {
-    if (item.kind === "schedule") {
-      // A schedule added from the Schedules panel: a chip with its name, removable like a file.
-      const chip = el("div", "item sched-item");
-      chip.insertAdjacentHTML("beforeend", CLOCK_ICON);
-      chip.append(el("span", "sched-item-name", item.title));
-      chip.title = `Schedule: ${item.title}`;
-      const remove = el("button", "x", "×");
-      remove.type = "button";
-      remove.setAttribute("aria-label", `Remove ${item.title}`);
-      remove.addEventListener("click", () => {
-        state.attachments.splice(index, 1);
-        renderTray();
-      });
-      chip.append(remove);
-      els.tray.append(chip);
-      return;
-    }
     const box = el("div", "item");
     if (item.url) {
       const img = el("img");
@@ -4221,7 +4212,9 @@ function clearComposer() {
   autosize();
   state.attachments = [];
   state.pastes = [];
+  state.mentions = [];
   renderTray();
+  syncMentions();
 }
 
 // ---------- composer: paste and drop ----------
@@ -4276,6 +4269,89 @@ function insertIntoComposer(text) {
   input.setRangeText(lead + text + tail, start, end, "end");
   autosize();
 }
+
+// ---------- schedule mentions in the draft ----------
+// "Add to message" puts "@Name" at the caret. A layer laid exactly over the textarea (same box, font and wrapping,
+// text invisible, pointer-events off) paints a pill under each mention, so it reads as a chip inline with the text.
+// Backspace right after a mention removes all of it. On send each mention becomes its full tag (expandMentions).
+const mentionLayer = el("div", "mention-layer");
+mentionLayer.setAttribute("aria-hidden", "true");
+els.input.closest(".row")?.append(mentionLayer);
+
+function expandMentions(value) {
+  let out = value;
+  for (const m of [...state.mentions].sort((a, b) => b.token.length - a.token.length)) out = out.split(m.token).join(m.tag);
+  return out;
+}
+
+function syncMentions() {
+  const input = els.input;
+  // Forget mentions whose text was edited away; an edited one is plain text from then on.
+  if (state.mentions.length) state.mentions = state.mentions.filter((m) => input.value.includes(m.token));
+  if (!state.mentions.length || !input.isConnected) {
+    mentionLayer.hidden = true;
+    return;
+  }
+  const cs = getComputedStyle(input);
+  for (const prop of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "lineHeight", "textTransform",
+    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "borderTopWidth", "borderRightWidth", "borderBottomWidth",
+    "borderLeftWidth", "boxSizing", "textIndent", "wordSpacing", "tabSize"]) mentionLayer.style[prop] = cs[prop];
+  mentionLayer.style.left = `${input.offsetLeft}px`;
+  mentionLayer.style.top = `${input.offsetTop}px`;
+  mentionLayer.style.width = `${input.offsetWidth}px`;
+  mentionLayer.style.height = `${input.offsetHeight}px`;
+  const tokens = [...state.mentions].sort((a, b) => b.token.length - a.token.length).map((m) => m.token);
+  mentionLayer.replaceChildren();
+  const value = input.value;
+  let i = 0;
+  let plain = "";
+  while (i < value.length) {
+    const hit = tokens.find((token) => value.startsWith(token, i));
+    if (!hit) {
+      plain += value[i];
+      i += 1;
+      continue;
+    }
+    if (plain) mentionLayer.append(document.createTextNode(plain));
+    plain = "";
+    mentionLayer.append(el("mark", "mention", hit));
+    i += hit.length;
+  }
+  mentionLayer.append(document.createTextNode(`${plain}\u200b`)); // the zero-width tail keeps a trailing newline's line
+  mentionLayer.scrollTop = input.scrollTop;
+  mentionLayer.hidden = false;
+}
+
+function addMention(job) {
+  const title = String(job.title || "Schedule");
+  let token = `@${title}`;
+  if (state.mentions.some((m) => m.token === token && m.tag !== mentionText(job))) token = `@${title} (${job.id})`;
+  if (!state.mentions.some((m) => m.token === token)) state.mentions.push({ token, tag: mentionText(job), title });
+  insertIntoComposer(token);
+  syncMentions();
+}
+
+// The mention just before the caret, if the caret sits right after one: Backspace removes it whole.
+function mentionBeforeCaret() {
+  const input = els.input;
+  if (input.selectionStart !== input.selectionEnd) return null;
+  const before = input.value.slice(0, input.selectionStart);
+  return state.mentions.find((m) => before.endsWith(m.token)) || null;
+}
+
+els.input.addEventListener("beforeinput", (event) => {
+  if (event.inputType !== "deleteContentBackward") return;
+  const m = mentionBeforeCaret();
+  if (!m) return;
+  event.preventDefault();
+  const end = els.input.selectionStart;
+  els.input.setRangeText("", end - m.token.length, end, "end");
+  els.input.dispatchEvent(new Event("input", { bubbles: true }));
+});
+els.input.addEventListener("scroll", () => {
+  mentionLayer.scrollTop = els.input.scrollTop;
+}, { passive: true });
+window.addEventListener("resize", () => syncMentions());
 
 // Every File in a clipboard or drop transfer. The browser can expose one gesture's files twice: as kind:"file"
 // items and as data.files. Their metadata (name, lastModified) is not guaranteed to agree between the two views,
@@ -4367,9 +4443,9 @@ async function send() {
   if (state.streaming) return els.input.value.trim() ? steer() : stop();
   if (state.sending) return;
   if (state.editing) return submitEdit();
-  const text = expandPastes(els.input.value).trim();
+  const text = expandMentions(expandPastes(els.input.value)).trim();
   const attachments = state.attachments.slice();
-  const saved = { text: els.input.value, attachments, pastes: state.pastes.slice() };
+  const saved = { text: els.input.value, attachments, pastes: state.pastes.slice(), mentions: state.mentions.slice() };
   if (!text && !attachments.length) return;
   if (!state.ready) {
     sysLine("Not connected yet. Try again in a moment.");
@@ -4408,9 +4484,7 @@ async function send() {
   try {
     const refs = [];
     for (const item of attachments) {
-      if (item.kind === "schedule") {
-        refs.push(mentionText(item)); // nothing to upload: the agent gets the schedule's name and job id
-      } else if (item.kind === "image") {
+      if (item.kind === "image") {
         const content_base64 = await imageToJpegBase64(item.file);
         const stem = item.file.name.replace(/\.[^.]+$/, "") || "image";
         await rpc("image.attach_bytes", {
@@ -4445,7 +4519,9 @@ async function send() {
     autosize();
     state.attachments = saved.attachments;
     state.pastes = saved.pastes;
+    state.mentions = saved.mentions;
     renderTray();
+    syncMentions();
     finishTurn();
     if (state.viewedUnsent) {
       // The first send failed: the chat never became real, so leave no bubble or empty turn behind.
@@ -4519,6 +4595,7 @@ async function stop() {
 // Grow with the text up to the CSS max-height (7 lines), then scroll inside with the scrollbar hidden.
 // box-sizing is border-box, so the border has to be added to scrollHeight or the box is always 2px short.
 function autosize() {
+  queueMicrotask(syncMentions); // the box may have grown or moved to the wide layout
   const el = els.input;
   const row = el.closest(".row");
   // Gemini-style: once the text needs a second line, the box takes the composer's full width and
@@ -4984,6 +5061,7 @@ els.send.addEventListener("click", (event) => {
 
 els.input.addEventListener("input", () => {
   autosize();
+  syncMentions();
   if (state.streaming) updateComposer(); // Stop ⇄ Send as text appears or is cleared
 });
 // ---------- composer Enter key ----------
@@ -5339,16 +5417,9 @@ const schedules = createSchedules({
   // "Add to message": the job goes into the message being written, ready to discuss or change it.
   mention: {
     available: () => !state.readOnly && !els.input.disabled,
-    // The schedule rides with the next message as a chip above the input (renderTray); added once.
+    // "@Name" goes in at the caret and reads as an inline pill (addMention); the full tag is sent.
     add: (job) => {
-      if (!state.attachments.some((item) => item.kind === "schedule" && item.id === job.id)) {
-        if (state.attachments.length >= MAX_ATTACHMENTS) {
-          sysLine(`You can attach up to ${MAX_ATTACHMENTS} pictures, files and schedules per message.`);
-          return;
-        }
-        state.attachments.push({ kind: "schedule", id: job.id, title: job.title });
-        renderTray();
-      }
+      addMention(job);
       els.input.focus();
     },
   },
