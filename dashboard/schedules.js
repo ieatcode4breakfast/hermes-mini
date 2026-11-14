@@ -1,7 +1,7 @@
 // Schedules: the agent's scheduled jobs, opened from the Tools tray. It reads Hermes's own cron list (GET
 // /api/cron/jobs) on every open. Each row says what the job is, when it runs in plain words, and when it runs next; a
 // job running right now says so. Each row's ⋮ menu (also a right click, or a long press on touch) offers: Add to
-// message (puts a reference to the job into the chat draft at the cursor), Pause/Resume, and Delete (asks first).
+// message (the job goes into the message being written, as a chip), Pause/Resume, and Delete (asks first).
 // Pause, resume and delete go through Hermes's own routes. Nothing else is editable here.
 
 import { confirmDialog } from "./confirm.js";
@@ -15,10 +15,11 @@ const DELETE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h1
 const DOTS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 const LONG_PRESS_MS = 480;
 
-// The text "Add to message" puts in the draft: enough for the agent to find the job (its id) and for the person to
-// read (its name).
+// What the agent receives for a schedule added to a message: its name and its job id, in a tag the app turns back into
+// a chip in the sent bubble and in history (app.js SCHEDULE_REF). A "]" in a name would end the tag early, so it is
+// swapped for ")".
 export function mentionText(item) {
-  return `"${item.title}" schedule (job ${item.id})`;
+  return `[Schedule: ${String(item.title).replace(/\]/g, ")")} · job ${item.id}]`;
 }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -318,10 +319,10 @@ export function createSchedules({ api, mention = null }) {
       "Couldn't delete that schedule");
   }
 
-  // Closes the panel and puts a reference to the job into the chat draft at the cursor (app.js insertIntoComposer).
+  // Closes the panel and adds the job to the message being written, as a chip above the input (app.js).
   async function addToMessage(item) {
     await closePanel();
-    mention.insert(mentionText(item));
+    mention.add({ id: item.id, title: item.title });
   }
 
   let rows = [];

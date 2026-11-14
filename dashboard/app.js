@@ -13,7 +13,7 @@ import { render as renderMarkdown, enhance, copyText, makeCopyButton, COPY_ICON 
 import { createDrawer, sourceLabel } from "./drawer.js";
 import { confirmDialog } from "./confirm.js";
 import { createTodo } from "./todo.js";
-import { createSchedules } from "./schedules.js";
+import { createSchedules, mentionText } from "./schedules.js";
 import { createInbox } from "./inbox.js";
 import { showToast } from "./toast.js";
 import * as identityApi from "./identity.js";
@@ -537,6 +537,9 @@ const ATTACHED_CONTEXT_TAIL = /(?:^|\n)--- Attached Context ---\s*\n[\s\S]*$/;
 const CONTEXT_WARNINGS_TAIL = /(?:^|\n)--- Context Warnings ---[\s\S]*$/;
 const LEGACY_HEARTBEAT = /^\[Background process \S+ heartbeat #\d+ /;
 const JOB_PREFIX = /^\[Scheduled job result\]\s*/; // bridge.py PREFIX
+// A schedule added to a message (schedules.js mentionText): "[Schedule: <name> · job <id>]". Drawn as a chip.
+const SCHEDULE_REF = /\s*\[Schedule: ([^\]\n]+?) · job ([\w-]+)\]/g;
+const CLOCK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 // Gateway shutdown/restart notices delivered as job results before bridge.py dropped them.
 const LIFECYCLE_NOTICE = /^\W{0,4}(?:Hermes is (?:shutting down|restarting)\b|Restarting gateway\b)/; // bridge.py _LIFECYCLE_NOTICE
 
@@ -672,6 +675,7 @@ function chatEntries(messages, { notices = false } = {}) {
     if (message.role === "user" && LEGACY_HEARTBEAT.test(raw)) continue;
     const images = [];
     const files = [];
+    const schedules = [];
     let text = message.role === "assistant" ? displayText(raw) : raw;
     if (message.role === "user") {
       text = text.replace(ATTACHED_CONTEXT_TAIL, "").replace(CONTEXT_WARNINGS_TAIL, "");
@@ -679,12 +683,13 @@ function chatEntries(messages, { notices = false } = {}) {
       // an @file: reference for an attached file (rendered as a chip). Pull them out, then treat the rest as the text.
       for (const m of text.matchAll(/@image:(\S+)/g)) images.push(m[1]);
       for (const m of text.matchAll(FILE_REF)) files.push(m[1] || m[2] || m[3] || m[4]);
-      text = text.replace(/@image:\S+/g, "").replace(FILE_REF, "").replace(OTHER_REF, "");
+      for (const m of text.matchAll(SCHEDULE_REF)) schedules.push({ title: m[1], id: m[2] });
+      text = text.replace(/@image:\S+/g, "").replace(FILE_REF, "").replace(OTHER_REF, "").replace(SCHEDULE_REF, "");
       // A steer stored without the server's display_content still carries the out-of-band markers.
       text = text.replace(STEER_WRAP, "$1");
     }
     text = text.trim();
-    if (!text && !images.length && !files.length) continue; // empty assistant tool-call stubs and similar
+    if (!text && !images.length && !files.length && !schedules.length) continue; // empty assistant tool-call stubs and similar
     if (message.role === "assistant" && isSilenceMarker(text)) continue;
     // Hermes concatenates multiple mid-turn steers during one tool batch with newlines into a single steer row;
     // split them back into individual user bubbles so history matches how they were sent live.
@@ -694,7 +699,7 @@ function chatEntries(messages, { notices = false } = {}) {
       }
       continue;
     }
-    entries.push({ message, text, images, files });
+    entries.push({ message, text, images, files, schedules });
   }
   return entries;
 }
@@ -703,7 +708,7 @@ function chatEntries(messages, { notices = false } = {}) {
 function carriesAttachments(message) {
   const content = message.content;
   if (Array.isArray(content) && content.some((part) => part && typeof part === "object" && part.type !== "text")) return true;
-  return /@(image|file):/.test(messageText(message));
+  return /@(image|file):|\[Schedule: [^\]\n]+ · job /.test(messageText(message));
 }
 
 // Text equality for matching a message against the server's copy: whitespace runs count as one space.
@@ -1520,7 +1525,7 @@ const HISTORY_PAGE = 500;
 const older = { sid: null, offset: 0, minId: Infinity, done: true, busy: false, gen: 0 };
 
 function renderHistoryEntries(messages) {
-  for (const { message, text, images, files, kind, clarify } of chatEntries(messages, { notices: true })) {
+  for (const { message, text, images, files, schedules, kind, clarify } of chatEntries(messages, { notices: true })) {
     if (kind === "clarify") {
       // The saved question(s) come back where they were asked, as the resolved card.
       addResolvedClarify(clarify);
@@ -1537,6 +1542,7 @@ function renderHistoryEntries(messages) {
       attached: carriesAttachments(message),
       images,
       files,
+      schedules,
     };
     if (message.role === "user") addUserBubble(text, [], false, meta);
     else if (kind === "job") addJobBubble(text, meta);
@@ -1895,8 +1901,17 @@ function addUserBubble(text, attachments, animateIn = false, meta = {}) {
   const names = [];
   for (const item of attachments) if (item.kind !== "image" && item.file) names.push(item.file.name);
   for (const path of meta.files || []) names.push(String(path).split("/").pop() || String(path));
-  if (names.length) {
+  // Schedules added to the message (schedules.js "Add to message"): a clock chip with the schedule's name.
+  const schedules = [...attachments.filter((item) => item.kind === "schedule"), ...(meta.schedules || [])];
+  if (names.length || schedules.length) {
     const chips = el("div", "file-chips");
+    for (const item of schedules) {
+      const chip = el("span", "file-chip sched-chip");
+      chip.insertAdjacentHTML("beforeend", CLOCK_ICON);
+      chip.append(el("span", "file-chip-name", item.title));
+      chip.title = `Schedule: ${item.title}`;
+      chips.append(chip);
+    }
     for (const name of names) {
       const chip = el("span", "file-chip");
       chip.insertAdjacentHTML("beforeend",
@@ -4085,6 +4100,23 @@ function renderTray() {
   els.tray.replaceChildren();
   els.tray.hidden = state.attachments.length === 0;
   state.attachments.forEach((item, index) => {
+    if (item.kind === "schedule") {
+      // A schedule added from the Schedules panel: a chip with its name, removable like a file.
+      const chip = el("div", "item sched-item");
+      chip.insertAdjacentHTML("beforeend", CLOCK_ICON);
+      chip.append(el("span", "sched-item-name", item.title));
+      chip.title = `Schedule: ${item.title}`;
+      const remove = el("button", "x", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `Remove ${item.title}`);
+      remove.addEventListener("click", () => {
+        state.attachments.splice(index, 1);
+        renderTray();
+      });
+      chip.append(remove);
+      els.tray.append(chip);
+      return;
+    }
     const box = el("div", "item");
     if (item.url) {
       const img = el("img");
@@ -4376,7 +4408,9 @@ async function send() {
   try {
     const refs = [];
     for (const item of attachments) {
-      if (item.kind === "image") {
+      if (item.kind === "schedule") {
+        refs.push(mentionText(item)); // nothing to upload: the agent gets the schedule's name and job id
+      } else if (item.kind === "image") {
         const content_base64 = await imageToJpegBase64(item.file);
         const stem = item.file.name.replace(/\.[^.]+$/, "") || "image";
         await rpc("image.attach_bytes", {
@@ -5302,11 +5336,19 @@ new MutationObserver(syncToolsCount).observe(todoCountEl, { attributes: true, at
 // The Schedules panel: Hermes's scheduled jobs, read-only, fetched on every open (schedules.js).
 const schedules = createSchedules({
   api,
-  // "Add to message": the job's reference goes into the draft at the cursor, ready to discuss or change it.
+  // "Add to message": the job goes into the message being written, ready to discuss or change it.
   mention: {
     available: () => !state.readOnly && !els.input.disabled,
-    insert: (text) => {
-      insertIntoComposer(text);
+    // The schedule rides with the next message as a chip above the input (renderTray); added once.
+    add: (job) => {
+      if (!state.attachments.some((item) => item.kind === "schedule" && item.id === job.id)) {
+        if (state.attachments.length >= MAX_ATTACHMENTS) {
+          sysLine(`You can attach up to ${MAX_ATTACHMENTS} pictures, files and schedules per message.`);
+          return;
+        }
+        state.attachments.push({ kind: "schedule", id: job.id, title: job.title });
+        renderTray();
+      }
       els.input.focus();
     },
   },

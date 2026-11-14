@@ -48,7 +48,8 @@ assert.deepEqual(rows.map((r) => [r.title, r.when, r.next, r.running, r.paused, 
   ['Weekly', 'Mondays at 9:00 am', '', false, true, false],
 ]);
 assert.deepEqual(m.scheduleRows(null), []);
-assert.equal(m.mentionText({ title: 'Morning briefing', id: '666a4ca6070b' }), '"Morning briefing" schedule (job 666a4ca6070b)');
+assert.equal(m.mentionText({ title: 'Morning briefing', id: '666a4ca6070b' }), '[Schedule: Morning briefing · job 666a4ca6070b]');
+assert.equal(m.mentionText({ title: 'A]b', id: 'x1' }), '[Schedule: A)b · job x1]');
 '''
 
 CRON = [
@@ -92,13 +93,15 @@ class SchedulesPanelTest(unittest.TestCase):
         self.assertIn("confirmDialog(", source)
         for label in ("Add to message", "Pause", "Resume", "Delete"):
             self.assertIn(f'"{label}"', source)
-        self.assertIn("insertIntoComposer(text)", (DASHBOARD / "app.js").read_text(encoding="utf-8"))
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn('refs.push(mentionText(item))', app)
+        self.assertIn("SCHEDULE_REF", app)
         self.assertNotIn('method: "PUT"', source)
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
         self.assertLess(html.index('id="schedBtn"'), html.index('id="screenBtn"'))
         self.assertIn('id="schedDialog"', html)
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
-        self.assertIn('import { createSchedules } from "./schedules.js";', app)
+        self.assertIn('import { createSchedules, mentionText } from "./schedules.js";', app)
 
     def test_tools_button_folds_the_three_buttons(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
