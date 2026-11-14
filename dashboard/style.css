@@ -1829,9 +1829,14 @@ body:not(.tools-open) .fab.fab-tray {
 }
 /* Tools looks pressed while its tray is out, the way Computer does while the computer is open. */
 body.tools-open #toolsBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
-/* The wrench and screwdriver are thin diagonals, so they are drawn larger than the other 20px icons to look the same size. */
+/* The hammer and wrench are thin diagonals, so they are drawn larger than the other 20px icons to look the same size. */
 #toolsBtn svg { width: 24px; height: 24px; transition: rotate 380ms var(--ease-out); }
 body.tools-open #toolsBtn svg { rotate: -20deg; }
+/* Coloured like the hammer-and-wrench emoji: a light steel wrench over a darker steel hammer head, with a wooden
+   handle. Fixed colours, readable on both the light and the dark button. */
+#toolsBtn .tools-wood { stroke: #b8743a; }
+#toolsBtn .tools-head { stroke: #5b6575; fill: #8e98a8; }
+#toolsBtn .tools-steel { stroke: #7f8da3; fill: #c9d2df; }
 @media (prefers-reduced-motion: reduce) {
   .fab.fab-tray, body:not(.tools-open) .fab.fab-tray { transition: opacity 120ms ease, visibility 0s linear 120ms; translate: none; scale: none; }
   body.tools-open .fab.fab-tray { transition: opacity 120ms ease; }
