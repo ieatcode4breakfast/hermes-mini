@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Schedules panel. A clock button lists the agent's scheduled jobs (read from Hermes' cron list on each
+  open): the job's name, when it runs in plain words ("Every day at 7:45 am", "Weekdays at 1:00 pm",
+  "Every 30 minutes") and when it runs next, running jobs first and paused ones last. Each row's ⋮ menu
+  (also a right click, or a long press) offers Add to message, Pause/Resume and Delete (which asks
+  first); pause, resume and delete go through Hermes' own cron routes.
+- Add to message puts the schedule into the draft at the cursor as an inline pill (a clock and the
+  name); Backspace removes it whole. The agent receives `[Schedule: <name> · job <id>]` in its place,
+  and the sent bubble and history draw that as the same pill.
+- Tools tray. A hammer-and-screwdriver button at the top of the right column folds the Schedules,
+  Computer and To-do buttons up into it and slides them back out, staggered; it is tinted and its icon
+  turns while they are out. Folded by default, remembered per device; folded, it carries the open to-do
+  count.
 - Inbox messages can be marked read or unread without opening them. On a phone, swipe a message
   right: the strip it uncovers says "Mark read" (red) or "Mark unread" (blue), fades to the full
   colour once letting go would act, and the phone gives a short buzz. With a mouse, hovering a message shows an
@@ -38,6 +50,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Scrollbars: on desktop the slim bars show only while the pointer is over their area; on phones
+  Chrome's own bar is off until the area scrolls and goes again shortly after (it used to show as soon
+  as a list opened and stay until the first scroll).
 - The "Restarting" notice stays up until the app has reconnected to the new gateway, and its dots
   animate.
 - The narration line says "Working…" while a shell command runs.

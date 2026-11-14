@@ -125,6 +125,12 @@ Until a model is configured, there is no reply to show.
 - **Inbox**: every agent message across the app's chats, newest first, with unread tracking. The
   main chat's messages carry the same home icon as the chat list.
 - **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
+- **Schedules**: the agent's scheduled jobs (Hermes cron), each with what it is, when it runs in plain
+  words and when it runs next; a job running now says so. Each row's ⋮ menu pauses, resumes or deletes
+  the job through Hermes' own routes, or adds it to the message being written as an inline pill, which
+  reaches the agent as `[Schedule: <name> · job <id>]`.
+- **Tools tray**: the hammer-and-screwdriver button folds the Schedules, Computer and To-do buttons
+  away under it and brings them back; folded is the default, remembered per device.
 - **Live streaming**: replies appear as they arrive, with a short quiet narration line and
   tool-step progress. Narration uses Hermes' auxiliary model slots and stays silent if that is not
   configured.
@@ -140,7 +146,7 @@ Until a model is configured, there is no reply to show.
 - **Dictation**: record and insert at the caret, through whatever speech-to-text provider Hermes is
   configured to use.
 - **Notifications** (optional): Web Push for approvals, questions and finished replies, with
-  per-chat mute. Reading a chat clears its reply and job notifications on every device.
+  per-chat mute. A notification stays until it is tapped or swiped away.
 - **Scheduled job results**: Hermes cron output can be posted into the main chat or a chosen side
   chat, with a push.
 - **Computer** (optional): a phone-friendly live view of your agent's desktop, with take-over,
