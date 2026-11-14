@@ -13,8 +13,9 @@ All notable changes to this project are documented here. The format follows
   colour once letting go would act, and the phone gives a short buzz. With a mouse, hovering a message shows an
   envelope button at its right edge that does the same. Marking a message unread works for anything,
   including messages under "Mark all as read"; the server keeps those in an `unread` list in
-  `inbox-read.json`. A message marked unread by hand stays unread until it is marked read by hand
-  (or by "Mark all as read"): seeing it in the chat or opening it from the Inbox does not clear it.
+  `inbox-read.json`. A message marked unread by hand stays unread until it is marked read by hand:
+  tapping it in the Inbox, the envelope button, or "Mark all as read". Seeing it in the chat does not
+  clear it.
 - Model and provider picker. A tab on the input box's top edge shows the chat's model and
   reasoning level; it opens a sheet listing Hermes's connected providers and their models (search,
   prices where Hermes has them), a five-bar reasoning level meter (tap or drag; none lit is Off) and

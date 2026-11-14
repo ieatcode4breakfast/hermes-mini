@@ -394,14 +394,18 @@ class InboxManualUnreadTest(InboxDbCase):
         self.assertEqual(self.count(), 0)
         self.assertEqual(self.stored()["unread"], [])
 
-    def test_opening_from_the_inbox_or_the_chat_keeps_the_hold(self):
+    def test_an_inbox_tap_releases_the_hold_but_a_chat_view_does_not(self):
         conn = self._db()
         self._two_read(conn)
         self.mark("unread", [11])
+        # The chat scrolling it into view is not a decision: the hold stays.
         for _ in range(3):
             self.mark("read", [11], manual=False)
-        self.client.post(f"{self.BASE}/read", json={"ids": [11]})  # no "manual" at all: the chat's own call
+        self.client.post(f"{self.BASE}/read", json={"ids": [11]})  # no "manual" key: the chat's own call
         self.assertEqual((self.count(), self.unread_tab(), self.flags()[11]), (1, [11], (False, True)))
+        # A tap on the Inbox row is a hand read: it releases the hold.
+        self.mark("read", [11])
+        self.assertEqual((self.count(), self.unread_tab(), self.flags()[11]), (0, [], (True, False)))
 
     def test_a_message_never_held_is_read_by_a_chat_view(self):
         conn = self._db()

@@ -31,7 +31,7 @@ function normalise(raw) {
     ts: Number((raw && raw.ts) || 0),
     text: String((raw && raw.text) || ""),
     read: Boolean(raw && raw.read),
-    // Marked unread by hand: only marking it read by hand (the toggle) or Mark all clears it.
+    // Marked unread by hand: a tap on the row, the toggle, or Mark all clears it; a chat view does not.
     markedUnread: Boolean(raw && raw.marked_unread),
   };
 }
@@ -429,7 +429,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
       await api(`${INBOX_API}/read`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids, manual: true }),
       });
     } catch {
       /* the row still reads as read here; the next view retries */
@@ -440,7 +440,10 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
   // failed save puts the row back. On the Unread tab a row marked read stays until the list reloads, like a tapped one.
   async function toggleRead(item) {
     if (item.pending) return; // one save at a time per message, so the server always ends where the screen does
-    item.pending = true;
+    let settle;
+    item.pending = new Promise((resolve) => {
+      settle = resolve;
+    });
     const next = !item.read;
     const held = item.markedUnread;
     item.read = next;
@@ -458,17 +461,20 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
       item.markedUnread = held;
       syncReadMarks();
     } finally {
-      item.pending = false;
+      item.pending = null;
+      settle();
     }
     void refreshBadge();
   }
 
-  // Tapping a row: mark it read, close the panel (on every screen since it hangs over the chat; the person, 8 Nov 2026),
-  // then open the chat at that message (the notification deep link).
+  // Tapping a row is a hand read: it clears even a message marked unread by hand, then closes the panel (on every
+  // screen since it hangs over the chat; the person, 8 Nov 2026) and opens the chat at that message (the notification
+  // deep link). A chat view is not a hand read: app.js's own marks do not send "manual".
   async function activate(item) {
-    // A message marked unread by hand stays unread when opened; only the toggle clears it.
-    if (!item.read && !item.markedUnread) {
+    if (item.pending) await item.pending; // a toggle still saving lands first, so this hand read is the last write
+    if (!item.read) {
       item.read = true;
+      item.markedUnread = false;
       syncReadMarks();
       await markRead([item.id]);
     }

@@ -220,5 +220,16 @@ class ModelPickerTest(unittest.TestCase):
         self.assertIn('kind === "model_switch"', self.app)
 
 
+class InboxTapReadTest(unittest.TestCase):
+    """Tapping an Inbox row is a hand read: it clears a manual unread; a chat view does not."""
+
+    def test_the_row_tap_posts_a_manual_read(self):
+        inbox = (DASHBOARD / "inbox.js").read_text(encoding="utf-8")
+        self.assertIn('body: JSON.stringify({ ids, manual: true })', inbox)
+        activate = inbox[inbox.index("async function activate"):]
+        activate = activate[:activate.index("\n  }")]
+        self.assertNotIn("!item.markedUnread", activate)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1119,9 +1119,9 @@ async def inbox_mark_read(request: Request):
             except sqlite3.Error:
                 pass  # identity unknown: fall back to row ids below
             held_keys = {keys[value] for value in unread if value in keys}
-            # A message marked unread by hand stays unread until it is marked read by hand ("manual": the Inbox's
-            # swipe and hover toggle). Seeing it in the chat, or opening it from the Inbox, does not clear it - nor
-            # a compaction copy of it (same chat and message_uid).
+            # A message marked unread by hand stays unread until it is marked read by hand ("manual": a tap on the
+            # Inbox row, the swipe or the hover toggle). Seeing it in the chat does not clear it - nor a compaction
+            # copy of it (same chat and message_uid).
             if not manual:
                 clean = [value for value in clean if value not in unread and keys.get(value) not in held_keys]
             released = {keys[value] for value in clean if value in keys}
@@ -1150,7 +1150,8 @@ async def inbox_mark_read(request: Request):
 @router.post("/inbox/unread")
 async def inbox_mark_unread(request: Request):
     """Marks messages unread again (the Inbox's swipe and hover toggle). Wins over the watermark and read copies, and
-    holds until the message is marked read by hand ("manual" on /inbox/read) or by Mark all."""
+    holds until it is marked read by hand ("manual" on /inbox/read: the row tap, the swipe or the hover toggle) or
+    by Mark all."""
     clean, _manual, error = await _inbox_ids(request)
     if error is not None:
         return error
