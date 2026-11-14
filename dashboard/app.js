@@ -334,6 +334,8 @@ els.log.addEventListener("load", scheduleJumpUpdate, true); // newly loaded pict
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GREET_GAP = 16; // px between the name pill and the greeting box
+const COMP_GAP = 38; // px between the greeting box and the composer box (clears the 28px model tab above it)
+const COMP_REF_H = 66; // single-line composer height so multiline growth expands downward without shifting the avatar
 const ID_SCALE = 1.5; // the identity block's size in the empty state
 const AVATAR_PX = 64; // avatar layout size (.avatar width and height)
 const AV_OVERHANG = (ID_SCALE - 1) * AVATAR_PX / 2; // px the scaled avatar rises above its layout box (16)
@@ -342,8 +344,8 @@ let greetTimer = 0;
 let flyTimer = 0;
 let lowerTimer = 0;
 
-// Places the identity block and the greeting as one group, centred between the header bottom and the composer top.
-// Rest geometry comes from offsetLeft/offsetTop/offsetWidth/offsetHeight (layout values, not affected by transforms).
+// Places the identity block, greeting and composer as one group centred in the chat pane.
+// Rest geometry comes from .log's bottom edge and offset* layout values (not affected by transforms on .composer or .identity).
 // The avatar is scaled by its own transform and the name pill is offset by CSS, so the block itself is not scaled.
 // The greeting's horizontal centre is the reference, so the avatar lands exactly over it.
 function layoutEmpty() {
@@ -351,16 +353,20 @@ function layoutEmpty() {
   const tb = topbar.getBoundingClientRect();
   const cb = emptyState.offsetParent; // .log, the greeting's containing block (position relative)
   const cbr = cb.getBoundingClientRect();
-  const compTop = composerEl.getBoundingClientRect().top;
+  const compH = composerEl.offsetHeight;
+  const appBottom = cbr.bottom + compH;
   const vis = identityEl.offsetHeight + AV_OVERHANG + PILL_DROP; // visual group height (104)
   const gh = emptyState.offsetHeight;
-  const groupTop = (tb.bottom + compTop) / 2 - (vis + GREET_GAP + gh) / 2;
+  const totalH = vis + GREET_GAP + gh + COMP_GAP + COMP_REF_H;
+  const groupTop = Math.max(tb.bottom + 8, tb.bottom + (appBottom - tb.bottom - totalH) * 0.38);
   const greetCx = cbr.left + cb.clientLeft + cb.clientWidth / 2;
   const restCx = tb.left + identityEl.offsetLeft + identityEl.offsetWidth / 2;
   const restTop = tb.top + identityEl.offsetTop;
   identityEl.style.setProperty("--id-dx", `${greetCx - restCx}px`);
   identityEl.style.setProperty("--id-dy", `${groupTop + AV_OVERHANG - restTop}px`);
   emptyState.style.top = `${groupTop + vis + GREET_GAP - cbr.top - cb.clientTop}px`;
+  const targetCompTop = groupTop + vis + GREET_GAP + gh + COMP_GAP;
+  composerEl.style.setProperty("--comp-dy", `${Math.min(0, targetCompTop - cbr.bottom)}px`);
 }
 
 function clearIdentityTimers() {
@@ -368,10 +374,10 @@ function clearIdentityTimers() {
   clearTimeout(lowerTimer);
 }
 
-// show: the greeting appears with the identity centred above it. opts.lower: the identity animates down from the header
+// show: the greeting appears with the identity and composer centred. opts.lower: they animate from their chat positions
 // (New chat from a chat with history; skipped under reduced motion).
-// !show: opts.fly (first message in an empty chat): the greeting fades out over 250ms and the identity flies to the header
-// (skipped under reduced motion, which snaps). Otherwise everything snaps to rest with no animation.
+// !show: opts.fly (first message in an empty chat): the greeting fades out over 250ms, the identity flies to the header
+// and the composer returns to the bottom (skipped under reduced motion, which snaps). Otherwise everything snaps to rest.
 function setEmptyState(show, opts = {}) {
   // A flight already in progress finishes on its own: other messages in the same send (the assistant turn) must not snap it.
   if (!show && !opts.fly && identityEl.classList.contains("flying")) return;
@@ -382,11 +388,17 @@ function setEmptyState(show, opts = {}) {
   if (show) {
     emptyState.hidden = false;
     identityEl.classList.remove("flying");
+    composerEl.classList.remove("flying");
     layoutEmpty();
     const animate = Boolean(opts.lower) && !reducedMotion();
     identityEl.classList.toggle("lowering", animate);
+    composerEl.classList.toggle("lowering", animate);
     identityEl.classList.add("centred");
-    if (animate) lowerTimer = setTimeout(() => identityEl.classList.remove("lowering"), 470);
+    composerEl.classList.add("centred");
+    if (animate) lowerTimer = setTimeout(() => {
+      identityEl.classList.remove("lowering");
+      composerEl.classList.remove("lowering");
+    }, 470);
     return;
   }
   if (opts.fly && !reducedMotion() && !emptyState.hidden) {
@@ -396,12 +408,18 @@ function setEmptyState(show, opts = {}) {
       emptyState.classList.remove("leaving");
     }, 250);
     identityEl.classList.remove("centred", "lowering");
+    composerEl.classList.remove("centred", "lowering");
     identityEl.classList.add("flying");
-    flyTimer = setTimeout(() => identityEl.classList.remove("flying"), 700);
+    composerEl.classList.add("flying");
+    flyTimer = setTimeout(() => {
+      identityEl.classList.remove("flying");
+      composerEl.classList.remove("flying");
+    }, 700);
     return;
   }
   emptyState.hidden = true;
   identityEl.classList.remove("centred", "lowering", "flying");
+  composerEl.classList.remove("centred", "lowering", "flying");
 }
 
 function clearLog() {
