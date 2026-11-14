@@ -108,6 +108,14 @@ class SchedulesPanelTest(unittest.TestCase):
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('document.body.classList.toggle("tools-open", openTools)', app)
 
+    def test_desktop_scrollbars_follow_a_class_not_hover(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".log.sb-on::-webkit-scrollbar-thumb", css)
+        self.assertNotIn(":hover::-webkit-scrollbar-thumb,", css)
+        self.assertIn("@media (hover: hover) and (pointer: fine) {", css)
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn('classList.add("sb-on")', app)
+
 
 if __name__ == "__main__":
     unittest.main()

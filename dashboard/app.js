@@ -5234,6 +5234,28 @@ const inbox = createInbox({
   isPhone: () => window.matchMedia("(max-width: 640px)").matches,
   openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
 });
+// Desktop scrollbars show only while the mouse is over their area (style.css .sb-on). Every scrolling area under the
+// pointer gets .sb-on - a code block in the chat lights both - and loses it when the pointer leaves it or the window.
+// A class, not :hover: Chrome does not reliably repaint a styled scrollbar when only the hover state changes.
+const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list";
+let scrollbarsLit = [];
+function lightScrollbars(target) {
+  const next = [];
+  for (let node = target instanceof Element ? target.closest(SCROLL_AREAS) : null; node; node = node.parentElement?.closest(SCROLL_AREAS)) {
+    next.push(node);
+  }
+  for (const node of scrollbarsLit) if (!next.includes(node)) node.classList.remove("sb-on");
+  for (const node of next) if (!node.classList.contains("sb-on")) node.classList.add("sb-on");
+  scrollbarsLit = next;
+}
+if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+  document.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "mouse") lightScrollbars(event.target);
+  });
+  document.documentElement.addEventListener("pointerleave", () => lightScrollbars(null));
+  window.addEventListener("blur", () => lightScrollbars(null));
+}
+
 // Tools: folds the Schedules, Computer and To-do buttons into the Tools button and brings them back. Folded by default;
 // the choice is remembered on this device. While folded, Tools repeats the open to-do count so it is not lost.
 const TOOLS_KEY = "hermes-mini-tools-open";

@@ -141,16 +141,17 @@ input, textarea, select { font-family: inherit; }
 .card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb, .sched-list::-webkit-scrollbar-thumb {
   background: transparent; background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
 }
-/* Hidden until the pointer is over that scrolling area (thumb hover/drag stays inside it, so it stays shown). */
-.log:hover::-webkit-scrollbar-thumb,
-.drawer-list:hover::-webkit-scrollbar-thumb,
-.bubble pre:hover::-webkit-scrollbar-thumb,
-.card pre:hover::-webkit-scrollbar-thumb,
-.bubble .table-wrap:hover::-webkit-scrollbar-thumb,
-.tray:hover::-webkit-scrollbar-thumb,
-.todo-list:hover::-webkit-scrollbar-thumb,
-.inbox-list:hover::-webkit-scrollbar-thumb,
-.sched-list:hover::-webkit-scrollbar-thumb {
+/* Hidden until the pointer is over that scrolling area. app.js sets .sb-on on the areas under the mouse: Chrome does
+   not reliably repaint a scrollbar for a :hover change, but a class change always restyles it. */
+.log.sb-on::-webkit-scrollbar-thumb,
+.drawer-list.sb-on::-webkit-scrollbar-thumb,
+.bubble pre.sb-on::-webkit-scrollbar-thumb,
+.card pre.sb-on::-webkit-scrollbar-thumb,
+.bubble .table-wrap.sb-on::-webkit-scrollbar-thumb,
+.tray.sb-on::-webkit-scrollbar-thumb,
+.todo-list.sb-on::-webkit-scrollbar-thumb,
+.inbox-list.sb-on::-webkit-scrollbar-thumb,
+.sched-list.sb-on::-webkit-scrollbar-thumb {
   background: var(--sb-thumb); background-clip: padding-box;
 }
 .log::-webkit-scrollbar-thumb:hover, .drawer-list::-webkit-scrollbar-thumb:hover, .bubble pre::-webkit-scrollbar-thumb:hover,
