@@ -130,7 +130,9 @@ input, textarea, select { font-family: inherit; }
    attachment tray. A 10px lane with a transparent track and no arrows; the thumb is a 6px pill, because its 2px
    transparent border is kept out of the paint by background-clip, so it floats inside the lane. Do not set
    scrollbar-width or scrollbar-color on these: Chrome 121+ uses those instead of ::-webkit-scrollbar. The composer
-   textarea keeps its scrollbar hidden (it is an auto-growing pill). Android uses native overlay bars and ignores this. */
+   textarea keeps its scrollbar hidden (it is an auto-growing pill). Mouse devices only: a touch screen keeps its own
+   overlay bars, which show only while scrolling - a styled ::-webkit-scrollbar would stay on screen there. */
+@media (hover: hover) and (pointer: fine) {
 .log::-webkit-scrollbar, .drawer-list::-webkit-scrollbar, .bubble pre::-webkit-scrollbar, .card pre::-webkit-scrollbar,
 .bubble .table-wrap::-webkit-scrollbar, .tray::-webkit-scrollbar, .todo-list::-webkit-scrollbar, .inbox-list::-webkit-scrollbar, .sched-list::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
 .log::-webkit-scrollbar-track, .drawer-list::-webkit-scrollbar-track, .bubble pre::-webkit-scrollbar-track,
@@ -147,6 +149,7 @@ input, textarea, select { font-family: inherit; }
 .card pre::-webkit-scrollbar-corner, .bubble .table-wrap::-webkit-scrollbar-corner, .tray::-webkit-scrollbar-corner, .todo-list::-webkit-scrollbar-corner, .inbox-list::-webkit-scrollbar-corner, .sched-list::-webkit-scrollbar-corner { background: transparent; }
 .log::-webkit-scrollbar-button, .drawer-list::-webkit-scrollbar-button, .bubble pre::-webkit-scrollbar-button,
 .card pre::-webkit-scrollbar-button, .bubble .table-wrap::-webkit-scrollbar-button, .tray::-webkit-scrollbar-button, .todo-list::-webkit-scrollbar-button, .inbox-list::-webkit-scrollbar-button, .sched-list::-webkit-scrollbar-button { display: none; }
+}
 
 .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); }
 
@@ -1422,10 +1425,12 @@ body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, va
    then one muted line with when it runs and when it runs next. */
 /* The slim scrollbar (10px) sits in the card's right padding, so the rows end in line with the title and the close
    button: the list reaches 14px into the padding and keeps 4px of it, the bar takes the other 10px (reserved even when
-   the list is short, so the rows line up either way). Phones overlay their
-   scrollbars, so there the list keeps the card's edges. */
-.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
-@media (max-width: 640px) { .sched-list { margin: 0; padding: 0; scrollbar-gutter: auto; } }
+   the list is short, so the rows line up either way). Touch screens overlay
+   their own scrollbars, so there the list keeps the card's edges. */
+.sched-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+@media (hover: hover) and (pointer: fine) and (min-width: 641px) {
+  .sched-list { scrollbar-gutter: stable; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
+}
 .sched-row { display: flex; align-items: center; gap: 8px; padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
 .sched-text { flex: 1 1 auto; min-width: 0; }
 /* Pause/Resume and Delete: two quiet round icon buttons at the row's right, always visible (phones have no hover). */
