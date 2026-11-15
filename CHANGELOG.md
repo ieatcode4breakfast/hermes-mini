@@ -57,6 +57,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The live narration line shimmers: a soft highlight slides across the text while the agent works,
+  tuned separately for light and dark. With reduced motion it is plain text.
 - A web picture (`https:`) that fails to load now shows its alt text in grey italics, like a local
   picture that could not be fetched, instead of the browser's broken-image icon.
 - The computer viewer falls back to the name "Hermes", like the rest of the app, when no agent name is
@@ -113,6 +115,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Dictation started while the app is still opening is no longer cut off when the chat history loads.
+  Startup is also quicker: the sign-in check, the connection and the agent's name now load at the same
+  time instead of one after another.
+- The model tab on the message box stays hidden until the app knows the current model, so it no
+  longer flashes empty while the page opens.
 - The Inbox and the model sheet now paint in front of the docked computer pane instead of under its
   right edge. Only the cards' stacking changed; the pane and the Inbox's photo and name keep their
   places.

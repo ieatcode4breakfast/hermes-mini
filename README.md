@@ -143,8 +143,8 @@ there is no reply to show.
   has them), with a five-bar reasoning level meter and fast mode where the model supports it; a pick
   switches the chat and becomes the default for new chats. **Providers +** can add or update a
   provider's API key through Hermes.
-- **Live streaming**: replies appear as they arrive, with a short quiet narration line and
-  tool-step progress. Narration uses Hermes' auxiliary model slots and stays silent if that is not
+- **Live streaming**: replies appear as they arrive, with a short quiet narration line (a soft
+  shimmer slides across it while the agent works) and tool-step progress. Narration uses Hermes' auxiliary model slots and stays silent if that is not
   configured.
 - **Steering**: send while a reply is running to steer the current turn.
 - **Approvals and questions**: answer them in the app; an approval can also be approved or denied
