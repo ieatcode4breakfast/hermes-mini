@@ -898,6 +898,7 @@ function onSocketClosed(ws) {
   if (wasReady) {
     noteOffline();
     scheduleReconnect();
+    showNewGatewayEvents(); // the gateway stopping: its "restarting" line
   }
 }
 
@@ -1548,8 +1549,15 @@ function belongsToView(params) {
 const HISTORY_PAGE = 500;
 const older = { sid: null, offset: 0, minId: Infinity, done: true, busy: false, gen: 0 };
 
-function renderHistoryEntries(messages) {
+function renderHistoryEntries(messages, gatewayEvents = []) {
+  // Gateway stops and starts (main chat only) go in by time, between the rows around them.
+  const pendingEvents = gatewayEvents.slice().sort((a, b) => a.ts - b.ts);
+  const flushEvents = (upTo) => {
+    while (pendingEvents.length && pendingEvents[0].ts <= upTo) addGatewayLine(pendingEvents.shift());
+  };
   for (const { message, text, images, files, kind, clarify } of chatEntries(messages, { notices: true })) {
+    const at = Number(message.timestamp) || 0;
+    if (at) flushEvents(at);
     if (kind === "clarify") {
       // The saved question(s) come back where they were asked, as the resolved card.
       addResolvedClarify(clarify);
@@ -1571,6 +1579,56 @@ function renderHistoryEntries(messages) {
     else if (kind === "job") addJobBubble(text, meta);
     else addAssistantBubble(text, meta);
   }
+  flushEvents(Infinity);
+}
+
+// ---------- gateway restart lines (main chat only) ----------
+// bridge.py records each gateway stop ("down") and start ("up"); the main chat shows them as small centred lines,
+// "<agent> is restarting · 8:41 PM" and "<agent> is back · 8:41 PM" (the person, 15 Nov 2026). They are never chat
+// messages: the model does not see them, and they reach neither the Inbox nor a notification.
+const GATEWAY_EVENTS_ROUTE = "/api/plugins/hermes-mini/gateway-events";
+
+function viewingHome() {
+  return Boolean(state.viewedId) && state.viewedId === state.homeId && !state.viewedUnsent;
+}
+
+async function fetchGatewayEvents() {
+  try {
+    const data = await api(GATEWAY_EVENTS_ROUTE);
+    return Array.isArray(data.events) ? data.events.filter((e) => e && Number.isFinite(e.ts) && (e.kind === "down" || e.kind === "up")) : [];
+  } catch {
+    return []; // an older dashboard without the route, or the dashboard restarting too: no lines, nothing breaks
+  }
+}
+
+function gatewayLineText(event) {
+  const when = messageTimeLabel(event.ts);
+  return `${AGENT} ${event.kind === "down" ? "is restarting" : "is back"}${when ? ` · ${when}` : ""}`;
+}
+
+function addGatewayLine(event) {
+  const row = addFailLine(gatewayLineText(event));
+  row.classList.add("gateway-line");
+  state.gatewaySeenTs = Math.max(state.gatewaySeenTs || 0, event.ts);
+  return row;
+}
+
+// Live: the connection drops when the gateway stops and comes back when it is up again. Each time, any stop or start
+// recorded since the last line drawn goes at the end of the main chat. The gateway may write its line a moment after
+// the socket changes, so it looks again after a short wait.
+let gatewayLineTimers = [];
+function showNewGatewayEvents() {
+  for (const timer of gatewayLineTimers) clearTimeout(timer);
+  gatewayLineTimers = [0, 3000, 10000].map((delay) => setTimeout(async () => {
+    if (!viewingHome()) return;
+    const viewed = state.viewedId;
+    const fresh = (await fetchGatewayEvents()).filter((e) => e.ts > (state.gatewaySeenTs || 0));
+    if (!fresh.length || state.viewedId !== viewed || !viewingHome()) return;
+    const stick = nearBottom();
+    for (const event of fresh.sort((a, b) => a.ts - b.ts)) addGatewayLine(event);
+    setEmptyState(false);
+    if (stick) scrollToBottom(true);
+  }, delay));
 }
 
 function lowestRowId(messages) {
@@ -1582,6 +1640,8 @@ function lowestRowId(messages) {
 async function loadHistory(messageCount = null) {
   // An empty thread has no transcript to fetch (the REST page 404s until its first message).
   let data = { messages: [] };
+  const home = viewingHome();
+  const eventsLoad = home ? fetchGatewayEvents() : Promise.resolve([]);
   if (messageCount !== 0) {
     const sid = state.storedId;
     [data] = await Promise.all([
@@ -1589,6 +1649,7 @@ async function loadHistory(messageCount = null) {
       loadMergedParts(sid),
     ]);
   }
+  const gatewayEvents = await eventsLoad;
   state.turn = null;
   clearLog({ keepDictation: true });
   const rows = data.messages || [];
@@ -1598,7 +1659,10 @@ async function loadHistory(messageCount = null) {
   older.minId = lowestRowId(rows);
   older.done = rows.length === 0;
   older.busy = false;
-  renderHistoryEntries(rows);
+  // Only the stops and starts this page covers: older ones belong with older pages, which carry no lines.
+  const pageStart = older.done ? -Infinity : Math.min(...rows.map((m) => Number(m.timestamp) || Infinity));
+  state.gatewaySeenTs = gatewayEvents.reduce((high, e) => Math.max(high, e.ts), 0);
+  renderHistoryEntries(rows, gatewayEvents.filter((e) => e.ts >= pageStart));
   // A chat opens at its newest message, so that is the one seen first (Inbox read tracker, the person, 8 Nov 2026). A deep
   // link lands on its own message instead; the visible-row observer marks that one.
   if (!pendingTarget) markInboxNewest();
@@ -1902,6 +1966,7 @@ async function reconnect() {
     state.backoffIdx = 0;
     noteOnline();
     setStatus("");
+    showNewGatewayEvents(); // the gateway back: its "back" line
     refreshDockedDrawer(); // the home thread may have just been adopted: the docked list needs its home row
   } catch (error) {
     if (error instanceof AuthRedirect) return;
@@ -6173,6 +6238,13 @@ if (restartBtn) {
     try {
       const res = await api("/api/plugins/hermes-mini/gateway/restart", { method: "POST" });
       showRestartNotice();
+      // The "restarting" line goes into the main chat at once: the server recorded it before anything stops.
+      if (res.event && viewingHome() && Number.isFinite(res.event.ts) && res.event.ts > (state.gatewaySeenTs || 0)) {
+        const stick = nearBottom();
+        addGatewayLine(res.event);
+        setEmptyState(false);
+        if (stick) scrollToBottom(true);
+      }
       // The button restarts the gateway and then the dashboard (plugin_api.py _restart_all_command): done when both report a
       // new pid AND this app is attached to the new gateway. Reads fail while the dashboard is down; the loop just
       // waits. The pill stays up for the whole loop.
@@ -6194,6 +6266,7 @@ if (restartBtn) {
         }
       }
       hideRestartNotice();
+      if (back) showNewGatewayEvents(); // and its "back" line
       showToast(back ? "Restarted" : "Restart didn't finish", back ? "success" : "error");
     } catch (error) {
       hideRestartNotice();

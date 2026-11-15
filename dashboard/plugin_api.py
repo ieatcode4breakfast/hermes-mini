@@ -1659,6 +1659,16 @@ async def delete_todo(item_id: str):
     return _todos_response(kept)
 
 
+# ---------- gateway stops and starts (the main chat's restart lines) ----------
+# Written by the gateway half (bridge.py) into this profile's data folder; the app draws them in the main chat only.
+GATEWAY_EVENTS_PAGE = 50
+
+
+@router.get("/gateway-events")
+async def get_gateway_events():
+    return {"events": core.gateway_events()[-GATEWAY_EVENTS_PAGE:]}
+
+
 # ---------- gateway restart from the app ----------
 # The person presses the button themselves (after a confirm), so this is their restart, not the agent's. It runs fully
 # detached (own session, short sleep first) so the restarter never kills itself. The Hermes executable and home are
@@ -1777,7 +1787,18 @@ async def gateway_restart():
         log.warning("gateway restart failed to start: %s", exc)
         _last_restart = 0.0
         return JSONResponse({"detail": "could not start the restart"}, status_code=500)
-    return JSONResponse({"ok": True, "pid_before": before.get("pid"), "dashboard_pid_before": os.getpid()})
+    # The main chat's "restarting" line, written now: the restart script waits a few seconds before it stops anything,
+    # and it restarts this dashboard too, so the app could not read a stop the gateway records itself until it is all
+    # back up. The gateway's own record of the same stop (bridge.py) is then a repeat and is not written twice.
+    event = {"ts": time.time(), "kind": "down"}
+    try:
+        if not core.record_gateway_event("down", ts=event["ts"]):
+            event = core.gateway_events()[-1]
+    except Exception as exc:  # noqa: BLE001 - a missing line must not fail a restart that is already under way
+        log.warning("could not record the restart: %s", exc)
+        event = None
+    return JSONResponse({"ok": True, "pid_before": before.get("pid"), "dashboard_pid_before": os.getpid(),
+                         "event": event})
 
 
 @router.get("/push/key")

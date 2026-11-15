@@ -143,6 +143,46 @@ def plain_markdown(text: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Gateway lifecycle (the main chat's "restarting" / "back" lines)
+# ---------------------------------------------------------------------------
+
+# Written by the gateway half (bridge.py) when the gateway stops and starts; read by the app through the dashboard.
+# Kept apart from the chat store, so the model never sees them and they never reach the Inbox or a notification.
+GATEWAY_EVENTS_FILE = "gateway-events.json"
+GATEWAY_EVENTS_MAX = 200
+GATEWAY_EVENT_KINDS = ("down", "up")
+
+
+def gateway_events() -> list[dict[str, Any]]:
+    """Recorded gateway stops and starts, oldest first; [] when none or unreadable."""
+    try:
+        data = json.loads(data_file(GATEWAY_EVENTS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    events = data.get("events") if isinstance(data, dict) else None
+    if not isinstance(events, list):
+        return []
+    return [
+        {"ts": float(e["ts"]), "kind": e["kind"]}
+        for e in events
+        if isinstance(e, dict) and e.get("kind") in GATEWAY_EVENT_KINDS and isinstance(e.get("ts"), (int, float))
+    ]
+
+
+def record_gateway_event(kind: str, ts: float | None = None) -> bool:
+    """Append one stop ("down") or start ("up"). A shutdown notice and the adapter's own stop both report the same
+    shutdown, so a "down" right after a "down" is not recorded twice. Returns whether it was recorded."""
+    if kind not in GATEWAY_EVENT_KINDS:
+        return False
+    events = gateway_events()
+    if kind == "down" and events and events[-1]["kind"] == "down":
+        return False
+    events.append({"ts": time.time() if ts is None else float(ts), "kind": kind})
+    _atomic_write(data_file(GATEWAY_EVENTS_FILE), json.dumps({"events": events[-GATEWAY_EVENTS_MAX:]}))
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 

@@ -134,6 +134,43 @@ class InboxJobWrapperTest(RouteTestCase):
         self.assertEqual(item["text"], "Totals Done: column_total and snake_case_name, 2*3=6")
 
 
+class GatewayEventsRouteTest(RouteTestCase):
+    def test_lists_recorded_stops_and_starts(self):
+        self.assertEqual(self.client.get("/api/plugins/hermes-mini/gateway-events").json(), {"events": []})
+        self.api.core.record_gateway_event("down", ts=100)
+        self.api.core.record_gateway_event("up", ts=104)
+        response = self.client.get("/api/plugins/hermes-mini/gateway-events")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["events"], [{"ts": 100.0, "kind": "down"}, {"ts": 104.0, "kind": "up"}])
+
+
+class RestartWritesItsLineFirstTest(RouteTestCase):
+    def test_the_restart_route_records_the_stop_before_anything_stops(self):
+        self.api._last_restart = 0.0
+        with (
+            mock.patch.object(self.api.core, "find_hermes_executable", return_value="/usr/local/bin/hermes"),
+            mock.patch("subprocess.Popen") as popen,
+        ):
+            response = self.client.post("/api/plugins/hermes-mini/gateway/restart")
+        popen.assert_called_once()
+        self.assertEqual(response.status_code, 200)
+        event = response.json()["event"]
+        self.assertEqual(event["kind"], "down")
+        self.assertEqual(self.api.core.gateway_events(), [event])
+        # The gateway's own report of the same stop is not a second line.
+        self.assertFalse(self.api.core.record_gateway_event("down"))
+
+    def test_a_restart_that_cannot_start_writes_no_line(self):
+        self.api._last_restart = 0.0
+        with (
+            mock.patch.object(self.api.core, "find_hermes_executable", return_value="/usr/local/bin/hermes"),
+            mock.patch("subprocess.Popen", side_effect=OSError("no bash")),
+        ):
+            response = self.client.post("/api/plugins/hermes-mini/gateway/restart")
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(self.api.core.gateway_events(), [])
+
+
 class InboxDbCase(RouteTestCase):
     """A small state.db with one app chat; helpers for the Inbox routes. Holds no tests itself."""
 

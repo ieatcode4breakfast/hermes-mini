@@ -222,5 +222,35 @@ class PlainMarkdownTest(DisposableHome):
         self.assertEqual(" ".join(self.plain("| a_b | c |\n|---|:---:|\n| 1 | 2 |").split()), "a_b c 1 2")
 
 
+
+class GatewayEventsTest(DisposableHome):
+    def test_records_stops_and_starts_in_order(self):
+        self.assertEqual(self.core.gateway_events(), [])
+        self.assertTrue(self.core.record_gateway_event("down", ts=10))
+        self.assertTrue(self.core.record_gateway_event("up", ts=20))
+        self.assertEqual(self.core.gateway_events(), [{"ts": 10.0, "kind": "down"}, {"ts": 20.0, "kind": "up"}])
+        self.assertTrue((self.home / "data" / "hermes-mini" / "gateway-events.json").is_file())
+
+    def test_one_shutdown_reported_twice_is_one_stop(self):
+        self.core.record_gateway_event("down", ts=10)  # the shutdown notice
+        self.assertFalse(self.core.record_gateway_event("down", ts=11))  # the adapter's own stop
+        self.assertEqual(len(self.core.gateway_events()), 1)
+
+    def test_unknown_kinds_and_bad_files_are_ignored(self):
+        self.assertFalse(self.core.record_gateway_event("reboot"))
+        path = self.home / "data" / "hermes-mini" / "gateway-events.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("not json", encoding="utf-8")
+        self.assertEqual(self.core.gateway_events(), [])
+        self.assertTrue(self.core.record_gateway_event("up", ts=5))
+
+    def test_keeps_only_the_newest(self):
+        for i in range(self.core.GATEWAY_EVENTS_MAX + 10):
+            self.core.record_gateway_event("down" if i % 2 else "up", ts=i)
+        events = self.core.gateway_events()
+        self.assertEqual(len(events), self.core.GATEWAY_EVENTS_MAX)
+        self.assertEqual(events[-1]["ts"], float(self.core.GATEWAY_EVENTS_MAX + 9))
+
+
 if __name__ == "__main__":
     unittest.main()

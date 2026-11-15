@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest import mock
 
 from tests.support import PROJECT_ROOT, DisposableHome, load_module
 
@@ -62,6 +63,15 @@ class ResolveSessionTest(RegistryTestCase):
     def test_job_notification_text_keeps_underscores(self):
         self.assertEqual(self.bridge._plain("**Report:** `column_total` = 4_200 in [sales_q3](x)"),
                          "Report: column_total = 4_200 in sales_q3")
+
+    def test_a_shutdown_notice_is_not_stored_but_marks_a_stop(self):
+        result = self.bridge.deliver_text("⚠️ Hermes is shutting down — your current task will be interrupted.")
+        self.assertEqual(result["message_id"], "suppressed-lifecycle-notice")
+        self.assertEqual([e["kind"] for e in self.bridge.mini_core.gateway_events()], ["down"])
+
+    def test_recording_never_breaks_the_caller(self):
+        with mock.patch.object(self.bridge.mini_core, "record_gateway_event", side_effect=OSError("read-only")):
+            self.bridge._record_gateway_event("up")  # logs, does not raise
 
     def test_reserved_main_wins_over_a_chat_named_main(self):
         db = self.db()

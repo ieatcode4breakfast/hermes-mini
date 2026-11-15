@@ -11,6 +11,12 @@ All notable changes to this project are documented here. The format follows
 - A test that checks every piece of Hermes the plugin uses (imports, attributes read from Hermes modules,
   declared hooks, `ctx` calls) still exists in the Hermes it runs against. The plugin's Hermes calls fail
   soft, so without it a Hermes update that removed one would only show as a quietly missing feature.
+- Restart lines in the main chat: "<agent> is restarting · 8:41 PM" when the gateway stops and "<agent> is back ·
+  8:41 PM" when it starts, as small centred lines between the messages. A restart from the app's Restart button writes
+  its "restarting" line before anything stops, so it shows at once; a restart from elsewhere shows when the chat is next
+  opened. The lines are not chat messages: the model never sees them and they reach neither the Inbox nor a
+  notification (new `GET /gateway-events`; stored in `gateway-events.json` in the plugin's data folder). Needs a
+  dashboard and a gateway restart.
 
 ### Changed
 

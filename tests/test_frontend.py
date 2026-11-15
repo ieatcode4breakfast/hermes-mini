@@ -813,6 +813,15 @@ class ZIndexLadderTest(unittest.TestCase):
         for over in ("--z-computer-chrome", "--z-viewer", "--z-drawer-over-computer", "--z-panel-over-computer"):
             self.assertLess(value["--z-header-beside-computer"], value[over], over)
 
+    def test_gateway_lines_are_main_chat_only_and_never_messages(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        live = app[app.index("function showNewGatewayEvents()"):app.index("async function loadHistory")]
+        self.assertIn("if (!viewingHome()) return;", live)
+        self.assertIn("const eventsLoad = home ? fetchGatewayEvents() : Promise.resolve([]);", app)
+        self.assertIn('event.kind === "down" ? "is restarting" : "is back"', app)
+        # Drawn as the muted centred system line, not as a bubble.
+        self.assertIn("const row = addFailLine(gatewayLineText(event));", app)
+
     def test_every_layer_used_is_named(self):
         defined = set(re.findall(r"(--z-[a-z-]+)\s*:", self.style + self.screen))
         used = set(re.findall(r"var\((--z-[a-z-]+)\)", self.style + self.screen))

@@ -183,7 +183,10 @@ def deliver_text(content: str, target: str = "main") -> dict[str, Any]:
     if not text:
         return {"error": "bridge: empty message"}
     if _LIFECYCLE_NOTICE.match(text) or not _policy.display_text(text, notice=True):
-        # Gateway shutdown/restart notices are machinery, not news: never stored in the app.
+        # Gateway shutdown/restart notices are machinery, not news: never stored as a message. A shutdown notice is the
+        # earliest sign the gateway is going down, so it marks the main chat's "restarting" line.
+        if _LIFECYCLE_NOTICE.match(text):
+            _record_gateway_event("down")
         log.info("bridge: dropped a gateway lifecycle notice")
         return {"success": True, "message_id": "suppressed-lifecycle-notice"}
     text = _policy.display_text(text, notice=True)
@@ -219,6 +222,14 @@ def deliver_text(content: str, target: str = "main") -> dict[str, Any]:
             "message_id": str(row_id)}
 
 
+def _record_gateway_event(kind: str) -> None:
+    """Note a gateway stop or start for the app (mini_core.record_gateway_event); never fails the caller."""
+    try:
+        mini_core.record_gateway_event(kind)
+    except Exception as exc:  # noqa: BLE001 - a lost line in the app must not break a shutdown or a start
+        log.warning("bridge: could not record gateway %s: %s", kind, exc)
+
+
 def _adapter_class():
     from gateway.config import Platform
     from gateway.platforms.base import BasePlatformAdapter, SendResult
@@ -234,11 +245,14 @@ def _adapter_class():
         async def connect(self, *, is_reconnect: bool = False) -> bool:
             self._running = True
             self._mark_connected()
+            if not is_reconnect:
+                _record_gateway_event("up")  # the gateway started: the main chat's "back" line
             return True
 
         async def disconnect(self) -> None:
             self._running = False
             self._mark_disconnected()
+            _record_gateway_event("down")  # the gateway is stopping: the main chat's "restarting" line
 
         async def send(self, chat_id: str, content: str, reply_to: Optional[str] = None,
                        metadata: Optional[dict[str, Any]] = None) -> SendResult:
