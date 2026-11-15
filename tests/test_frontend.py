@@ -608,6 +608,15 @@ class ComputerButtonStaysOutTest(unittest.TestCase):
                            css.index("body:not(.tools-open) .fab.fab-tray {"))
 
 
+class ComputerFollowsThemeTest(unittest.TestCase):
+    def test_letterbox_colour_is_read_again_on_theme_change(self):
+        js = (DASHBOARD / "computer" / "screen.js").read_text(encoding="utf-8")
+        self.assertIn('attributeFilter: ["data-theme"]', js)
+        self.assertIn('"(prefers-color-scheme: dark)").addEventListener?.("change", syncLetterbox)', js)
+        self.assertIn("if (rfb) rfb.background = appBackground();", js)
+        self.assertIn("client.background = appBackground();", js)
+
+
 class AttachMenuOverHeaderTest(unittest.TestCase):
     def test_the_menu_is_in_the_top_layer_not_lifted_by_z_index(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")

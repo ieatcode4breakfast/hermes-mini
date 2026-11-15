@@ -163,6 +163,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The computer view's background follows a theme change while it is open, instead of keeping the colour of
+  the theme it opened in.
 - The "+" attach menu opens over the agent's picture in a new chat instead of behind it.
 - A login-protected dashboard no longer logs a failed WebSocket (`/api/ws?token=`) on every load: the app
   learns whether the dashboard is gated before it picks the ticket or the token, instead of after.

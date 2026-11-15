@@ -180,6 +180,14 @@ export function createBotScreen(deps) {
   let busy = false;
   let rfb = null;
   let socket = null;
+  // The viewer's letterbox colour is the app background, read again on every theme change (the theme buttons set
+  // data-theme on <html>; "System" follows prefers-color-scheme), so the computer never keeps the old theme's colour.
+  const appBackground = () => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#000000";
+  const syncLetterbox = () => {
+    if (rfb) rfb.background = appBackground();
+  };
+  new MutationObserver(syncLetterbox).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", syncLetterbox);
   let generation = 0; // open/close lifetime
   let attachSeq = 0; // one attach attempt
   let statusSeq = 0;
@@ -841,7 +849,7 @@ export function createBotScreen(deps) {
       client.resizeSession = false;
       client.focusOnClick = true;
       // Letterbox colour matches the app background, so the viewer reads as part of the app.
-      client.background = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#000000";
+      client.background = appBackground();
       client.qualityLevel = 7;
       client.compressionLevel = 2;
       client.viewOnly = !iHold();

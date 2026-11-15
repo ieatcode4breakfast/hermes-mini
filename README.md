@@ -196,7 +196,8 @@ there is no reply to show.
   the job through Hermes' own routes, or adds it to the message being written as an inline pill, which
   reaches the agent as `[Schedule: <name> · job <id>]`.
 - **Tools tray**: the hammer-and-screwdriver button folds the Schedules, Computer and To-do buttons
-  away under it and brings them back; folded is the default, remembered per device.
+  away under it and brings them back; folded is the default, remembered per device. On a computer, while
+  the computer view is open, its button stays out under Tools even when the tray is folded.
 - **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning
   level. The sheet lists Hermes's connected providers and their models (search, prices where Hermes
   has them), with a five-bar reasoning level meter and fast mode where the model supports it; a pick
