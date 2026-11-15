@@ -387,5 +387,39 @@ class ProviderNoteTest(unittest.TestCase):
         self.assertIn('if (!custom && (row.auth_type === "api_key"', js)
 
 
+class SkillNarrationTest(unittest.TestCase):
+    """Only the tool that writes a skill claims an update; reading or listing replaces that line, never inherits it."""
+
+    def setUp(self):
+        self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        block = self.app[self.app.index("const NARRATION_TOOL_LABELS = ["):self.app.index("function narrationLabel(")]
+        self.block = block
+        self.labels = [(prefix, label) for prefix, label in re.findall(r'\["([^"]+)", "([^"]*)"\]', block)]
+
+    def _label(self, name):
+        lower = name.lower()
+        for prefix, label in self.labels:
+            if lower.startswith(prefix):
+                return label
+        return ""
+
+    def test_skill_manage_says_it_is_updating_a_skill(self):
+        self.assertEqual(self._label("skill_manage"), "Updating a skill\u2026")
+
+    def test_reading_and_listing_do_not_claim_an_update(self):
+        for name in ("skill_view", "skills_list"):
+            label = self._label(name)
+            self.assertTrue(label, name)
+            self.assertNotIn("Updating", label)
+
+    def test_no_earlier_prefix_shadows_a_later_one(self):
+        for index, (prefix, _label) in enumerate(self.labels):
+            later = [other for other, _ in self.labels[index + 1:]]
+            self.assertFalse([other for other in later if other.startswith(prefix)], prefix)
+
+    def test_labels_are_literals_not_templates(self):
+        self.assertNotIn("${", self.block)
+
+
 if __name__ == "__main__":
     unittest.main()
