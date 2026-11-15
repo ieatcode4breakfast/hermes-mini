@@ -64,6 +64,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- README: the first install method is a prompt to paste into Hermes, which runs
+  `hermes plugins install ieatcode4breakfast/hermes-mini --enable`, reports the app's address and then
+  restarts the dashboard and gateway. The copy-and-enable steps follow as "Manual install".
 - Providers +: a provider the app cannot connect gets a plain note instead of Hermes' terminal hint
   ("run `hermes model` to configure (oauth_external)"). One that signs in with an account (ChatGPT or
   Codex, Nous, xAI Grok OAuth, Qwen, MiniMax OAuth, AWS Bedrock, Vertex) says to run `hermes model` on the

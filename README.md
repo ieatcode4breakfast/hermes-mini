@@ -37,6 +37,29 @@ a broken app.
 
 ## Install
 
+The simplest way to install Hermes Mini is to copy this prompt and send it to your Hermes agent:
+
+```text
+Install the Hermes Mini plugin for me:
+1. Run: hermes plugins install ieatcode4breakfast/hermes-mini --enable
+2. Check that `hermes plugins list` shows hermes-mini as enabled.
+3. Tell me the address to open: my dashboard's address followed by
+   /dashboard-plugins/hermes-mini/index.html
+4. Last, restart the Hermes dashboard and gateway the way they normally
+   run on this machine, so the plugin loads. If you're not sure how they
+   run, tell me the commands instead of guessing.
+```
+
+Hermes asks you to approve the commands. It tells you the address before it restarts anything,
+because restarting the gateway ends its reply. Then open the address, sign in with your usual
+Hermes login, and use your browser's "Install app" / "Add to Home Screen".
+
+This needs an agent that can run `hermes` commands on the machine Hermes runs on, and that machine
+must be able to reach GitHub. If the agent's terminal is sandboxed (a Docker or remote terminal
+backend), or your Hermes install is managed or read-only, use the manual install below.
+
+### Manual install
+
 Hermes Mini is a directory plugin: `plugin.yaml` plus `register(ctx)` (hooks) plus a
 `dashboard/` folder (the app page and its backend routes). Put the folder where Hermes looks for
 user plugins and enable it:
