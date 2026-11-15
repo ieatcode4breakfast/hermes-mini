@@ -57,6 +57,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Providers +: a provider the app cannot connect gets a plain note instead of Hermes' terminal hint
+  ("run `hermes model` to configure (oauth_external)"). One that signs in with an account (ChatGPT or
+  Codex, Nous, xAI Grok OAuth, Qwen, MiniMax OAuth, AWS Bedrock, Vertex) says to run `hermes model` on the
+  computer and pick it; the command is a chip that copies on tap. Custom endpoints (Hermes' generic
+  "custom" entry and every `custom:<name>`) lose the key box, which Hermes' key save could never accept,
+  and say where they are set up instead. Model picking is unchanged.
 - The live narration line shimmers: a soft highlight slides across the text while the agent works,
   tuned separately for light and dark. With reduced motion it is plain text.
 - A web picture (`https:`) that fails to load now shows its alt text in grey italics, like a local

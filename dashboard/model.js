@@ -558,7 +558,8 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
       card.classList.toggle("open", next);
       if (next) body.querySelector("input")?.focus();
     });
-    if (row.auth_type === "api_key" || (connected && !row.auth_type)) {
+    const custom = isCustomProvider(row);
+    if (!custom && (row.auth_type === "api_key" || (connected && !row.auth_type))) {
       const form = node("form", "provider-form");
       const label = node("label", "provider-label", connected ? `${row.key_env || "API key"} · a key is already saved` : row.key_env || "API key");
       const input = node("input", "provider-key");
@@ -590,10 +591,45 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
       });
       body.append(form);
     } else {
-      body.append(node("p", "provider-note", row.warning || "Set this provider up with `hermes model` on the computer."));
+      body.append(setupNote(row, custom, connected));
     }
     card.append(header, body);
     return card;
+  }
+
+  // Your own endpoint: Hermes' generic "custom" entry and every `custom:<name>` one from config.yaml. Hermes'
+  // key save only knows its built-in providers, so a key box here could never work.
+  function isCustomProvider(row) {
+    const slug = String(row.slug || "").toLowerCase();
+    return Boolean(row.is_user_defined) || slug === "custom" || slug.startsWith("custom:");
+  }
+
+  // The note for a provider the app cannot connect: one that signs in with an account (OAuth, AWS, Vertex) or a
+  // custom endpoint. Hermes' own hint is written for its terminal ("run `hermes model` to configure
+  // (oauth_external)") and is never shown; `hermes model` is Hermes' setup menu and connects every provider.
+  function setupNote(row, custom, connected) {
+    const name = row.name || row.slug;
+    const note = node("div", "provider-note");
+    note.append(node("p", "provider-note-title", custom ? "Set up in Hermes" : "Connect this one on your computer"));
+    let text;
+    if (custom && connected) text = `${name} is your own endpoint. Change its address or key on the computer that runs Hermes: run`;
+    else if (custom) text = "Use your own OpenAI-compatible endpoint. Add it on the computer that runs Hermes: run";
+    else text = `${name} signs in with your account, not a key. On the computer that runs Hermes, run`;
+    const line = node("p", "provider-note-text", `${text} `);
+    const command = node("button", "provider-command", "hermes model");
+    command.type = "button";
+    command.setAttribute("aria-label", "Copy the command hermes model");
+    command.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText("hermes model");
+        showToast("Copied", "success");
+      } catch {
+        showToast("Could not copy", "error");
+      }
+    });
+    line.append(command, document.createTextNode(custom ? (connected ? " or edit config.yaml." : " and pick Custom endpoint.") : ` and pick ${name}.`));
+    note.append(line);
+    return note;
   }
 
   async function open() {

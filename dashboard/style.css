@@ -2196,6 +2196,14 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .provider-save:active:not(:disabled) { transform: scale(0.97); }
 .provider-save:disabled { background: color-mix(in srgb, var(--fg) 12%, transparent); color: var(--muted); box-shadow: none; cursor: default; }
 .provider-note { margin: 0 12px 10px; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.provider-note p { margin: 0; }
+.provider-note-title { color: var(--fg); font-weight: 600; margin-bottom: 2px !important; }
+.provider-command {
+  font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg); cursor: copy;
+  padding: 1px 7px; border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent); vertical-align: baseline;
+}
+.provider-command:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
   .model-sheet, .model-sheet.open, .model-provider::after, .model-tab-caret, .model-option, .model-add { transition: none; }
   .model-refresh.spin svg, .identity:not(.flying):not(.lowering) .avatar, .card:not(.resolved), .todo-check.checked, .inbox-new, .tray .item { animation: none; }

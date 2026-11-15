@@ -116,7 +116,9 @@ state files under `$HERMES_HOME/data/hermes-mini/`, and it records the default d
 Use the model tab on the input box: it lists Hermes's connected providers and their models, lets a
 pick switch the chat (and become the default for new chats), and sets the reasoning level and, where
 the model supports it, fast mode. **Providers +** lists every provider Hermes supports and saves or
-updates an API key through Hermes; a sign-in provider shows Hermes's own setup note. Everything goes
+updates an API key through Hermes. A provider that signs in with an account, and a custom endpoint, cannot
+be connected from the app: its card says to run `hermes model` on the computer (tap the command to copy
+it). Everything goes
 through Hermes's own gateway methods, and the app keeps no model state.
 
 You can also use Hermes itself, for example `hermes model` or the dashboard's Config page. See the

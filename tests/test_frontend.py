@@ -369,5 +369,23 @@ class WebImageFallbackTest(unittest.TestCase):
         self.assertLess(attach.index("webImageFallback(bubble)"), attach.index("inlineMediaTags(bubble)"))
 
 
+class ProviderNoteTest(unittest.TestCase):
+    """Providers the app cannot connect get a plain note, never Hermes' terminal hint."""
+
+    def test_setup_note_replaces_the_raw_warning(self):
+        js = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        self.assertNotIn("row.warning", js)
+        self.assertIn("function setupNote(row, custom, connected)", js)
+        self.assertIn('navigator.clipboard.writeText("hermes model")', js)
+
+    def test_custom_endpoints_get_no_key_box(self):
+        js = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        body = js[js.index("function isCustomProvider(row)"):js.index("function setupNote(")]
+        self.assertIn('slug === "custom"', body)
+        self.assertIn('slug.startsWith("custom:")', body)
+        self.assertIn("row.is_user_defined", body)
+        self.assertIn('if (!custom && (row.auth_type === "api_key"', js)
+
+
 if __name__ == "__main__":
     unittest.main()
