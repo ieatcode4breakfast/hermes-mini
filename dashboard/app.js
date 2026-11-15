@@ -2087,8 +2087,8 @@ function addAssistantBubble(text, meta = {}) {
   return bubble;
 }
 
-// ---------- message actions: copy, edit & resend, branch ----------
-// Each message has an action row under it. A reply gets Copy and Branch, then its time; a user message gets its time,
+// ---------- message actions: copy, edit & resend, branch, mark unread ----------
+// Each message has an action row under it. A reply gets Copy, Branch and Mark unread, then its time; a user message gets its time,
 // then Copy and Edit, right-aligned. The row always takes its height, so nothing moves when the buttons appear; with a
 // mouse the buttons and the time fade in on hover, and a touch device shows only the time (the long-press menu below
 // carries the actions). Every row keeps a small record on the element (hermesMiniMsg):
@@ -2097,6 +2097,7 @@ function addAssistantBubble(text, meta = {}) {
 const ICON_ATTRS = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
 const ICON_EDIT = `<svg ${ICON_ATTRS}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 const ICON_BRANCH = `<svg ${ICON_ATTRS}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`;
+const ICON_UNREAD = `<svg ${ICON_ATTRS}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>`;
 const nowSec = () => Date.now() / 1000;
 let shownBusy = false; // the streaming state the action buttons were last synced to
 
@@ -2155,6 +2156,7 @@ function addMessageActions(row) {
   } else {
     if (time) bar.append(time);
     bar.append(copy, actionButton("branch", "Branch from this reply", ICON_BRANCH, () => branchFrom(row)));
+    bar.append(actionButton("unread", "Mark unread", ICON_UNREAD, () => markReplyUnread(row)));
   }
   row.append(bar);
   syncActionAvailability(bar);
@@ -2175,7 +2177,8 @@ function syncActionAvailability(root = els.log) {
       button.disabled = busy || state.readOnly || !editable(meta);
       button.title = meta.attached ? "Messages with attachments can't be edited" : "Edit message";
     } else {
-      button.disabled = busy || state.readOnly;
+      button.disabled = busy || state.readOnly
+        || (button.dataset.action === "unread" && unreadBusy.has(button.closest(".msg")));
     }
   }
 }
@@ -2183,7 +2186,7 @@ function syncActionAvailability(root = els.log) {
 // ---------- message menu (touch long press) and select mode ----------
 // On a touch device a long press (450 ms, cancelled by a 10 px move or by lifting) on a message's bubble opens the
 // same actions the row's buttons offer, anchored at the press point. The menu is the drawer's row-menu card (same
-// look), built on demand: Copy, then Edit (user) or Branch (reply), then Select text, each with its icon on the left.
+// look), built on demand: Copy, then Edit (user) or Branch and Mark unread (reply), then Select text, each with its icon on the left.
 // It reuses the history pattern: one entry pushed on open, consumed by every in-app close. Select text puts that one
 // message into native selection mode so Android's handles and copy toolbar appear.
 
@@ -2233,6 +2236,7 @@ function openMsgMenu(row, x, y) {
     }
   } else if (!busy && !state.readOnly) {
     items.push(msgMenuItem("Branch", ICON_BRANCH, () => branchFrom(row)));
+    items.push(msgMenuItem("Mark unread", ICON_UNREAD, () => markReplyUnread(row)));
   }
   items.push(msgMenuItem("Select text", ICON_SELECT, () => enterSelectMode(row, caret)));
   els.msgMenu.append(...items);
@@ -2838,6 +2842,33 @@ async function branchFrom(row) {
   drawerApi.refresh(); // the new chat is in the list the next time the drawer opens
   await switchSession(branchId);
   showToast("Branch successful", "success");
+}
+
+// Mark unread: the reply comes back unread in the Inbox. The mark is manual, so the read an on-screen row sends
+// (plugin_api.py inbox_mark_read drops non-manual ids that are held) cannot undo it while the chat stays open,
+// until it is read by hand or by Mark all. unreadBusy keeps a double press to one request.
+const unreadBusy = new Set();
+async function markReplyUnread(row) {
+  const meta = row.hermesMiniMsg;
+  if (!meta || unreadBusy.has(row)) return;
+  if (state.streaming || state.sending || state.switching || state.editing || state.readOnly) return;
+  unreadBusy.add(row);
+  syncActionAvailability();
+  try {
+    const rowId = await resolveRowId(row);
+    if (!rowId) throw new Error("this reply is not saved yet. Try again in a moment.");
+    inboxReadIds.delete(rowId); // a queued automatic read would be refused anyway; do not send it
+    await inbox.markUnread(rowId);
+    showToast("Marked unread");
+  } catch (error) {
+    if (!(error instanceof AuthRedirect)) {
+      sysLine(`Could not mark unread: ${errorText(error)}`);
+      showToast("Could not mark unread", "error");
+    }
+  } finally {
+    unreadBusy.delete(row);
+    syncActionAvailability();
+  }
 }
 
 // Inline images: the TUI channel has no attachment path, so any absolute image path in a finished reply

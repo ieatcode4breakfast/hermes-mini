@@ -421,5 +421,56 @@ class SkillNarrationTest(unittest.TestCase):
         self.assertNotIn("${", self.block)
 
 
+class MessageUnreadActionTest(unittest.TestCase):
+    """A reply can be marked unread again from the chat; a user message cannot, and one press sends one request."""
+
+    def setUp(self):
+        self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.inbox = (DASHBOARD / "inbox.js").read_text(encoding="utf-8")
+
+    def _bar(self):
+        return self.app[self.app.index("function addMessageActions("):self.app.index("// Edit is offered for a typed user message")]
+
+    def _handler(self):
+        body = self.app[self.app.index("async function markReplyUnread("):]
+        return body[:body.index("\n}\n")]
+
+    def test_reply_bar_offers_mark_unread_after_branch(self):
+        bar = self._bar()
+        self.assertIn('actionButton("unread", "Mark unread", ICON_UNREAD', bar)
+        self.assertLess(bar.index('actionButton("branch"'), bar.index('actionButton("unread"'))
+
+    def test_user_messages_get_no_mark_unread(self):
+        bar = self._bar()
+        user = bar[bar.index('if (meta.role === "user") {'):bar.index("} else {")]
+        self.assertNotIn("unread", user)
+
+    def test_long_press_menu_offers_mark_unread(self):
+        menu = self.app[self.app.index("function openMsgMenu("):self.app.index("// Places the card near the press point")]
+        self.assertIn('msgMenuItem("Mark unread", ICON_UNREAD', menu)
+
+    def test_inbox_posts_a_manual_unread_and_refreshes(self):
+        body = self.inbox[self.inbox.index("async function markUnread("):]
+        body = body[:body.index("\n  }")]
+        self.assertIn("${INBOX_API}/unread", body)
+        self.assertIn("manual: true", body)
+        self.assertIn("if (open) void loadHead();", body)
+        self.assertIn("markUnread,", self.inbox[self.inbox.rindex("  return {"):])
+
+    def test_one_press_sends_one_request(self):
+        body = self._handler()
+        self.assertIn("if (!meta || unreadBusy.has(row)) return;", body)
+        self.assertIn("unreadBusy.add(row);", body)
+        self.assertIn("unreadBusy.delete(row);", body)
+
+    def test_the_button_waits_for_the_reply_id(self):
+        body = self._handler()
+        self.assertIn("const rowId = await resolveRowId(row);", body)
+        self.assertIn('if (!rowId) throw new Error(', body)
+
+    def test_failure_is_reported(self):
+        self.assertIn('showToast("Could not mark unread", "error")', self._handler())
+
+
 if __name__ == "__main__":
     unittest.main()

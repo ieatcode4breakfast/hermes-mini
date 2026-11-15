@@ -422,6 +422,19 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     }
   }
 
+  // Mark one message unread again from a chat (the action row's Mark unread). The mark is manual: the automatic
+  // read a visible row sends is skipped while it is held (plugin_api.py inbox_mark_read), so it survives the chat
+  // staying open. An open panel merges the new state from the next head read.
+  async function markUnread(messageId) {
+    await api(`${INBOX_API}/unread`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [messageId], manual: true }),
+    });
+    if (open) void loadHead();
+    void refreshBadge();
+  }
+
   // ---------- actions ----------
 
   async function markRead(ids) {
@@ -705,6 +718,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     close: closePanel,
     refresh: refreshBadge,
     refreshBadge,
+    markUnread,
     messageComplete,
     isOpen: () => open,
   };
