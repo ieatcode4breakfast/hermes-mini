@@ -240,6 +240,56 @@ A failed capability probe makes the app keep the control visible rather than hid
 might work. The server always enforces the real rule: a disabled feature returns an error, it does
 not quietly succeed.
 
+## What it touches
+
+Hermes Mini is a community plugin, not a Nous Research product. Everything it does goes through Hermes'
+plugin surfaces; this is the full list of what it reads, writes, runs and sends.
+
+**Serves**
+- A web app from your Hermes dashboard: static files under `/dashboard-plugins/hermes-mini/` and routes
+  under `/api/plugins/hermes-mini/`, behind the dashboard's own login. It opens no port of its own.
+- A chat platform named `hermes-mini` inside the gateway (in-process), so scheduled jobs can deliver
+  their results to the app.
+
+**Hooks (app chats only; other chats, Discord, the CLI, cron runs and subagents are left alone)**
+- `pre_llm_call`: adds a short turn rule to app chats (acknowledge the newest message before the first
+  tool call) and the default delivery target for scheduled jobs created there.
+- `transform_tool_result`: during a long turn, appends a one-line instruction to a tool result asking the
+  agent for a 1–2 sentence progress update (about every few minutes or every few tools).
+- `post_llm_call`, `pre_approval_request`, `on_human_input_request`: queue a push notification for a
+  finished reply, an approval waiting for you, or a question the agent asks — only when you have turned
+  notifications on.
+- `pre_tool_call`: blocks an app chat from editing the plugin's own files (a self-edit guard).
+
+**Reads**
+- Hermes' chat history and session list (`state.db`, through `SessionDB`; the Inbox query opens it read-only),
+  the scheduled-job list
+  (Hermes' cron routes), the model/provider list, and its own data folder.
+
+**Writes**
+- Its own settings in `$HERMES_HOME/hermes-mini/` and state in `$HERMES_HOME/data/hermes-mini/`.
+- `$HERMES_HOME/config.yaml`, once, through Hermes' config API: it records
+  `platforms.hermes-mini.home_channel` when none is set (and marks the platform enabled if it has no
+  `enabled` key). Nothing else there.
+
+**Runs**
+- `ffmpeg` (from PATH or Hermes' tools folder) to read the length and waveform of an audio attachment.
+- The **Restart** button runs `hermes gateway restart -y --detach` and then restarts the dashboard, as the same user,
+  only when you press it (at most once a minute).
+- With the optional computer view: a short Python helper (Tk) to copy text out of the desktop, and `xclip`
+  to paste a picture into it.
+
+**Model calls**
+- The live narration line is written by Hermes' auxiliary model (the same slot Hermes uses for chat
+  titles), with a short prompt built from the tool steps of the current turn — a few small calls per turn,
+  at most 80 tokens each, on your provider and your bill. Without an auxiliary model the line is absent.
+
+**Sends over the network**
+- Web Push messages to your browser's push service (Google FCM, Mozilla or Apple), only after you turn
+  notifications on, and only to those hosts. The push key is created at that moment.
+- Dictation audio to the speech-to-text provider you configured in Hermes (through Hermes).
+- Nothing else: no telemetry, no analytics, no update checks.
+
 ## Settings, state and profiles
 
 The plugin directory is replaceable code. Everything you change lives outside it, under the Hermes
