@@ -767,6 +767,12 @@ textarea::-webkit-scrollbar { display: none; }
   border: 0; background: transparent; border-radius: 0; padding: 11px 6px; scroll-padding-block: 11px;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px); mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
 }
+/* iPhone and iPad Safari zoom the page into any text field whose text is under 16px when it is focused (phones use
+   14px here). The message box takes 16px on Apple touch devices only (-webkit-touch-callout exists only there), so
+   tapping it no longer zooms; the 20px line height, and with it the box's height, stays the same. */
+@supports (-webkit-touch-callout: none) {
+  .composer textarea, .composer textarea:focus { font-size: 16px; }
+}
 .composer .send { border: 0; }
 /* Voice dictation: recording UI for the configured speech-to-text provider. */
 .composer .mic-btn {

@@ -64,6 +64,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- README: says the app is tested thoroughly on Android but not yet on iPhone or iPad, and lists the known
+  iPhone differences.
 - README: the first install method is a prompt to paste into Hermes, which runs
   `hermes plugins install ieatcode4breakfast/hermes-mini --enable`, reports the app's address and then
   restarts the dashboard and gateway. The copy-and-enable steps follow as "Manual install".
@@ -131,6 +133,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- On iPhone and iPad, tapping the message box no longer zooms the page in. Safari zooms into text under
+  16px; the message box now uses 16px on Apple touch devices only, so Android is unchanged.
 - `hermes plugins install` no longer stops on a "caution" verdict that asks to force the install. Hermes'
   scanner read a backtick lookahead in the bundled marked (`(?!` + backtick) as a skill's inline-shell
   snippet, its only high finding. Those lookarounds are now written with `\x60`, the same character, so

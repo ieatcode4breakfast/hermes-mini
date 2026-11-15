@@ -29,7 +29,7 @@ not stored. Quoted examples and code are preserved. Other Hermes interfaces are 
 |---|---|
 | Hermes Agent | **v0.23.0** tested (commit `2bd378ed1b8d`). The plugin uses documented plugin, dashboard and state APIs. |
 | Python | Whatever Hermes runs (Hermes v0.23.0 ships Python 3.14 here; 3.11+ is expected to work). |
-| Browser | A current Chrome, Safari, Firefox or Edge. The app is a plain ES-module page with no build step. |
+| Browser | A current Chrome, Safari, Firefox or Edge. The app is a plain ES-module page with no build step. Thoroughly tested on Android (Chrome, installed to the home screen); **not yet tested on iPhone or iPad** (see [Verified, and not](#verified-and-not)). |
 | Optional | `cryptography` + `httpx` for push; `Pillow` for image dimension checks; a Hermes-configured speech-to-text provider for dictation; Hermes' Bot Desktop for the computer view. |
 
 Nothing in this list is installed by the plugin. Optional pieces degrade to a hidden control, never
@@ -322,6 +322,14 @@ routes the suite exercises; settings/identity/avatar validation; push key opt-in
 dictation delegation to Hermes' provider with a mocked provider; the app-chat scoping and the
 self-edit guard; scheduled-job target resolution across ids, names, archived chats and missing
 chats; the browser module graph and service-worker asset list.
+
+Phones: the app has been used and tested thoroughly on Android, installed to the home screen. It has
+**not been tested on an iPhone or iPad**. It is built on standard web features Safari supports, but
+expect rough edges there. Known differences: notifications need iOS 16.4 or later and the app added to
+the Home Screen; approval notifications have no Approve/Deny buttons (iOS does not show them; answer
+in the app); there is no vibration on swipes; dictation records in a different audio format (mp4)
+whose transcription is untested; and Ogg/Opus audio falls back to the download card if Safari cannot
+play it. Reports from iPhone users are welcome.
 
 Not verified here, and worth trying yourself: a real desktop session through Bot Desktop, a real push
 delivery to a device, a real speech-to-text transcription, a live scheduled-job delivery, and the

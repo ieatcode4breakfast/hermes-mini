@@ -565,5 +565,15 @@ class InstallScanTest(unittest.TestCase):
         self.assertEqual(offenders, [], f"write the backtick as \\x60 (a regex) or reword: {offenders}")
 
 
+class IosComposerZoomTest(unittest.TestCase):
+    """iOS Safari zooms into a focused field under 16px: the message box is 16px on Apple touch devices only."""
+
+    def test_composer_is_16px_on_ios_only(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        block = css[css.index("@supports (-webkit-touch-callout: none) {"):]
+        block = block[:block.index("}\n}") + 3]
+        self.assertIn(".composer textarea, .composer textarea:focus { font-size: 16px; }", block)
+
+
 if __name__ == "__main__":
     unittest.main()
