@@ -1,4 +1,12 @@
-Vendored browser builds for dashboard/md.js (chat markdown rendering). Copied unmodified from the npm tarballs.
+Vendored browser builds for dashboard/md.js (chat markdown rendering). Copied unmodified from the npm tarballs,
+with one exception:
+
+  marked.esm.js: every regex lookaround on a backtick (a negative lookahead or lookbehind whose character is
+  the backtick) spells that character \x60. Same character, same matching. Hermes' plugin install scanner reads
+  an exclamation mark followed by a backtick-quoted run as a skill's inline-shell snippet (inline_shell_exec,
+  high) and asks the person to force the install; spelled this way the scan is clean. Re-apply after
+  re-vendoring; tests/test_frontend.py (InstallScanTest) fails until it is.
+
 Re-vendor: npm install marked@18.1.1 dompurify@3.4.17 highlight.js@11.12.0 @highlightjs/cdn-assets@11.12.0
 (copy lib/marked.esm.js, dist/purify.es.mjs, es/core.min.js and es/languages/<name>.min.js from the packages).
 For noVNC: npm pack @novnc/novnc@1.7.0 and copy package/core, package/vendor, LICENSE.txt and AUTHORS

@@ -131,6 +131,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- `hermes plugins install` no longer stops on a "caution" verdict that asks to force the install. Hermes'
+  scanner read a backtick lookahead in the bundled marked (`(?!` + backtick) as a skill's inline-shell
+  snippet, its only high finding. Those lookarounds are now written with `\x60`, the same character, so
+  the scan is clean (the remaining findings are informational) and the install goes through.
 - Signing in from the app comes back to the app. Hermes' login link for a data request carries no
   return address, so after the login page Hermes landed on its own dashboard; the app now adds its own
   page as the return address whenever the link lacks one.

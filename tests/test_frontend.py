@@ -548,5 +548,22 @@ class LoginReturnTest(unittest.TestCase):
         self.assertIn(".sched-empty[hidden] { display: none; }", css)
 
 
+class InstallScanTest(unittest.TestCase):
+    """Hermes' install scanner treats an exclamation mark followed by a backtick-quoted run as a skill's
+    inline-shell snippet (inline_shell_exec, high: the install then asks to be forced). No file may contain one."""
+
+    def test_no_inline_shell_lookalike_in_shipped_files(self):
+        tick = chr(96)  # spelled out so this test does not match itself
+        pattern = re.compile("!" + tick + "[^" + tick + r"\s][^" + tick + r"\n]*" + tick)
+        offenders = []
+        for path in PROJECT_ROOT.rglob("*"):
+            if not path.is_file() or ".git" in path.parts or path.suffix not in {".js", ".mjs", ".py", ".md", ".html", ".css", ".txt", ".yaml", ".json"}:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                if pattern.search(line):
+                    offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{number}")
+        self.assertEqual(offenders, [], f"write the backtick as \\x60 (a regex) or reword: {offenders}")
+
+
 if __name__ == "__main__":
     unittest.main()

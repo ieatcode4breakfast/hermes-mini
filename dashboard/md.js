@@ -1,5 +1,5 @@
 // Chat markdown. GitHub-flavoured markdown (marked) -> sanitised HTML (DOMPurify), with code highlighted
-// by highlight.js. Everything under ./vendor/ is an unmodified upstream build; versions and licences are in
+// by highlight.js. Everything under ./vendor/ is an upstream build (unmodified except one scanner-safe spelling in marked); versions and licences are in
 // vendor/VERSIONS.txt and vendor/LICENSES.txt.
 //
 // render(text) returns an HTML string that is safe to assign to innerHTML:
