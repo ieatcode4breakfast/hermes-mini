@@ -40,6 +40,27 @@
   --glass-bg: color-mix(in srgb, var(--surface) 82%, transparent);
   --elev-shadow: 0 8px 28px -4px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
   --elev-shadow-hover: 0 12px 34px -4px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(15, 23, 42, 0.08);
+  /* Drawing order. Every z-index of 4 or more in this file and in computer/screen.css is one of these names,
+     listed here from the bottom up, so two elements' order is read by name instead of by comparing numbers.
+     Menus, popup windows and toasts never use z-index: they are drawn in the browser's top layer
+     (popover="manual" + showPopover()), which sits above every layer here whatever stacking contexts lie
+     in between. They stack by open order, so a menu opened from a panel or dialog is drawn above it. */
+  --z-composer: 6;              /* the floating composer (centred on an empty chat) */
+  --z-header: 10;               /* the floating header: photo, name pill, round buttons */
+  --z-composer-above: 11;       /* the composer while its "+" menu is open (no-Popover fallback only) */
+  --z-drawer-scrim: 40;         /* the dim behind the chats drawer */
+  --z-drawer: 41;               /* the chats drawer */
+  --z-panel-scrim: 63;          /* the dim behind the To-do and Schedules cards */
+  --z-panel: 64;                /* the To-do and Schedules cards */
+  --z-inbox-scrim: 65;          /* the dim behind the Inbox card */
+  --z-inbox: 66;                /* the Inbox card */
+  --z-header-over-panel: 67;    /* the photo and name, above the open Inbox */
+  --z-computer: 70;             /* the full-screen / docked computer */
+  --z-computer-chrome: 71;      /* the drawer scrim and the resize seam over the docked computer */
+  --z-viewer: 72;               /* the full-screen picture viewer */
+  --z-drawer-over-computer: 72; /* the chats drawer opened over the docked computer */
+  --z-panel-over-computer: 73;  /* To-do/Inbox cards opened while the computer is docked */
+  --z-header-over-computer: 74; /* ... with the photo and name still above them */
 }
 /* No Android tap flash on tapped elements; keyboard focus rings only (not after a tap). */
 * { -webkit-tap-highlight-color: transparent; }
@@ -118,6 +139,13 @@
 }
 
 * { box-sizing: border-box; }
+/* Menus, popup windows and toasts are top-layer popovers (index.html popover="manual", shown from JS). The
+   browser's own popover styles (a centred fixed box with a Canvas background and a border) are cleared here,
+   before any class rule, so each element keeps exactly its old look and its own position. */
+[popover] {
+  margin: 0; padding: 0; border: 0; background: none; color: inherit;
+  position: fixed; inset: auto; width: auto; height: auto; overflow: visible;
+}
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
 body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
@@ -178,7 +206,7 @@ input, textarea, select { font-family: inherit; }
    Centre: round photo with the name in a pill overlapping its bottom edge; right: round New chat button. */
 .app { position: relative; --head-h: calc(env(safe-area-inset-top) + 107px); /* floating header bottom (topbar height, safe area included): the greeting centres between it and the composer */ }
 .topbar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 10; pointer-events: none;
+  position: absolute; top: 0; left: 0; right: 0; z-index: var(--z-header); pointer-events: none;
   transition: z-index 0s linear 200ms;
   display: flex; justify-content: center;
   padding-top: calc(env(safe-area-inset-top) + 10px);
@@ -674,12 +702,13 @@ input, textarea, select { font-family: inherit; }
 .tray .item-view:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .tray .x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 14px; line-height: 20px; padding: 0; }
 .row { display: flex; align-items: flex-end; gap: 8px; }
-/* "+" attach menu: a small popover above the button with Photos and Files. */
+/* "+" attach menu: a small popover above the button with Photos and Files. It is drawn in the top layer, so it
+   is fixed-positioned and placed by app.js from the "+" button's box on screen (14px above it, left edges together). */
 .attach-wrap { position: relative; flex: 0 0 auto; }
 .icon-btn.plus svg { transition: transform 0.26s var(--ease-spring); }
 .icon-btn.plus.open svg { transform: rotate(45deg); }
 .attach-menu {
-  position: absolute; bottom: calc(100% + 14px); left: 0; z-index: 20; min-width: 172px;
+  position: fixed; left: 0; top: 0; min-width: 172px;
   display: flex; flex-direction: column; padding: 6px; gap: 2px;
   background: color-mix(in srgb, var(--raised) 88%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
@@ -712,7 +741,10 @@ textarea::-webkit-scrollbar { display: none; }
 /* Floating composer: "+", the input and send share one rounded container that floats above the bottom edge
    (no divider line). The textarea loses its own border/background and grows inside the pill (42px → 162px). */
 .composer { border-top: 0; background: transparent; padding-top: 4px; position: relative; }
-.composer.centred { transform: translateY(var(--comp-dy, 0px)); z-index: 6; }
+.composer.centred { transform: translateY(var(--comp-dy, 0px)); z-index: var(--z-composer); }
+/* Fallback only: without the Popover API the "+" menu is still lifted over the header by raising the whole
+   composer. In a browser with the top layer the menu is above everything regardless. */
+.composer.menu-open { z-index: var(--z-composer-above); }
 .composer.centred::before { display: none; }
 .composer.flying { transition: transform 650ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
 .composer.lowering { transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
@@ -730,7 +762,7 @@ textarea::-webkit-scrollbar { display: none; }
   color: var(--fg);
   background: var(--glass-bg);
   -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6);
-  box-shadow: var(--elev-shadow); cursor: pointer; z-index: 5;
+  box-shadow: var(--elev-shadow); cursor: pointer; z-index: 2;
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity 170ms ease, transform 170ms ease, visibility 0s linear 170ms;
 }
@@ -878,7 +910,7 @@ textarea::-webkit-scrollbar { display: none; }
 .media.grid.three { grid-template-columns: repeat(3, 1fr); width: min(100%, 420px); }
 .media.grid .media-img { width: 100%; height: auto; aspect-ratio: 1; max-height: none; object-fit: cover; border-radius: 8px; }
 .viewer .count { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; opacity: 0.8; }
-.viewer { position: fixed; inset: 0; z-index: 72; /* above the computer pane (70), below confirm (74) */ background: rgba(0, 0, 0, 0.92); display: flex; align-items: center; justify-content: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.viewer { position: fixed; inset: 0; z-index: var(--z-viewer); /* above the computer pane, below a top-layer popup */ background: rgba(0, 0, 0, 0.92); display: flex; align-items: center; justify-content: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 .viewer { touch-action: none; overscroll-behavior: contain; }
 .viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
 /* Pinch / double-tap zoom (app.js openViewer) moves the picture with an inline transform; .easing is on only for the
@@ -956,7 +988,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 /* ---------- chats drawer (drawer.js) ---------- */
 .scrim {
-  position: fixed; inset: 0; z-index: 40; background: var(--scrim); touch-action: none;
+  position: fixed; inset: 0; z-index: var(--z-drawer-scrim); background: var(--scrim); touch-action: none;
   opacity: 0; visibility: hidden; transition: opacity 200ms ease-in, visibility 0s linear 200ms;
 }
 .scrim:not(.row-menu-scrim):not(.msg-menu-scrim):not(.sched-menu-scrim) {
@@ -964,7 +996,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .scrim.open { opacity: 1; visibility: visible; transition: opacity 260ms ease-out, visibility 0s; }
 .drawer {
-  position: fixed; top: 0; bottom: 0; left: 0; z-index: 41; width: min(86vw, 340px);
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: var(--z-drawer); width: min(86vw, 340px);
   display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
   padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left);
   box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
@@ -1165,21 +1197,20 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   max-width: 100%; padding: 1px 6px; border-radius: 6px; background: var(--code-bg); color: var(--muted);
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Rename dialog (drawer.js startRename) and the shared confirm dialog (confirm.js): a centred card over a scrim,
-   above the drawer and the row menu. The rename card is centred in JS in the visual viewport, so the on-screen
-   keyboard does not cover it; the confirm card is centred by CSS because it has no text field. */
-.rename-scrim { z-index: 62; }
-/* The confirm dialog sits above everything, including the rename dialog. */
-.confirm-scrim { z-index: 74; }
+/* Rename dialog (drawer.js startRename) and the shared confirm dialog (confirm.js): a centred card over a scrim.
+   Both are top-layer popovers (the scrim is shown first, so it sits directly under its own card), so they are
+   always above the drawer, the panels and the computer; a later one (the confirm, opened from the rename) is
+   above an earlier one. The rename card is centred in JS in the visual viewport, so the on-screen keyboard does
+   not cover it; the confirm card is centred by CSS because it has no text field. */
 .rename-dialog, .confirm-dialog {
-  position: fixed; left: 50%; top: 50%; z-index: 63; box-sizing: border-box;
+  position: fixed; left: 50%; top: 50%; box-sizing: border-box;
   width: min(calc(100vw - 32px), 480px); padding: 24px; border: 0; border-radius: 28px;
   background: var(--surface); color: var(--fg);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.32);
   transform: translate(-50%, -50%) scale(0.94); opacity: 0; visibility: hidden;
   transition: transform 160ms var(--ease-exit), opacity 160ms ease-in, visibility 0s linear 160ms;
 }
-.confirm-dialog { z-index: 75; width: min(calc(100vw - 32px), 400px); }
+.confirm-dialog { width: min(calc(100vw - 32px), 400px); }
 .rename-dialog.open, .confirm-dialog.open {
   transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible;
   transition: transform 280ms var(--ease-out), opacity 160ms ease-out, visibility 0s;
@@ -1223,10 +1254,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .rename-dialog.busy .rename-spin { display: block; }
 @keyframes rename-spin { to { transform: rotate(360deg); } }
 /* To-do panel (todo.js): the rename card's surface, radius and shadow, with a fixed header and only the rows scrolling
-   below it. Above the rename dialog (62/63), below the confirm dialog (74/75). */
-.todo-scrim { z-index: 63; }
+   below it. A side panel, so it keeps the ladder: above the rename dialog's old layer, below the confirm dialog. */
+.todo-scrim { z-index: var(--z-panel-scrim); }
 .todo-dialog {
-  position: fixed; left: 50%; top: 50%; z-index: 64; box-sizing: border-box;
+  position: fixed; left: 50%; top: 50%; z-index: var(--z-panel); box-sizing: border-box;
   display: flex; flex-direction: column;
   width: min(calc(100vw - 32px), 440px); max-height: min(80vh, 640px); padding: 20px;
   border-radius: 28px; background: var(--surface); color: var(--fg); box-shadow: 0 20px 54px rgba(0, 0, 0, 0.32);
@@ -1325,7 +1356,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .todo-row { position: relative; }
 /* Inside the row, before the box; done rows keep an empty slot so the boxes stay aligned.
    Always shown, on every device. A transparent 40x44 hit layer sits over it with touch-action none, so a
-   finger can press beside the dots as well as on them. */
+   finger can press beside the dots as well as on them. On a touch screen it is wider (below). */
 .todo-grip {
   display: flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 34px; margin: -6px -8px -6px -4px;
   color: var(--muted); cursor: grab; touch-action: none; position: relative;
@@ -1335,12 +1366,19 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   position: absolute; top: 50%; left: -18px; width: 40px; height: 44px; transform: translateY(-50%);
   touch-action: none; pointer-events: auto;
 }
+/* Touch screens: the press area runs from the list's left edge right up to the checkbox, so a finger anywhere left of
+   the box starts the drag (the person, 15 Nov 2026). A mouse keeps the 40px area above; nothing moves either way. */
+@media (pointer: coarse) {
+  .todo-grip-hit { left: -30px; width: 53px; }
+  /* The box of an open row is a drag handle on touch too (todo.js armDrag), so a finger on it must not scroll. */
+  .todo-list > .todo-row:not(.draft) .todo-check { touch-action: none; }
+}
 .todo-row.grip-armed .todo-grip { color: var(--fg); }
 .todo-grip svg { width: 16px; height: 16px; stroke-width: 3; }
 :where(:root[data-input="mouse"]) .todo-text { cursor: text; }
 .todo-row.dragging {
   z-index: 3; touch-action: none; user-select: none; cursor: grabbing;
-  background: var(--surface); border-radius: 12px; box-shadow: var(--elev-shadow);
+  /* No card, shadow or tint while it moves: the row itself just follows the finger (the person, 15 Nov 2026). */
 }
 .todo-row.dragging .todo-text, .todo-row.dragging .todo-grip { cursor: grabbing; }
 body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: none; }
@@ -1356,11 +1394,12 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 /* Row menu (long press or right click on a chat row): a small card anchored under the row, left edge on the row's
-   left edge, flipped above it near the bottom of the screen (drawer.js placeRowMenu). A transparent scrim behind it
-   takes the tap that closes it. No border; the elevation is the shadow. */
-.row-menu-scrim { z-index: 58; background: transparent; }
+   left edge, flipped above it near the bottom of the screen (drawer.js placeRowMenu). It and its transparent scrim
+   are top-layer popovers, so it is fixed-positioned and placed from the row's box on screen. No border; the
+   elevation is the shadow. */
+.row-menu-scrim { background: transparent; }
 .row-menu {
-  position: fixed; left: 0; top: 0; z-index: 59; box-sizing: border-box; width: auto; min-width: 172px; margin: 0; padding: 0;
+  position: fixed; left: 0; top: 0; box-sizing: border-box; width: auto; min-width: 172px; margin: 0; padding: 0;
   border: 0; border-radius: 18px;
   background: color-mix(in srgb, var(--raised) 88%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
@@ -1391,9 +1430,9 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
 .row-menu-item.danger { color: var(--danger); }
 
 /* Message menu (long press on a message, app.js openMsgMenu): the drawer's row-menu card, anchored at the press
-   point. Icon on the left, then the name. */
-.msg-menu-scrim { z-index: 58; background: transparent; }
-.msg-menu { z-index: 59; width: auto; min-width: 168px; }
+   point, drawn in the top layer like it. Icon on the left, then the name. */
+.msg-menu-scrim { background: transparent; }
+.msg-menu { width: auto; min-width: 168px; }
 .msg-menu .row-menu-item { justify-content: flex-start; gap: 12px; }
 .msg-menu .row-menu-item svg { width: 18px; height: 18px; }
 /* No tint on the pressed message while its menu is open. */
@@ -1558,9 +1597,9 @@ body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, va
 :where(:root[data-input="mouse"]) .sched-row:hover .sched-dots,
 :where(:root[data-input="mouse"]) .sched-row.menu-open .sched-dots,
 :where(:root[data-input="mouse"]) .sched-dots:focus-visible { opacity: 1; }
-/* Its menu: the chat list's row-menu card, above the Schedules panel (64, or 73 docked). */
-.sched-menu-scrim { z-index: 76; background: transparent; }
-.sched-menu { z-index: 77; min-width: 190px; transform-origin: top right; }
+/* Its menu: the chat list's row-menu card, in the top layer so it is always above the Schedules panel. */
+.sched-menu-scrim { background: transparent; }
+.sched-menu { min-width: 190px; transform-origin: top right; }
 .sched-menu .row-menu-item svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .sched-row.busy { opacity: 0.55; }
 .sched-row.busy .sched-dots { pointer-events: none; }
@@ -1628,35 +1667,29 @@ body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, va
 /* Computer open on a wide window: the hamburger is back and opens the chats panel over the chat, with the scrim, the
    same as on a phone. Both sit above the computer pane so a tap anywhere outside closes the panel. */
 body.docked.computer-docked #menuBtn { display: flex; }
-body.docked.computer-docked #scrim { display: block; z-index: 71; }
+body.docked.computer-docked #scrim { display: block; z-index: var(--z-computer-chrome); }
 body.docked.computer-docked .drawer.open {
-  transform: none; visibility: visible; z-index: 72; box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
+  transform: none; visibility: visible; z-index: var(--z-drawer-over-computer); box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
   transition: transform 340ms var(--ease-out), visibility 0s;
 }
-/* The panel's own pop-ups (the row menu and the rename card) follow it above the computer pane; at their usual 58-63
-   they opened under the raised panel. Still below the confirm dialog (74/75). Same z for scrim
-   and card: the card comes later in the page, so it paints on top. */
-body.docked.computer-docked .row-menu-scrim, body.docked.computer-docked .row-menu,
-body.docked.computer-docked .msg-menu-scrim, /* the message menu shares .row-menu, so its scrim rises with it */
-body.docked.computer-docked .rename-scrim, body.docked.computer-docked .rename-dialog { z-index: 73; }
+/* The panel's own pop-ups (the row menu, the rename card) and the model sheet are top-layer popovers, so they are
+   above the raised panel and the computer pane with no extra rule. */
 /* The to-do panel rises above the computer pane too: opened while the computer is docked it was drawn behind it, so
-   the right half of every row and the ends of long rows sat under the pane. Still below the confirm dialog (74/75),
-   and the card comes later in the page than its scrim, so it paints on top. */
-body.docked.computer-docked .todo-scrim, body.docked.computer-docked .todo-dialog { z-index: 73; }
-/* The Inbox card and the model sheet rise above the computer pane as well: with the computer docked they were drawn
-   behind it, so their right side sat under the pane. The scrims stay where they are (the pane is not dimmed or
-   blocked); only the card is lifted. The Inbox's photo and name rise above it as they do undocked. Same level as the
-   to-do card (73), below the confirm dialog (74/75). */
-body.docked.computer-docked .inbox-dialog,
-body.docked.computer-docked .model-sheet { z-index: 73; }
-body.docked.computer-docked.inbox-open .topbar { z-index: 74; }
+   the right half of every row and the ends of long rows sat under the pane. The card comes later in the page than
+   its scrim, so it paints on top. */
+body.docked.computer-docked .todo-scrim, body.docked.computer-docked .todo-dialog { z-index: var(--z-panel-over-computer); }
+/* The Inbox card rises above the computer pane as well: with the computer docked it was drawn behind it, so its
+   right side sat under the pane. Its scrim stays where it is (the pane is not dimmed or blocked); only the card is
+   lifted. The Inbox's photo and name rise above it as they do undocked. */
+body.docked.computer-docked .inbox-dialog { z-index: var(--z-panel-over-computer); }
+body.docked.computer-docked.inbox-open .topbar { z-index: var(--z-header-over-computer); }
 
 /* Resizable seam between the chat and the docked computer. Invisible until hovered or dragged,
    then a thin grey line. --chat-w is the chat column's width (app.js, remembered per device). */
 .pane-split { display: none; }
 body.docked.computer-docked .pane-split {
   display: block; position: fixed; top: 0; bottom: 0; left: calc(var(--chat-w, 440px) - 5px); width: 10px;
-  z-index: 71; cursor: col-resize; touch-action: none; /* above the computer pane (70) */
+  z-index: var(--z-computer-chrome); cursor: col-resize; touch-action: none; /* above the computer pane */
 }
 body.docked.computer-docked .pane-split::after {
   content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: var(--muted); /* grey, not purple */
@@ -1765,17 +1798,18 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
 .identity.centred .avatar-count { top: -18px; left: calc(50% + 26px); }
 .identity.flying .avatar-count, .identity.lowering .avatar-count { display: none; }
 /* While the Inbox is open, only the photo and name stay above the dimmed page; the other round buttons step back. */
-body.inbox-open .topbar { z-index: 67; transition: z-index 0s; }
+body.inbox-open .topbar { z-index: var(--z-header-over-panel); transition: z-index 0s; }
 body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
 body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 16px rgba(0, 0, 0, 0.28); }
 
-/* The To-do panel's surface, radius and shadow, one step above it; above the rename dialog, below the confirm card. */
-.inbox-scrim { z-index: 65; }
+/* The Inbox card (a side panel): its surface, radius and shadow, one step above the To-do card; above the rename
+   dialog's old layer, below the confirm dialog. */
+.inbox-scrim { z-index: var(--z-inbox-scrim); }
 /* A card hanging from the agent's photo (inbox.js place() sets left/top/width/height and --caret-x): fades and drops in
    a few pixels; the pointer is a small rotated square on the top edge under the photo. */
 .inbox-dialog {
   --tab-strip: color-mix(in srgb, var(--bg) 55%, var(--surface));
-  position: fixed; left: 0; top: 0; z-index: 66; box-sizing: border-box;
+  position: fixed; left: 0; top: 0; z-index: var(--z-inbox); box-sizing: border-box;
   display: flex; flex-direction: column; padding: 16px 16px 12px;
   border-radius: 22px; background: var(--surface); color: var(--fg); box-shadow: 0 20px 54px rgba(0, 0, 0, 0.32);
   transform: translateY(-8px) scale(0.96); transform-origin: var(--caret-x, 50%) 0; opacity: 0; visibility: hidden;
@@ -2075,9 +2109,8 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .model-tab[aria-expanded="true"] .model-tab-caret { transform: rotate(180deg); }
 .composer .row.wide > .model-tab { grid-area: auto; }
 
-.model-scrim { z-index: 60; }
 .model-sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 61; margin: 0 auto; width: min(100%, 560px);
+  position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; width: min(100%, 560px);
   max-height: min(82vh, 720px); display: flex; flex-direction: column; box-sizing: border-box;
   background: var(--surface); color: var(--fg); border: 0; border-radius: 28px 28px 0 0;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.28);

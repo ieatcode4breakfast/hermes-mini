@@ -5,7 +5,7 @@
 // Pause, resume and delete go through Hermes's own routes. Nothing else is editable here.
 
 import { confirmDialog } from "./confirm.js";
-import { showToast } from "./toast.js";
+import { showToast, openPopover, closePopover } from "./toast.js";
 
 const $ = (id) => document.getElementById(id);
 const MENTION_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/></svg>';
@@ -191,10 +191,12 @@ export function createSchedules({ api, mention = null }) {
   const menuScrim = document.createElement("div");
   menuScrim.className = "scrim sched-menu-scrim";
   menuScrim.setAttribute("aria-hidden", "true");
+  menuScrim.setAttribute("popover", "manual");
   const menuEl = document.createElement("div");
   menuEl.className = "row-menu sched-menu";
   menuEl.setAttribute("role", "menu");
   menuEl.setAttribute("aria-label", "Schedule actions");
+  menuEl.setAttribute("popover", "manual");
   document.body.append(menuScrim, menuEl);
   let menu = null; // { item, anchor, row } while open
   let pressOpenedAt = 0; // when a long press opened the menu: the lifting finger's click must not close it
@@ -241,9 +243,12 @@ export function createSchedules({ api, mention = null }) {
     menuEl.replaceChildren(...items);
     row.classList.add("menu-open");
     anchor.setAttribute("aria-expanded", "true");
+    // Top layer first (still in its closed state), so its size can be measured before it is placed.
+    openPopover(menuScrim);
+    openPopover(menuEl);
+    placeMenu(anchor);
     menuScrim.classList.add("open");
     menuEl.classList.add("open");
-    placeMenu(anchor);
     if (!(history.state && history.state.hermesMiniSchedMenu === true)) history.pushState({ hermesMiniSchedMenu: true }, "");
     items[0].focus({ preventScroll: true });
   }
@@ -256,6 +261,9 @@ export function createSchedules({ api, mention = null }) {
     m.anchor.setAttribute("aria-expanded", "false");
     menuScrim.classList.remove("open");
     menuEl.classList.remove("open");
+    // Out of the top layer once the fade-out has played.
+    closePopover(menuScrim, 160);
+    closePopover(menuEl, 160);
     if (m.anchor.isConnected) m.anchor.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniSchedMenu === true) {
       menuBack = new Promise((resolve) => {
@@ -476,6 +484,15 @@ export function createSchedules({ api, mention = null }) {
     if (event.key === "Escape") closePanel();
   });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", () => open && place());
+  // The menu is fixed-position in the top layer: re-place it too if the window or the visible area changes.
+  const rePlaceMenu = () => {
+    if (menu) placeMenu(menu.anchor);
+  };
+  window.addEventListener("resize", rePlaceMenu);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", rePlaceMenu);
+    window.visualViewport.addEventListener("scroll", rePlaceMenu);
+  }
   window.addEventListener("popstate", (event) => {
     if (resolveMenuBack) {
       const resolve = resolveMenuBack;

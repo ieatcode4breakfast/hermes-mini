@@ -695,6 +695,10 @@ class DataRoutesTest(RouteTestCase):
         self.assertEqual(created.status_code, 200, created.text)
         items = self.client.get("/api/plugins/hermes-mini/todos").json()["items"]
         self.assertEqual([item["text"] for item in items], ["Buy milk"])
+        # The new row's id comes back, so the app can save a blank row at once and keep typing in it.
+        self.assertEqual(created.json()["id"], items[0]["id"])
+        blank = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "", "index": 1}).json()
+        self.assertIn(blank["id"], [item["id"] for item in blank["items"] if item["text"] == ""])
         self.assertTrue((self.home / "data" / "hermes-mini" / "todos.json").is_file())
 
     def test_seen_store_is_created_on_first_read_and_kept_outside_package(self):

@@ -202,7 +202,10 @@ export function createTodo({ api }) {
     check.setAttribute("aria-label", item.done ? "Mark not done" : "Mark done");
     check.append(svgIcon(CHECK_ICON));
     if (draft) check.disabled = true; // it is not a to-do until it is committed
-    check.addEventListener("click", () => void toggle(item));
+    check.addEventListener("click", () => {
+      if (drag || performance.now() < suppressClickUntil) return; // the release of a drag that began on the box
+      void toggle(item);
+    });
     const text = el("span", "todo-text", item.text);
     // Tapping the text edits it in place; the circle and the x are buttons, so they never start either.
     text.addEventListener("pointerdown", (event) => {
@@ -275,11 +278,13 @@ export function createTodo({ api }) {
     render();
   }
 
-  async function send(path, init) {
+  // onPayload sees every successful answer, even one that is not adopted (a new row needs its id either way).
+  async function send(path, init, onPayload = null) {
     if (inflight) overlapped = true;
     inflight += 1;
     try {
       const payload = await api(path, init);
+      if (onPayload) onPayload(payload);
       if (inflight === 1 && !overlapped) adopt(payload);
       return true;
     } catch (error) {
@@ -320,9 +325,10 @@ export function createTodo({ api }) {
   }
 
   // ---------- drafts: the "+ Add item" row ----------
-  // Typing happens in the list itself, like a Keep checklist: a new row is a local item until it has text, so an empty
-  // one is dropped without a request and never counts in the badge. Enter splits a row at the caret, committing the
-  // part above it and leaving the part below as the next draft.
+  // Typing happens in the list itself, like a Keep checklist. A new row is saved the moment it appears, blank or not
+  // (the person, 15 Nov 2026): it is a "draft" only until the server answers with its id, and then it is an ordinary
+  // row - draggable at once - even while the caret is still in it. What is typed is saved when the row is left.
+  // Enter splits a row at the caret, keeping the part above it and saving the part below as the next new row.
 
   let draftSeq = 0;
 
@@ -389,6 +395,7 @@ export function createTodo({ api }) {
     setOpen([...openNow(), draft]);
     render();
     listEl.scrollTop = listEl.scrollHeight;
+    void postNew(draft, openIndex(draft.id));
     editDraft(draft);
   }
 
@@ -403,41 +410,76 @@ export function createTodo({ api }) {
     return draft;
   }
 
-  function makePending(text, indent = 0) {
-    return {
-      id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text, done: false,
-      created: Math.floor(Date.now() / 1000), done_at: null, indent: indent === 1 ? 1 : 0, pending: true,
-    };
-  }
-
-  // A committed draft becomes a pending row at once; its buttons wait for the server's id (style.css .pending).
-  function replaceDraft(draft, text) {
-    const open = openNow();
-    const at = open.findIndex((item) => item.id === draft.id);
-    if (at < 0) return null;
-    const temp = makePending(text, indentOf(open[at]));
-    open[at] = temp;
-    const draftRow = rowNodeFor(draft.id);
-    if (draftRow) draftRow.dataset.id = temp.id;
-    setOpen(open);
-    return temp;
-  }
-
-  function commitDraft(draft, text) {
-    const index = openIndex(draft.id);
-    const temp = replaceDraft(draft, text);
-    render();
-    if (temp) void postNew(temp, text, index);
-  }
-
-  // Optimistic like every other change. The index is the row's position among the open items right now, so an item
-  // typed below an older one lands below it even while other saves are still in the air.
-  async function postNew(temp, text, index) {
+  // Saves a new row as soon as it exists, with whatever it holds now (usually nothing). The index is the row's position
+  // among the open items right now, so a row added below an older one lands below it even while other saves are still
+  // in the air. A failed save takes the row away again, since it never existed on the server.
+  async function postNew(draft, index) {
+    const sent = { text: draft.text, indent: indentOf(draft) };
     const result = await send(TODOS_API, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, index, indent: indentOf(temp) }),
-    });
-    if (result !== true) await failed(result.status === 409 ? "The to-do list is full" : "Couldn't add the to-do");
+      body: JSON.stringify({ text: sent.text, index, indent: sent.indent }),
+    }, (payload) => landDraft(draft, payload, sent));
+    if (result === true) return;
+    if (draft.draft) {
+      if (editing && editing.id === draft.id) stopEdit();
+      items = items.filter((entry) => entry.id !== draft.id);
+      render();
+    }
+    await failed(result.status === 409 ? "The to-do list is full" : "Couldn't add the to-do");
+  }
+
+  // The server's answer to a new row: the draft takes its real id in place - the model entry, the row on screen and the
+  // edit in progress - so the caret never leaves it, and its grip arms at once. Whatever changed while the save was out
+  // (text typed into a row already left, an indent) is sent as one PATCH; a row deleted meanwhile is deleted now.
+  function landDraft(draft, payload, sent) {
+    const list = payload && Array.isArray(payload.items) ? payload.items : [];
+    let id = payload && typeof payload.id === "string" ? payload.id : "";
+    if (!id) {
+      // An older server does not name the new row: the one id this panel has never seen is it.
+      const known = new Set(items.map((entry) => entry.id));
+      const fresh = list.filter((entry) => entry && entry.id && !known.has(String(entry.id)));
+      if (fresh.length === 1) id = String(fresh[0].id);
+    }
+    if (!draft.draft) return;
+    const tempId = draft.id;
+    if (!id) {
+      // Unknown: the server's list (which has the row) replaces the local one.
+      if (editing && editing.id === tempId) stopEdit();
+      items = items.filter((entry) => entry.id !== tempId);
+      return;
+    }
+    draft.id = id;
+    delete draft.draft;
+    if (draft.discard) {
+      payload.items = list.filter((entry) => !entry || String(entry.id) !== id);
+      void send(`${TODOS_API}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      return;
+    }
+    const node = rowNodeFor(tempId);
+    if (node) {
+      node.dataset.id = id;
+      node.classList.remove("draft");
+      const check = node.querySelector(".todo-check");
+      if (check) check.disabled = false;
+      if (inActiveSection(draft)) armDrag(node);
+    }
+    const typing = Boolean(editing && editing.id === tempId);
+    if (typing) {
+      editing.id = id;
+      editing.draft = false;
+      editing.text = sent.text; // what the server holds: leaving the row saves the difference
+      if (editing.span) editing.span.setAttribute("aria-label", "Edit to-do");
+    }
+    const patch = {};
+    if (!typing && draft.text !== sent.text) patch.text = draft.text;
+    if (indentOf(draft) !== sent.indent) patch.indent = indentOf(draft);
+    const stored = list.find((entry) => entry && String(entry.id) === id);
+    if (stored) Object.assign(stored, patch); // the list about to be adopted shows the local values already
+    if (Object.keys(patch).length) {
+      void send(`${TODOS_API}/${encodeURIComponent(id)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+      }).then((result) => (result === true ? null : failed("Couldn't save the to-do")));
+    }
   }
 
   // Ticking, block by block, mirroring the server's rules in one place:
@@ -486,7 +528,8 @@ export function createTodo({ api }) {
   async function remove(item) {
     if (item.pending) return;
     if (item.draft) {
-      // Never saved, so there is nothing to ask the server about.
+      // Its save is still out: the row goes now and is deleted on the server once its id lands (landDraft).
+      item.discard = true;
       items = items.filter((entry) => entry.id !== item.id);
       render();
       return;
@@ -656,7 +699,8 @@ export function createTodo({ api }) {
     span.addEventListener("blur", onBlur);
     span.addEventListener("input", onInput);
     editing = {
-      id: item.id, text: item.text, item, draft: item.draft === true, span,
+      // fresh: the row was created for this edit, so Escape takes it away again rather than restoring a text.
+      id: item.id, text: item.text, item, draft: item.draft === true, fresh: item.draft === true, span,
       cleanup: () => {
         span.removeEventListener("keydown", onKey);
         span.removeEventListener("blur", onBlur);
@@ -747,17 +791,15 @@ export function createTodo({ api }) {
     const indent = indentOf(items.find((entry) => entry.id === state.id) || state.item);
     stopEdit();
     if (state.draft) {
-      const index = openIndex(state.id);
-      const temp = replaceDraft(state, before); // "" stays "" and is POSTed as a blank entry
-      const draft = temp ? insertDraftBelow(temp.id, after, indent) : null;
-      render();
-      if (temp) void postNew(temp, before, index);
-      if (draft) editDraft(draft);
-      return;
+      // Its save is still out: the text is kept locally and landDraft sends it with the id.
+      const entry = items.find((item) => item.id === state.id);
+      if (entry) entry.text = before;
+    } else if (before !== state.text) {
+      void saveText(state.id, before);
     }
-    if (before !== state.text) void saveText(state.id, before);
     const draft = insertDraftBelow(state.id, after, indent);
     render();
+    void postNew(draft, openIndex(draft.id));
     editDraft(draft);
   }
 
@@ -769,12 +811,7 @@ export function createTodo({ api }) {
     const open = openNow();
     const at = open.findIndex((entry) => entry.id === state.id);
     const prevIndex = at - 1;
-    if (state.draft) {
-      items = items.filter((entry) => entry.id !== state.id);
-      render();
-    } else {
-      void remove(state.item);
-    }
+    void remove(state.item); // a row still being saved goes at once and is deleted when its id lands
     if (prevIndex < 0) return;
     if (startEditingAt(prevIndex)) return;
     // The row above is still being saved: it becomes editable once the answer is in.
@@ -816,18 +853,23 @@ export function createTodo({ api }) {
     const state = stopEdit();
     if (!state) return;
     if (value == null) {
-      // Escape: a brand-new draft was never real and goes; an existing row gets its old text back.
-      if (state.draft) items = items.filter((entry) => entry.id !== state.id);
-      else state.span.textContent = state.text;
+      // Escape: a row made for this edit goes again (deleted on the server, saved or not yet); an existing row gets
+      // its old text back.
+      if (state.fresh) {
+        void remove(state.item);
+        return;
+      }
+      state.span.textContent = state.text;
       render();
       return;
     }
     const next = value.trim();
     if (state.draft) {
-      // A draft left blank is a real blank entry and is saved as "". Leaving the row - a blur,
-      // Enter, closing the panel - commits it; Escape throws a new draft away and Backspace at 0 in an empty row
-      // deletes it.
-      commitDraft(state, next);
+      // Left before its save came back: the text waits on the row and landDraft sends it with the id. A row left blank
+      // stays a real blank entry; Backspace at 0 in an empty row deletes it.
+      const entry = items.find((item) => item.id === state.id);
+      if (entry) entry.text = next;
+      render();
       return;
     }
     // An existing row emptied in place is saved empty too: "" is a value, not "cancel the edit".
@@ -859,6 +901,7 @@ export function createTodo({ api }) {
   // drop's indent: past one checkbox step to the right nests the row, to the left brings it out, and a drop at the very
   // top is always flat.
   const DRAG_START_PX = 4;
+  const CHECK_DRAG_START_PX = 10; // a press on the checkbox: a tap that wobbles a little still ticks it
   const DRAG_INDENT_PX = 24; // how far sideways of the press point a drop changes the indent
   const SCROLL_EDGE_PX = 48;
   let drag = null; // the drag in progress
@@ -871,17 +914,22 @@ export function createTodo({ api }) {
       if (!open || drag || press || node.classList.contains("pending")) return;
       if (event.isPrimary === false) return;
       if (event.button !== undefined && event.button !== 0) return;
-      if (event.target.closest("button, input")) return; // the circle and the x keep their taps
-      if (!event.target.closest(".todo-grip")) return; // the grip is the only drag handle, mouse and touch alike
-      event.preventDefault(); // keep focus/caret stable until an actual drag begins
+      // On a touch screen the checkbox is a handle too: a press on it that moves drags the row, a plain tap still
+      // ticks it (the person, 15 Nov 2026). A mouse drags by the grip only.
+      const onCheck = event.pointerType !== "mouse" && Boolean(event.target.closest(".todo-check"));
+      if (!onCheck && event.target.closest("button, input")) return; // the x (and, for a mouse, the box) keep their taps
+      if (!onCheck && !event.target.closest(".todo-grip")) return;
+      if (!onCheck) event.preventDefault(); // keep focus/caret stable until an actual drag begins
       node.classList.add("grip-armed");
-      armPress(event, node);
+      armPress(event, node, { capture: !onCheck, startPx: onCheck ? CHECK_DRAG_START_PX : DRAG_START_PX });
     });
   }
 
   // Watches one press until it becomes a drag (or a plain tap / a scroll). Only one pending press exists at a time, and
   // its cleanup is idempotent: release, cancel, lost capture, blur, a hidden tab and a panel close all land here safely.
-  function armPress(event, node) {
+  // capture: false for a press on the checkbox, so a plain tap still ends on the box and clicks it; the drag takes the
+  // pointer once it starts (beginDrag).
+  function armPress(event, node, { capture = true, startPx = DRAG_START_PX } = {}) {
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startY = event.clientY;
@@ -919,7 +967,7 @@ export function createTodo({ api }) {
       if (document.visibilityState === "hidden") cleanup();
     };
     const onLost = (ev) => {
-      if (ev.pointerId === pointerId) cleanup();
+      if (ev.pointerId === pointerId && ev.target === node) cleanup(); // not a child's capture handing over (dragLost)
     };
     const move = (ev) => {
       if (ev.pointerId !== pointerId || state.cleaned || drag) return;
@@ -932,15 +980,17 @@ export function createTodo({ api }) {
       const dy = ev.clientY - startY;
       // Pressed on the grip: the drag starts on the first real move either way, since sideways travel now picks the
       // indent. The grip has touch-action: none, so the list never scrolls under the finger.
-      if (Math.abs(dy) > DRAG_START_PX || Math.abs(dx) > DRAG_START_PX) {
+      if (Math.abs(dy) > startPx || Math.abs(dx) > startPx) {
         cleanup({ keepCapture: true });
-        beginDrag(node, pointerId, startX, ev.clientX, ev.clientY, touch);
+        beginDrag(node, pointerId, startX, startY, ev.clientX, ev.clientY, touch);
       }
     };
-    try {
-      node.setPointerCapture(pointerId);
-    } catch {
-      /* capture is best effort */
+    if (capture) {
+      try {
+        node.setPointerCapture(pointerId);
+      } catch {
+        /* capture is best effort */
+      }
     }
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
@@ -950,9 +1000,11 @@ export function createTodo({ api }) {
     node.addEventListener("lostpointercapture", onLost);
   }
 
-  // originX is the press point (sideways travel from it picks the indent); originY is where the pointer is once the
-  // drag starts, so the row follows from there without a jump.
-  function beginDrag(node, pointerId, pressX, originX, originY, touch) {
+  // pressX/pressY are where the finger went down. Both the sideways travel (the indent) and the row's movement are
+  // measured from there, so the distance the finger covered before the drag started is not lost: the row stays under
+  // the finger instead of trailing it by that much for the whole drag (measured on Android, 15 Nov 2026). nowX/nowY
+  // are where the finger is as the drag starts, so the first frame already puts the row there.
+  function beginDrag(node, pointerId, pressX, pressY, nowX, nowY, touch) {
     // The press left the pointer captured for this hand-off; if the drag cannot start, give it back.
     const release = () => {
       try {
@@ -987,8 +1039,8 @@ export function createTodo({ api }) {
     drag = {
       node, block, pointerId, from, fromIndent,
       pressX,
-      startY: originY,
-      startContentY: originY - listRect.top + scroll,
+      startY: pressY,
+      startContentY: pressY - listRect.top + scroll,
       startScroll: scroll,
       top0: box.top,
       listTop: listRect.top,
@@ -1004,8 +1056,8 @@ export function createTodo({ api }) {
           center: contentTop(other) + other.getBoundingClientRect().height / 2,
         })),
       insertAt: from,
-      lastX: originX,
-      lastY: originY,
+      lastX: nowX,
+      lastY: nowY,
       liveIndent: fromIndent,
       reduced: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       raf: 0,
@@ -1040,8 +1092,10 @@ export function createTodo({ api }) {
   }
 
   // Cancelable so a finger that is dragging cannot scroll the page underneath (added once the long press has started).
+  // Only a cancelable touchmove is cancelled: on the grip (touch-action: none) Chrome sends them uncancelable, and
+  // cancelling one anyway only logs an [Intervention] warning per move.
   function blockTouch(event) {
-    if (drag) event.preventDefault();
+    if (drag && event.cancelable) event.preventDefault();
   }
 
   // A long press on a phone would otherwise open the browser's own menu over the drag.
@@ -1133,8 +1187,11 @@ export function createTodo({ api }) {
     if (drag && document.visibilityState === "hidden") finishDrag(false);
   }
 
+  // Only the row losing the pointer cancels. lostpointercapture bubbles, so the checkbox's own (implicit, touch)
+  // capture handing over to the row when the drag takes the pointer arrives here too - that is the drag starting, not
+  // ending; cancelling on it killed every drag begun on the box (logged on a phone, 15 Nov 2026).
   function dragLost(event) {
-    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag || event.pointerId !== drag.pointerId || event.target !== drag.node) return;
     finishDrag(false);
   }
 

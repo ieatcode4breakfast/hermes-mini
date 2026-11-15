@@ -232,20 +232,24 @@ class InboxTapReadTest(unittest.TestCase):
 
 
 class DockedOverlaysTest(unittest.TestCase):
-    """The Inbox and model sheet paint over the docked computer pane; their scrims stay behind it."""
+    """The Inbox card paints over the docked computer pane; its scrim stays behind it. The model sheet is a
+    top-layer popover now, so it is above the pane whatever else is open."""
 
-    def test_the_cards_rise_but_the_scrims_do_not(self):
+    def test_the_inbox_card_rises_but_its_scrim_does_not(self):
         css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
         rule = re.search(
-            r"body\.docked\.computer-docked \.inbox-dialog,\s*"
-            r"body\.docked\.computer-docked \.model-sheet \{ z-index: 73; \}",
+            r"body\.docked\.computer-docked \.inbox-dialog \{ z-index: var\(--z-panel-over-computer\); \}",
             css,
         )
-        self.assertIsNotNone(rule, "the docked Inbox/model card rule is missing")
-        self.assertIn("body.docked.computer-docked.inbox-open .topbar { z-index: 74; }", css)
-        # The scrims stay under the computer pane: the pane is not dimmed or blocked.
-        self.assertIn(".inbox-scrim { z-index: 65; }", css)
-        self.assertIn(".model-scrim { z-index: 60; }", css)
+        self.assertIsNotNone(rule, "the docked Inbox card rule is missing")
+        self.assertIn("body.docked.computer-docked.inbox-open .topbar { z-index: var(--z-header-over-computer); }", css)
+        # The scrim stays under the computer pane: the pane is not dimmed or blocked.
+        self.assertIn(".inbox-scrim { z-index: var(--z-inbox-scrim); }", css)
+        # The model sheet leaves the ladder entirely: it is a manual popover and carries no z-index.
+        self.assertNotRegex(css, r"\.model-sheet \{[^}]*z-index")
+        model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        self.assertIn('sheet.setAttribute("popover", "manual");', model)
+        self.assertIn('scrim.setAttribute("popover", "manual");', model)
 
 
 
@@ -573,6 +577,215 @@ class IosComposerZoomTest(unittest.TestCase):
         block = css[css.index("@supports (-webkit-touch-callout: none) {"):]
         block = block[:block.index("}\n}") + 3]
         self.assertIn(".composer textarea, .composer textarea:focus { font-size: 16px; }", block)
+
+
+class SocketAuthOrderTest(unittest.TestCase):
+    def test_gate_is_known_before_the_socket_query_is_chosen(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        fn = app[app.index("async function connect()"):app.index("// Thread attach:")]
+        self.assertLess(fn.index("const token = await sessionToken();"), fn.index("if (window.__HERMES_AUTH_REQUIRED__)"))
+
+
+class AttachMenuOverHeaderTest(unittest.TestCase):
+    def test_the_menu_is_in_the_top_layer_not_lifted_by_z_index(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertRegex(html, r'id="attachMenu"[^>]*\bpopover="manual"')
+        self.assertIn("openPopover(attachMenu);", app)
+        self.assertIn("closePopover(attachMenu);", app)
+        # It is fixed-position in the top layer and placed from the "+" button's box on screen.
+        self.assertIn("function placeAttachMenu()", app)
+        self.assertIn("attachMenu.style.left = `${left}px`;", app)
+        self.assertIn("attachMenu.style.top = `${top}px`;", app)
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".attach-menu {\n  position: fixed; left: 0; top: 0;", css)
+        self.assertNotRegex(css, r"\.attach-menu \{[^}]*z-index")
+        # The class stays only as the fallback for a browser without the Popover API.
+        self.assertIn(".composer.menu-open { z-index: var(--z-composer-above); }", css)
+        self.assertIn("position: absolute; top: 0; left: 0; right: 0; z-index: var(--z-header);", css)
+
+
+class TodoNewRowSavedAtOnceTest(unittest.TestCase):
+    """A new to-do row is saved the moment it appears, and becomes draggable as soon as its id lands."""
+
+    def setUp(self):
+        self.js = (DASHBOARD / "todo.js").read_text(encoding="utf-8")
+
+    def fn(self, name):
+        start = self.js.index(f"function {name}(")
+        return self.js[start:self.js.index("\n  }\n", start)]
+
+    def test_add_item_and_enter_post_at_once(self):
+        self.assertIn("void postNew(draft, openIndex(draft.id));", self.fn("startDraft"))
+        self.assertIn("void postNew(draft, openIndex(draft.id));", self.fn("splitEdit"))
+        self.assertNotIn("commitDraft", self.js)
+
+    def test_landing_arms_the_drag_and_keeps_the_edit(self):
+        land = self.fn("landDraft")
+        self.assertIn("armDrag(node)", land)
+        self.assertIn("editing.id = id;", land)
+        self.assertIn("payload.id", land)
+
+    def test_drag_measures_from_the_press_point(self):
+        begin = self.fn("beginDrag")
+        self.assertIn("startY: pressY,", begin)
+        self.assertIn("beginDrag(node, pointerId, startX, startY, ev.clientX, ev.clientY, touch);", self.js)
+
+    def test_touch_grip_reaches_the_checkbox_and_mouse_is_unchanged(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn("left: -18px; width: 40px; height: 44px;", css)
+        touch = css[css.index("@media (pointer: coarse) {\n  .todo-grip-hit"):]
+        self.assertIn(".todo-grip-hit { left: -30px; width: 53px; }", touch[:120])
+
+    def test_touch_drag_can_start_on_the_checkbox(self):
+        self.assertIn('event.pointerType !== "mouse" && Boolean(event.target.closest(".todo-check"))', self.js)
+        self.assertIn("armPress(event, node, { capture: !onCheck, startPx: onCheck ? CHECK_DRAG_START_PX : DRAG_START_PX });", self.js)
+        self.assertIn("if (drag || performance.now() < suppressClickUntil) return;", self.js)
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".todo-list > .todo-row:not(.draft) .todo-check { touch-action: none; }", css)
+
+    def test_a_childs_capture_handover_does_not_cancel_the_drag(self):
+        self.assertIn("event.pointerId !== drag.pointerId || event.target !== drag.node) return;", self.fn("dragLost"))
+        self.assertIn("if (ev.pointerId === pointerId && ev.target === node) cleanup();", self.js)
+
+    def test_post_returns_the_new_id(self):
+        api = (DASHBOARD / "plugin_api.py").read_text(encoding="utf-8")
+        self.assertIn('return JSONResponse({"items": items, "id": item["id"]})', api)
+
+
+class PopupTopLayerTest(unittest.TestCase):
+    """Every menu, popup window and toast is a manual popover: the browser's top layer, above every stacking
+    context. The big side panels stay in the page's own named layering (z-index ladder)."""
+
+    INDEX_POPOVERS = (
+        "attachMenu",
+        "rowMenuScrim", "rowMenu",
+        "msgMenuScrim", "msgMenu",
+        "renameScrim", "renameDialog",
+        "confirmScrim", "confirmDialog",
+    )
+    INDEX_PANELS = ("scrim", "drawer", "todoScrim", "todoDialog", "schedScrim", "schedDialog", "inboxScrim", "inboxDialog")
+
+    def _tag(self, html, element):
+        match = re.search(rf"<[^>]*\bid=\"{element}\"[^>]*>", html)
+        self.assertIsNotNone(match, element)
+        return match.group(0)
+
+    def test_index_menus_and_dialogs_are_manual_popovers(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        for element in self.INDEX_POPOVERS:
+            self.assertIn('popover="manual"', self._tag(html, element), element)
+
+    def test_side_panels_keep_the_z_index_ladder(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        for element in self.INDEX_PANELS:
+            self.assertNotIn("popover", self._tag(html, element), element)
+
+    def test_js_built_popups_set_the_popover_attribute(self):
+        schedules = (DASHBOARD / "schedules.js").read_text(encoding="utf-8")
+        self.assertIn('menuScrim.setAttribute("popover", "manual");', schedules)
+        self.assertIn('menuEl.setAttribute("popover", "manual");', schedules)
+        model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        self.assertIn('sheet.setAttribute("popover", "manual");', model)
+        self.assertIn('scrim.setAttribute("popover", "manual");', model)
+        toast = (DASHBOARD / "toast.js").read_text(encoding="utf-8")
+        self.assertIn('node.setAttribute("popover", "manual");', toast)
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn('restartToast.setAttribute("popover", "manual");', app)
+
+    def test_the_helpers_show_and_hide_in_the_top_layer(self):
+        toast = (DASHBOARD / "toast.js").read_text(encoding="utf-8")
+        # Feature-detected, so a browser without the API keeps today's behaviour.
+        self.assertIn("typeof HTMLElement.prototype.showPopover === \"function\"", toast)
+        self.assertIn("el.showPopover();", toast)
+        self.assertIn("el.hidePopover();", toast)
+        self.assertIn('el.matches(":popover-open")', toast)
+
+    def test_each_popup_shows_and_hides_through_the_helper(self):
+        calls = {
+            "confirm.js": ("openPopover(scrim);", "openPopover(dialog);", "closePopover(scrim, 240);", "closePopover(dialog, 200);"),
+            "drawer.js": (
+                "openPopover(renameScrim);", "openPopover(renameDialog);",
+                "openPopover(rowMenuScrim);", "openPopover(rowMenu);",
+                "closePopover(rowMenu, 160);",
+            ),
+            "app.js": ("openPopover(attachMenu);", "openPopover(els.msgMenu);", "reopenPopover(restartToast);"),
+            "model.js": ("openPopover(parts.scrim);", "openPopover(sheet);", "closePopover(sheet, 260);"),
+            "schedules.js": ("openPopover(menuScrim);", "openPopover(menuEl);", "closePopover(menuEl, 160);"),
+        }
+        for name, needles in calls.items():
+            js = (DASHBOARD / name).read_text(encoding="utf-8")
+            for needle in needles:
+                self.assertIn(needle, js, f"{name}: {needle}")
+
+    def test_a_toast_is_re_shown_so_it_sits_above_an_open_dialog(self):
+        toast = (DASHBOARD / "toast.js").read_text(encoding="utf-8")
+        self.assertIn("reopenPopover(node);", toast)
+        self.assertIn("export function reopenPopover(el)", toast)
+
+    def test_scrims_are_shown_before_their_own_dialog(self):
+        confirm = (DASHBOARD / "confirm.js").read_text(encoding="utf-8")
+        self.assertLess(confirm.index("openPopover(scrim);"), confirm.index("openPopover(dialog);"))
+        drawer = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
+        self.assertLess(drawer.index("openPopover(renameScrim);"), drawer.index("openPopover(renameDialog);"))
+        self.assertLess(drawer.index("openPopover(rowMenuScrim);"), drawer.index("openPopover(rowMenu);"))
+        model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        self.assertLess(model.index("openPopover(parts.scrim);"), model.index("openPopover(sheet);"))
+        schedules = (DASHBOARD / "schedules.js").read_text(encoding="utf-8")
+        self.assertLess(schedules.index("openPopover(menuScrim);"), schedules.index("openPopover(menuEl);"))
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertLess(app.index("openPopover(els.msgMenuScrim);"), app.index("openPopover(els.msgMenu);"))
+
+
+class ZIndexLadderTest(unittest.TestCase):
+    """One named z-index ladder; nothing at 4 or above is a bare number, and popups never use z-index at all."""
+
+    Z_INDEX_RE = re.compile(r"z-index\s*:\s*([^;{}]+)")
+    LADDER = (
+        "--z-composer", "--z-header", "--z-composer-above", "--z-drawer-scrim", "--z-drawer",
+        "--z-panel-scrim", "--z-panel", "--z-inbox-scrim", "--z-inbox", "--z-header-over-panel",
+        "--z-computer", "--z-computer-chrome", "--z-viewer", "--z-drawer-over-computer",
+        "--z-panel-over-computer", "--z-header-over-computer",
+    )
+
+    def setUp(self):
+        self.style = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.screen = (DASHBOARD / "computer" / "screen.css").read_text(encoding="utf-8")
+
+    def test_the_ladder_is_defined_in_root(self):
+        root = self.style[self.style.index(":root {"):self.style.index("}", self.style.index(":root {"))]
+        for name in self.LADDER:
+            self.assertRegex(root, rf"{name}: \d+;", name)
+        # The rule itself, stated where the ladder is defined.
+        self.assertIn("Menus, popup windows and toasts never use z-index", root)
+
+    def test_no_literal_z_index_of_four_or_more(self):
+        offenders = []
+        for name, text in (("style.css", self.style), ("computer/screen.css", self.screen)):
+            # Comments talk about z-index too; only declarations count.
+            text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            for match in self.Z_INDEX_RE.finditer(text):
+                value = match.group(1).strip()
+                if value.startswith("var(--z-"):
+                    continue
+                if re.fullmatch(r"-?\d+", value) and abs(int(value)) < 4:
+                    continue
+                offenders.append(f"{name}: z-index: {value}")
+        self.assertEqual(offenders, [])
+
+    def test_every_layer_used_is_named(self):
+        defined = set(re.findall(r"(--z-[a-z-]+)\s*:", self.style + self.screen))
+        used = set(re.findall(r"var\((--z-[a-z-]+)\)", self.style + self.screen))
+        self.assertEqual(used - defined, set())
+
+    def test_menus_and_dialog_cards_carry_no_z_index(self):
+        css = re.sub(r"/\*.*?\*/", "", self.style + self.screen, flags=re.S)
+        rules = re.findall(r"([^{}]+)\{([^}]*)\}", css)
+        for selector in (".attach-menu", ".row-menu", ".msg-menu", ".sched-menu", ".rename-dialog", ".confirm-dialog", ".model-sheet", ".toast"):
+            bodies = [body for sel, body in rules if selector in {part.strip() for part in sel.split(",")}]
+            self.assertTrue(bodies, selector)
+            for body in bodies:
+                self.assertNotIn("z-index", body, selector)
 
 
 if __name__ == "__main__":

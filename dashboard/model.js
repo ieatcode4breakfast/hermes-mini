@@ -10,6 +10,8 @@
 // The chip reads `info` from session.create/session.resume results and from session.info events.
 // API keys are only ever held in the password field until Save; nothing here touches browser storage.
 
+import { openPopover, closePopover } from "./toast.js";
+
 const EFFORTS = [["none", "Off"], ["low", "Low"], ["medium", "Med"], ["high", "High"], ["xhigh", "XHigh"], ["max", "Max"]];
 const LONG_PRESS_MS = 550;
 
@@ -248,7 +250,9 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     sheet.setAttribute("role", "dialog");
     sheet.setAttribute("aria-modal", "true");
     sheet.setAttribute("aria-label", "Model");
+    sheet.setAttribute("popover", "manual");
     const scrim = node("div", "scrim model-scrim");
+    scrim.setAttribute("popover", "manual");
     scrim.addEventListener("click", close);
 
     const head = node("div", "model-head");
@@ -638,6 +642,9 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     paintChip(); // fills the current-model label beside the title
     parts.search.value = "";
     renderList();
+    // Top layer (popover), scrim first so the sheet sits directly above its own dim.
+    openPopover(parts.scrim);
+    openPopover(sheet);
     parts.scrim.classList.add("open");
     sheet.classList.add("open");
     chip?.setAttribute("aria-expanded", "true");
@@ -648,6 +655,9 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     if (!sheet) return;
     sheet.classList.remove("open");
     parts.scrim.classList.remove("open");
+    // Out of the top layer once the slide-out has played (220ms).
+    closePopover(parts.scrim, 260);
+    closePopover(sheet, 260);
     chip?.setAttribute("aria-expanded", "false");
     showPane("pick");
   }

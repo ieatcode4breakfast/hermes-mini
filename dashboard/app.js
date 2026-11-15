@@ -15,7 +15,7 @@ import { confirmDialog } from "./confirm.js";
 import { createTodo } from "./todo.js";
 import { createSchedules, mentionText } from "./schedules.js";
 import { createInbox } from "./inbox.js";
-import { showToast } from "./toast.js";
+import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js";
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
 import { createModelPicker, shortModel } from "./model.js";
@@ -952,6 +952,10 @@ async function connect() {
   if (state.connecting) return state.connecting;
   state.connecting = (async () => {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    // Learn whether this dashboard is gated before choosing: sessionToken() reads that from the dashboard root, and
+    // checking the flag first sent the very first socket of a gated install out with an empty token (a failed
+    // connection in the console on every load, rescued only by the reconnect).
+    const token = await sessionToken();
     let query;
     if (window.__HERMES_AUTH_REQUIRED__) {
       const { ticket } = await api("/api/auth/ws-ticket", { method: "POST" });
@@ -959,7 +963,7 @@ async function connect() {
     } else {
       // Loopback dashboards authorize the socket with the session token; only gated
       // deployments mint single-use tickets. The dashboard SPA does the same.
-      query = `token=${encodeURIComponent(await sessionToken())}`;
+      query = `token=${encodeURIComponent(token)}`;
     }
     await openSocket(`${proto}//${location.host}${PREFIX}/api/ws?${query}`);
   })().finally(() => {
@@ -2249,7 +2253,7 @@ function openMsgMenu(row, x, y) {
   }
   leaveSelectMode();
   const caret = caretAt(x, y); // taken now: once the scrim and menu are up, hit-testing finds them, not the text
-  msgMenu = { row, prevFocus: document.activeElement };
+  msgMenu = { row, prevFocus: document.activeElement, x, y };
   const busy = state.streaming;
   els.msgMenu.innerHTML = "";
   const items = [];
@@ -2271,9 +2275,12 @@ function openMsgMenu(row, x, y) {
   els.msgMenu.append(...items);
 
   row.classList.add("msg-menu-open");
+  // Top layer first (still in its closed state), so its size can be measured before it is placed.
+  openPopover(els.msgMenuScrim);
+  openPopover(els.msgMenu);
+  placeMsgMenu(x, y);
   els.msgMenuScrim.classList.add("open");
   els.msgMenu.classList.add("open");
-  placeMsgMenu(x, y);
   if (!(history.state && history.state.hermesMiniMsgMenu === true)) history.pushState({ hermesMiniMsgMenu: true }, "");
   items[0].focus({ preventScroll: true });
   try {
@@ -2309,6 +2316,9 @@ function closeMsgMenu({ viaPop = false } = {}) {
   m.row.classList.remove("msg-menu-open");
   els.msgMenuScrim.classList.remove("open");
   els.msgMenu.classList.remove("open");
+  // Out of the top layer once the fade-out has played.
+  closePopover(els.msgMenuScrim, 160);
+  closePopover(els.msgMenu, 160);
   if (!viaPop && m.prevFocus && m.prevFocus.isConnected && typeof m.prevFocus.focus === "function") {
     m.prevFocus.focus({ preventScroll: true });
   }
@@ -2390,6 +2400,15 @@ function leaveSelectMode() {
 }
 
 els.msgMenuScrim.addEventListener("click", () => closeMsgMenu());
+// Fixed-position in the top layer: follow the window and the visible area while it is open.
+const rePlaceMsgMenu = () => {
+  if (msgMenu) placeMsgMenu(msgMenu.x, msgMenu.y);
+};
+window.addEventListener("resize", rePlaceMsgMenu);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", rePlaceMsgMenu);
+  window.visualViewport.addEventListener("scroll", rePlaceMsgMenu);
+}
 els.msgMenu.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     event.preventDefault();
@@ -5482,10 +5501,41 @@ els.input.addEventListener("keydown", (event) => {
 // activation, so it can open its file dialog directly.
 const photoInput = document.getElementById("photo");
 const attachMenu = document.getElementById("attachMenu");
+// The menu is fixed-position in the top layer, so it is placed from the "+" button's box on screen: left edges
+// together, its bottom 14px above the button (the old absolute offsets), kept 8px inside the window.
+function placeAttachMenu() {
+  const wrap = els.attach.parentElement || els.attach;
+  const r = wrap.getBoundingClientRect();
+  const edge = 8;
+  const w = attachMenu.offsetWidth;
+  const h = attachMenu.offsetHeight;
+  const left = Math.min(Math.max(edge, r.left), Math.max(edge, window.innerWidth - w - edge));
+  const top = Math.max(edge, Math.min(r.top - 14 - h, window.innerHeight - h - edge));
+  attachMenu.style.left = `${left}px`;
+  attachMenu.style.top = `${top}px`;
+}
 function setMenu(open) {
   attachMenu.hidden = !open;
   els.attach.classList.toggle("open", open);
   els.attach.setAttribute("aria-expanded", String(open));
+  // The top layer keeps the menu over the header. menu-open stays for browsers without the Popover API, where
+  // lifting the whole composer is still what does it (style.css).
+  els.attach.closest(".composer")?.classList.toggle("menu-open", open);
+  if (open) {
+    // Top layer first: while it is closed the browser keeps it display:none, so it can only be measured once shown.
+    openPopover(attachMenu);
+    placeAttachMenu();
+  } else {
+    closePopover(attachMenu);
+  }
+}
+const rePlaceAttachMenu = () => {
+  if (!attachMenu.hidden) placeAttachMenu();
+};
+window.addEventListener("resize", rePlaceAttachMenu);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", rePlaceAttachMenu);
+  window.visualViewport.addEventListener("scroll", rePlaceAttachMenu);
 }
 els.attach.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -6074,6 +6124,7 @@ let restartToast = null;
 function showRestartNotice() {
   if (!restartToast) {
     restartToast = el("div", "toast restart-toast");
+    restartToast.setAttribute("popover", "manual");
     restartToast.setAttribute("role", "status");
     restartToast.setAttribute("aria-live", "polite");
     document.body.append(restartToast);
@@ -6085,10 +6136,13 @@ function showRestartNotice() {
     for (let i = 0; i < 3; i++) dots.append(el("span", "", "."));
     restartToast.replaceChildren(document.createTextNode("Restarting"), dots);
   }
+  reopenPopover(restartToast); // top layer, above any dialog that is open
   restartToast.classList.add("show");
 }
 function hideRestartNotice() {
-  if (restartToast) restartToast.classList.remove("show");
+  if (!restartToast) return;
+  restartToast.classList.remove("show");
+  closePopover(restartToast, 300); // stay in the top layer while the fade-out plays
 }
 
 // Gateway restart: confirm, ask the server to restart it detached, then watch the gateway state

@@ -1504,7 +1504,8 @@ async def add_todo(request: Request):
     except Exception as exc:  # noqa: BLE001
         log.warning("to-do save failed: %s", exc)
         return JSONResponse({"detail": "could not save the to-do"}, status_code=500)
-    return _todos_response(items)
+    # The new row's id rides along, so the app can turn the row it is still typing in into this saved one.
+    return JSONResponse({"items": items, "id": item["id"]})
 
 
 @router.post("/todos/clear-done")

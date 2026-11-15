@@ -105,7 +105,7 @@
           <button id="attach" class="icon-btn plus" type="button" aria-label="Add" aria-haspopup="menu" aria-expanded="false" aria-controls="attachMenu">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <div id="attachMenu" class="attach-menu" role="menu" hidden>
+          <div id="attachMenu" class="attach-menu" role="menu" popover="manual" hidden>
             <!-- Take a photo opens the camera directly (capture). Touch only: a computer has no capture. -->
             <button id="takePhoto" class="menu-item" type="button" role="menuitem">
               <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
@@ -193,8 +193,8 @@
   </aside>
 
   <!-- Row menu for a chat (⋮, long press or right click on a row): Pin/Unpin, Mute notifications, Rename, Delete chat. -->
-  <div id="rowMenuScrim" class="scrim row-menu-scrim" aria-hidden="true"></div>
-  <div id="rowMenu" class="row-menu" role="menu" aria-label="Chat actions">
+  <div id="rowMenuScrim" class="scrim row-menu-scrim" popover="manual" aria-hidden="true"></div>
+  <div id="rowMenu" class="row-menu" role="menu" aria-label="Chat actions" popover="manual">
     <button id="rowMenuPin" class="row-menu-item" type="button" role="menuitem">
       <span>Pin</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(45 12 12)"><path d="M8 3h8"/><path d="M9.5 3v7L7 13h10l-2.5-3V3"/><path d="M12 13v8"/></g></svg>
@@ -220,12 +220,12 @@
   </div>
 
   <!-- Message menu (long press on a message): filled in by app.js openMsgMenu. -->
-  <div id="msgMenuScrim" class="scrim msg-menu-scrim" aria-hidden="true"></div>
-  <div id="msgMenu" class="row-menu msg-menu" role="menu" aria-label="Message actions"></div>
+  <div id="msgMenuScrim" class="scrim msg-menu-scrim" popover="manual" aria-hidden="true"></div>
+  <div id="msgMenu" class="row-menu msg-menu" role="menu" aria-label="Message actions" popover="manual"></div>
 
   <!-- Rename dialog for a chat (opened from the row menu). -->
-  <div id="renameScrim" class="scrim rename-scrim" aria-hidden="true"></div>
-  <div id="renameDialog" class="rename-dialog" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+  <div id="renameScrim" class="scrim rename-scrim" popover="manual" aria-hidden="true"></div>
+  <div id="renameDialog" class="rename-dialog" role="dialog" aria-modal="true" aria-labelledby="renameTitle" popover="manual">
     <h2 id="renameTitle" class="rename-title">Rename this chat</h2>
     <input id="renameInput" class="rename-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="done" aria-label="Chat name">
     <p id="renameError" class="rename-error" role="alert" hidden></p>
@@ -236,8 +236,8 @@
   </div>
 
   <!-- Shared confirm dialog (confirm.js), outside .app like the others. -->
-  <div id="confirmScrim" class="scrim confirm-scrim" aria-hidden="true"></div>
-  <div id="confirmDialog" class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+  <div id="confirmScrim" class="scrim confirm-scrim" popover="manual" aria-hidden="true"></div>
+  <div id="confirmDialog" class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage" popover="manual">
     <h2 id="confirmTitle" class="rename-title confirm-title"></h2>
     <p id="confirmMessage" class="confirm-message"></p>
     <div class="rename-actions confirm-actions">

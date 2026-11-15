@@ -3,6 +3,7 @@
 // WebSocket or changes threads itself: app.js passes in the data and actions it needs (see createDrawer's deps).
 
 import { confirmDialog } from "./confirm.js";
+import { openPopover, closePopover } from "./toast.js";
 
 const PAGE_SIZE = 40;
 const LONG_PRESS_MS = 450;
@@ -776,6 +777,9 @@ export function createDrawer(deps) {
     showRenameError("");
     updateRenameSubmit();
     placeRenameDialog();
+    // Top layer (popover), scrim first so the card sits directly above its own dim.
+    openPopover(renameScrim);
+    openPopover(renameDialog);
     renameScrim.classList.add("open");
     renameDialog.classList.add("open");
     if (!(history.state && history.state.hermesMiniRename === true)) history.pushState({ hermesMiniRename: true }, "");
@@ -795,6 +799,9 @@ export function createDrawer(deps) {
     st.rename = null;
     renameScrim.classList.remove("open");
     renameDialog.classList.remove("open");
+    // Out of the top layer once the fade-out has played (160ms card, 200ms scrim).
+    closePopover(renameScrim, 240);
+    closePopover(renameDialog, 200);
     if (!focusRow(r.item.id) && r.prevFocus && r.prevFocus.isConnected) r.prevFocus.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniRename === true) {
       st.renameBack = new Promise((resolve) => {
@@ -946,6 +953,9 @@ export function createDrawer(deps) {
     const wrap = row.closest(".chat-row-wrap");
     if (wrap) wrap.classList.add("menu-open");
     if (dots) dots.setAttribute("aria-expanded", "true");
+    // Top layer first (still in its closed state), so its size can be measured before it is placed.
+    openPopover(rowMenuScrim);
+    openPopover(rowMenu);
     placeRowMenu(dots || row);
     rowMenuScrim.classList.add("open");
     rowMenu.classList.add("open");
@@ -982,6 +992,9 @@ export function createDrawer(deps) {
     if (m.dots) m.dots.setAttribute("aria-expanded", "false");
     rowMenuScrim.classList.remove("open");
     rowMenu.classList.remove("open");
+    // Out of the top layer once the fade-out has played.
+    closePopover(rowMenuScrim, 160);
+    closePopover(rowMenu, 160);
     if (!focusRow(m.item.id) && m.prevFocus && m.prevFocus.isConnected) m.prevFocus.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniMenu === true) {
       st.menuBack = new Promise((resolve) => {
@@ -1056,10 +1069,16 @@ export function createDrawer(deps) {
   renameSubmit.addEventListener("click", () => void commitRename());
   renameCancel.addEventListener("click", () => closeRename());
   renameScrim.addEventListener("click", () => closeRename());
+  // Both are fixed-position in the top layer, so a resize or a keyboard opening has to re-place them while open.
+  const rePlace = () => {
+    if (st.rename) placeRenameDialog();
+    if (st.menu) placeRowMenu(st.menu.dots || st.menu.row);
+  };
+  window.addEventListener("resize", rePlace);
   if (window.visualViewport) {
     // The keyboard shrinks the visual viewport: keep the dialog centred in what is still visible.
-    window.visualViewport.addEventListener("resize", () => st.rename && placeRenameDialog());
-    window.visualViewport.addEventListener("scroll", () => st.rename && placeRenameDialog());
+    window.visualViewport.addEventListener("resize", rePlace);
+    window.visualViewport.addEventListener("scroll", rePlace);
   }
 
   // ---------- open / close, with one history entry per open ----------

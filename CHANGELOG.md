@@ -64,6 +64,28 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Menus, popup windows and toasts are now drawn in the browser's top layer (the Popover API, `popover="manual"`),
+  so no z-index or parent stacking context can ever put one behind another element. This fixes the "+" attach
+  menu being drawn behind the agent's picture in a new chat, and the same class of bug in the chat row menu,
+  the message menu, the Schedules row menu, the rename and confirm dialogs, the model/provider sheet and toasts.
+  They stack by open order, so a menu opened from inside a dialog or panel is above it, and a toast shown while
+  a dialog is open is re-shown above it. Anything they were positioned against is measured on open and again on
+  window or visual-viewport resize, and their look, open/close logic, Escape and Back handling, focus and
+  animations are unchanged. The big side panels (chats, Inbox, To-do, Schedules) and the computer view stay in
+  the page's own layering, which now uses one named z-index ladder instead of bare numbers. In a browser without
+  the Popover API the old layered drawing is kept.
+- To-dos: a new row ("Add item", or Enter in a row) is saved the moment it appears, blank or not,
+  instead of when you leave it, and it can be dragged as soon as that save comes back, without
+  tapping out first; what you type is saved when you leave the row. Escape or Backspace in a brand-new
+  empty row still removes it. `POST /todos` now also returns the new row's `id` (the app falls back to
+  finding the one new id when an older server leaves it out).
+- To-dos on a touch screen: the press area of a row's drag grip now runs from the list's left edge up to
+  the checkbox (53px instead of 40px), so a press anywhere left of the box starts the drag; a mouse keeps
+  the old area and nothing moves on screen. On touch the checkbox is a handle too: press it and move to
+  drag the row; a plain tap still ticks it. A dragged row now follows the finger from where it was
+  pressed, instead of trailing it by however far the finger moved before the drag started. A drag begun
+  on the box no longer cancels itself the moment it starts (the box's own touch capture handing over to
+  the row was read as the browser taking the finger).
 - README: says the app is tested thoroughly on Android but not yet on iPhone or iPad, and lists the known
   iPhone differences.
 - README: the first install method is a prompt to paste into Hermes, which runs
@@ -133,6 +155,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The "+" attach menu opens over the agent's picture in a new chat instead of behind it.
+- A login-protected dashboard no longer logs a failed WebSocket (`/api/ws?token=`) on every load: the app
+  learns whether the dashboard is gated before it picks the ticket or the token, instead of after.
 - On iPhone and iPad, tapping the message box no longer zooms the page in. Safari zooms into text under
   16px; the message box now uses 16px on Apple touch devices only, so Android is unchanged.
 - `hermes plugins install` no longer stops on a "caution" verdict that asks to force the install. Hermes'

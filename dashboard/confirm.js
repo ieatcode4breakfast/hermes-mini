@@ -5,6 +5,8 @@
 // load, before drawer.js and app.js register theirs, so while the dialog is open it settles the event itself and
 // stops it reaching the overlays underneath.
 
+import { openPopover, closePopover } from "./toast.js";
+
 const $ = (id) => document.getElementById(id);
 
 let scrim = null;
@@ -51,6 +53,9 @@ function open({ title, message, confirmLabel, danger }) {
   });
   active = { resolve, prevFocus: document.activeElement };
 
+  // Both go into the top layer, scrim first so the card sits directly above its own dim.
+  openPopover(scrim);
+  openPopover(dialog);
   scrim.classList.add("open");
   dialog.classList.add("open");
   if (!(history.state && history.state.hermesMiniConfirm === true)) history.pushState({ hermesMiniConfirm: true }, "");
@@ -68,6 +73,9 @@ function close(result, { viaPop = false } = {}) {
   active = null;
   scrim.classList.remove("open");
   dialog.classList.remove("open");
+  // Out of the top layer once the fade-out has played (160ms card, 200ms scrim).
+  closePopover(scrim, 240);
+  closePopover(dialog, 200);
   if (a.prevFocus && a.prevFocus.isConnected && typeof a.prevFocus.focus === "function") {
     a.prevFocus.focus({ preventScroll: true });
   }

@@ -6,7 +6,14 @@
   right: 0;
   top: var(--bs-vt, 0px);
   height: var(--bs-vh, 100%);
-  z-index: 70; /* below the shared confirm dialog (74/75), above the drawer and message menus */
+  z-index: var(--z-computer); /* above every app element; menus and dialogs are top-layer popovers, so above this */
+  /* Order inside this one fixed component (it is its own stacking context): the picture's pad, then the
+     status overlay, then the floating control row, the title over that, and the help sheet over all of it. */
+  --z-bs-pad: 1;
+  --z-bs-overlay: 2;
+  --z-bs-float: 3;
+  --z-bs-title: 4;
+  --z-bs-help: 10;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -75,7 +82,7 @@ body.bot-screen-open {
   top: var(--bs-float-top, 8px);
   left: var(--bs-float-left, max(8px, env(safe-area-inset-left)));
   right: var(--bs-float-right, max(8px, env(safe-area-inset-right)));
-  z-index: 3; /* above .bs-overlay (2), so refresh/start stay clickable in stopped/error states */
+  z-index: var(--z-bs-float); /* above .bs-overlay, so refresh/start stay clickable in stopped/error states */
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -260,7 +267,7 @@ body.bot-screen-open {
 .bs-overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: var(--z-bs-overlay);
   display: grid;
   place-items: center;
   padding: 16px;
@@ -296,7 +303,7 @@ body.bot-screen-open {
   position: fixed;
   left: 8px;
   bottom: 8px;
-  z-index: 3;
+  z-index: var(--z-bs-float);
   width: 2px;
   height: 2px;
   margin: 0;
@@ -355,7 +362,7 @@ body.docked.computer-three-pane .bot-screen.bs-leaving-docked { left: calc(300px
 
 /* The picture stays centred; the title rides down to sit just above it (screen.js sets the transform). Above the
    stage's layers so it is never covered. */
-.bs-title { position: relative; z-index: 4; }
+.bs-title { position: relative; z-index: var(--z-bs-title); }
 /* Rounded corners on the desktop picture. The trackpad zoom crop uses the same radius. */
 .bs-host > div > canvas {
   border-radius: 18px;
@@ -400,7 +407,7 @@ body:not(.docked) .bs-title-icon { display: none; }
 .bs-pad {
   /* Full width, edge to edge, keeping its rounded corners and border. */
   position: absolute; left: 0; right: 0;
-  top: var(--bs-pad-top, 0px); height: var(--bs-pad-h, 0px); z-index: 1;
+  top: var(--bs-pad-top, 0px); height: var(--bs-pad-h, 0px); z-index: var(--z-bs-pad);
   display: flex; align-items: center; justify-content: center;
   border-radius: 22px; background: color-mix(in srgb, var(--fg) 6%, var(--bg));
   border: 0;
@@ -412,7 +419,7 @@ body:not(.docked) .bs-title-icon { display: none; }
 .bs-pad, .bs-help-btn { transition: opacity 220ms ease-out; }
 /* The ? sits in the pad's top-right corner, but is its own element so its taps never reach the trackpad. */
 .bs-help-btn {
-  position: absolute; z-index: 3; top: calc(var(--bs-pad-top, 0px) + 10px); right: calc(max(12px, env(safe-area-inset-right)) + 10px);
+  position: absolute; z-index: var(--z-bs-float); top: calc(var(--bs-pad-top, 0px) + 10px); right: calc(max(12px, env(safe-area-inset-right)) + 10px);
   width: 32px; height: 32px; margin: 0; padding: 0; border: 0; border-radius: 50%;
   background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--muted);
   font: inherit; font-size: 16px; font-weight: 600; line-height: 32px; text-align: center; cursor: pointer;
@@ -420,7 +427,7 @@ body:not(.docked) .bs-title-icon { display: none; }
 }
 .bs-help-btn[hidden] { display: none; }
 .bs-help-scrim {
-  position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-end; justify-content: center;
+  position: absolute; inset: 0; z-index: var(--z-bs-help); display: flex; align-items: flex-end; justify-content: center;
   padding: 16px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background: rgba(0, 0, 0, 0.45);
 }
@@ -445,9 +452,10 @@ body:not(.docked) .bs-title-icon { display: none; }
    larger balances it optically. The button itself stays 32px like the others. */
 .bs-controls #bsKeyboard svg { width: 19px; height: 19px; }
 
-/* Toast (toast.js): a small pill at the bottom centre, above the composer and above the computer pane (z 70-72). */
+/* Toast (toast.js): a small pill at the bottom centre, above the composer and above the computer pane. It is a
+   top-layer popover, so its layer needs no z-index. */
 .toast {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px); z-index: 90;
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px);
   transform: translate(-50%, 10px) scale(0.96); padding: 9px 18px; border-radius: 999px;
   background: color-mix(in srgb, var(--fg) 84%, var(--bg)); color: var(--bg);
   -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
