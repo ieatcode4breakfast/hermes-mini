@@ -2020,7 +2020,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .model-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-tab-meta { white-space: nowrap; }
 .model-tab-meta::before { content: "·"; margin-right: 4px; }
-.model-tab-meta[hidden] { display: none; }
+.model-tab[hidden], .model-tab-meta[hidden] { display: none; }
 .model-tab-caret { width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; transition: transform 220ms var(--ease-spring); }
 .model-tab[aria-expanded="true"] .model-tab-caret { transform: rotate(180deg); }
 .composer .row.wide > .model-tab { grid-area: auto; }

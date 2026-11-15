@@ -297,5 +297,41 @@ class PinnedOrderTest(unittest.TestCase):
         self.assertIn("st.pinOrder = [...kept, ...unplacedExisting, item.id];", set_fn)
         self.assertNotIn("[item.id, ...kept]", set_fn)
 
+
+class StartupDictationAndModelChipTest(unittest.TestCase):
+    """Startup attaches without aborting active dictation and hides #modelChip until settled."""
+
+    def test_clear_log_preserves_dictation_on_boot_and_history_reload(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        clear_fn = app[app.index("function clearLog"):app.index("\n// ---------- HTTP")]
+        self.assertIn("{ keepDictation = false } = {}", clear_fn)
+        self.assertIn('if (!keepDictation && typeof cancelDictation === "function") cancelDictation(true);', clear_fn)
+
+        history_fn = app[app.index("async function loadHistory"):app.index("\n// Loads the next older page")]
+        self.assertIn("clearLog({ keepDictation: true });", history_fn)
+
+        draft_fn = app[app.index("function openDraft"):app.index("\n// Creates the real chat")]
+        self.assertIn("clearLog({ keepDictation: Boolean(opts.keepPick) });", draft_fn)
+
+        attach_fn = app[app.index("async function attachThread"):app.index("\nfunction isMissing")]
+        self.assertIn("await Promise.all([ensureHome(), attachUnsent()]);", attach_fn)
+        self.assertLess(attach_fn.index("await Promise.all([ensureHome(), attachUnsent()]);"), attach_fn.index("setEmptyState(false);"))
+
+        boot_block = app[app.index("if (state.viewedUnsent) setEmptyState(true);"):]
+        self.assertIn(
+            'Promise.all([\n      api("/api/sessions?limit=1"),\n      connect(),\n      bootIdentity,\n    ])',
+            boot_block,
+        )
+
+    def test_model_chip_hidden_until_settled(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn('id="modelChip" class="model-tab" type="button" aria-haspopup="dialog" aria-expanded="false" hidden>', html)
+        self.assertIn("let settled = false;", model)
+        self.assertIn('if ("model" in payload) settled = true;', model)
+        self.assertIn("chip.hidden = !settled && !model && !info.pending;", model)
+        self.assertIn(".model-tab[hidden], .model-tab-meta[hidden] { display: none; }", css)
+
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,7 @@ function errorText(error) {
 
 export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog, showToast, chip }) {
   const info = { model: "", provider: "", reasoning: "", fast: false, pending: "" };
+  let settled = false;
   let draftPick = null; // { model, provider, global } chosen on a New chat, sent with session.create
   let draftEffort = "";
   let options = null; // last model.options payload
@@ -61,6 +62,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     const effort = previewEffort || (isDraft() && draftEffort ? draftEffort : info.reasoning);
     if (parts) parts.current.textContent = [shortModel(model), effortLabel(effort), info.fast ? "Fast" : ""].filter(Boolean).join(" · ");
     if (!chip) return;
+    chip.hidden = !settled && !model && !info.pending;
     const name = chip.querySelector(".model-tab-name");
     if (name) name.textContent = info.pending ? `→ ${shortModel(info.pending)}` : shortModel(model) || "Model";
     const meta = chip.querySelector(".model-tab-meta");
@@ -76,6 +78,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
   // session.info payload (event or create/resume result). Lazy infos carry only model/provider.
   function setInfo(payload) {
     if (!payload || typeof payload !== "object") return;
+    if ("model" in payload) settled = true;
     if (typeof payload.model === "string" && payload.model) {
       if (info.pending && payload.model === info.pending && !payload.running) info.pending = "";
       info.model = payload.model;
@@ -94,6 +97,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     info.fast = false;
     try {
       const payload = await loadOptions(false);
+      settled = true;
       if (!draftPick) {
         info.model = payload.model || "";
         info.provider = payload.provider || "";

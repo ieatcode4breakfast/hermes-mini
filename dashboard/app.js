@@ -425,8 +425,8 @@ function setEmptyState(show, opts = {}) {
   composerEl.classList.remove("centred", "lowering", "flying");
 }
 
-function clearLog() {
-  if (typeof cancelDictation === "function") cancelDictation(true);
+function clearLog({ keepDictation = false } = {}) {
+  if (!keepDictation && typeof cancelDictation === "function") cancelDictation(true);
   endEdit(); // a view reset ends an edit; the composer gets its draft back
   cancelJumpScroll(); // a jump never follows the view to another chat or a rebuilt history
   hideJumpButton(true);
@@ -1104,7 +1104,7 @@ function openDraft(opts = {}) {
   state.streaming = false;
   state.turn = null;
   for (const id of [...state.cards.keys()]) removeCard(id);
-  clearLog();
+  clearLog({ keepDictation: Boolean(opts.keepPick) });
   setEmptyState(true, { lower: Boolean(opts.lower) });
   setReadOnly(false);
   updateCaption();
@@ -1142,12 +1142,12 @@ async function attachUnsent() {
 // exists, was archived, or is not an app chat (not resumable) falls back to the home thread with a note.
 // Connection errors are rethrown so the reconnect logic handles them.
 async function attachThread() {
-  setEmptyState(false);
-  const fresh = await ensureHome();
   if (state.viewedUnsent) {
-    await attachUnsent();
+    await Promise.all([ensureHome(), attachUnsent()]);
     return;
   }
+  setEmptyState(false);
+  const fresh = await ensureHome();
   if (fresh) state.viewedId = state.homeId; // a brand-new home thread is the chat on screen
   const wanted = state.viewedId;
   if (wanted && wanted !== state.homeId) {
@@ -1582,7 +1582,7 @@ async function loadHistory(messageCount = null) {
     ]);
   }
   state.turn = null;
-  clearLog();
+  clearLog({ keepDictation: true });
   const rows = data.messages || [];
   older.gen += 1;
   older.sid = state.storedId;
@@ -6226,41 +6226,45 @@ window.addEventListener("orientationchange", refreshEmptyLayout);
 window.visualViewport?.addEventListener("resize", refreshEmptyLayout);
 new ResizeObserver(refreshEmptyLayout).observe(composerEl);
 
+if (state.viewedUnsent) setEmptyState(true);
 updateComposer();
 autosize();
 
-// Boot: read the agent's identity and the feature flags first, so the page shows the user's own name and only
-// the controls that work, then confirm we are signed in (a 401 redirects to the dashboard login), then connect
-// and attach the thread. Identity is a read (the status route also records the default delivery target once).
+// Boot: read the agent's identity/feature flags, confirm we are signed in (a 401 redirects to the dashboard
+// login), and open the WebSocket in parallel, then attach the thread. Identity is a read (the status route also
+// records the default delivery target once).
 (async () => {
-  try {
-    identityApi.wire({
-      onIdentity: ({ name, homeLabel }) => {
-        AGENT = name || "Hermes";
-        const meta = document.querySelector('meta[name="home-label"]');
-        if (meta) meta.content = homeLabel || AGENT;
-        applyAgentBranding();
-        updateCaption();
-        if (drawerApi && typeof drawerApi.setHomeLabel === "function") drawerApi.setHomeLabel(homeLabel || AGENT);
-      },
-    });
-    await identityApi.boot();
+  identityApi.wire({
+    onIdentity: ({ name, homeLabel }) => {
+      AGENT = name || "Hermes";
+      const meta = document.querySelector('meta[name="home-label"]');
+      if (meta) meta.content = homeLabel || AGENT;
+      applyAgentBranding();
+      updateCaption();
+      if (drawerApi && typeof drawerApi.setHomeLabel === "function") drawerApi.setHomeLabel(homeLabel || AGENT);
+    },
+  });
+  const bootIdentity = identityApi.boot().then(() => {
     AGENT = identityApi.currentName();
-  } catch {
-    // Identity is best effort: the neutral defaults keep the page usable.
-  }
-  applyAgentBranding();
-  // Status must already read "Connecting…" while the sign-in check runs: an empty status reads as "attached".
+    applyAgentBranding();
+  }).catch(() => {
+    applyAgentBranding();
+  });
+  // Status must already read "Connecting…" while the sign-in check and socket handshake run.
   try {
-    await api("/api/sessions?limit=1");
+    await Promise.all([
+      api("/api/sessions?limit=1"),
+      connect(),
+      bootIdentity,
+    ]);
   } catch (error) {
+    if (state.ws) dropSocket(state.ws);
     if (error instanceof AuthRedirect) return;
     noteOffline();
     scheduleReconnect();
     return;
   }
   try {
-    await connect();
     await attachThread();
     await openSessionFromHash(); // a notification may have opened this window on a specific chat
     state.backoffIdx = 0;
