@@ -497,6 +497,56 @@ class InboxManualUnreadTest(InboxDbCase):
             self.assertEqual(self.count(), 1, manual)
 
 
+class InboxStateTest(InboxDbCase):
+    """GET /inbox/state: the read flags of specific messages, for the chat's Mark unread / Mark read button."""
+
+    def state(self, ids):
+        response = self.client.get(f"{self.BASE}/state?ids={','.join(str(value) for value in ids)}")
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["states"]
+
+    def test_a_manual_unread_hold_is_reported(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self.client.post(f"{self.BASE}/read-all", json={})
+        self.mark("unread", [10])
+        self.assertEqual(self.state([10]), {"10": {"read": False, "marked_unread": True}})
+
+    def test_a_manual_read_releases_the_hold(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self.mark("unread", [10])
+        self.mark("read", [10])
+        self.assertEqual(self.state([10]), {"10": {"read": True, "marked_unread": False}})
+
+    def test_a_read_compaction_copy_reports_read_through_its_original(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self.mark("read", [10])
+        self._compact(conn, {10: 50})
+        self.assertEqual(self.state([50]), {"50": {"read": True, "marked_unread": False}})
+
+    def test_an_unknown_message_is_omitted(self):
+        conn = self._db()
+        self._add(conn, 10, "uid-a", "Logged: 10h30m")
+        self.assertEqual(list(self.state([10, 999])), ["10"])
+
+    def test_the_route_needs_whole_message_ids(self):
+        self._db()
+        for ids in ("", "x", "10,x", "-1", "0", "1.5", " "):
+            response = self.client.get(f"{self.BASE}/state?ids={ids}")
+            self.assertEqual(response.status_code, 400, ids)
+        for value in ("²", "١٠"):
+            self.assertEqual(self.client.get(f"{self.BASE}/state?ids={value}").status_code, 400, value)
+
+    def test_too_many_ids_are_refused(self):
+        self._db()
+        ids = ",".join(str(value) for value in range(1, 202))
+        self.assertEqual(self.client.get(f"{self.BASE}/state?ids={ids}").status_code, 400)
+        ids = ",".join(str(value) for value in range(1, 201))
+        self.assertEqual(self.client.get(f"{self.BASE}/state?ids={ids}").status_code, 200)
+
+
 class IdentityRoutesTest(RouteTestCase):
     def test_get_identity_is_a_pure_read(self):
         before = self.snapshot_tree(self.home)

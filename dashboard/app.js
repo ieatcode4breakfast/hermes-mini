@@ -475,8 +475,12 @@ async function apiFetch(path, init = {}) {
     } catch {
       /* non-JSON 401 */
     }
-    const next = encodeURIComponent(location.pathname + location.search);
-    location.assign(body.login_url || `${PREFIX}/login?next=${next}`);
+    // Hermes' 401 carries its login link, with the right prefix, but for an API request that link has no next= (a plain
+    // "/login"), so after signing in Hermes would land on its own dashboard. The app's page is the place to come back
+    // to, so next= is added whenever the link lacks one (Hermes accepts any same-origin page path as next).
+    const login = new URL(body.login_url || `${PREFIX}/login`, location.origin);
+    if (!login.searchParams.get("next")) login.searchParams.set("next", location.pathname + location.search);
+    location.assign(login.pathname + login.search);
     throw new AuthRedirect("login required");
   }
   if (!res.ok) {
@@ -1605,6 +1609,8 @@ async function loadHistory(messageCount = null) {
   // the background must not read it; coming back to the app marks it.
   if (pageVisible()) drawerApi.markSeen(state.viewedId);
   if (!pendingTarget) void fillOlder(); // a page that is mostly tool rows may not fill the screen: keep loading until it scrolls
+  // The rows are in, so their Mark unread / Mark read labels can be read from the Inbox tracker (its own route).
+  void refreshInboxMarks();
 }
 
 // Loads the next older page and puts its bubbles above the current ones, keeping what is on screen where it is.
@@ -2064,7 +2070,10 @@ async function syncJobDeliveries() {
       addJobBubble(entry.text, { rowId: id, ts: Number(entry.message.timestamp) || 0, attached: false, images: [], files: [] });
       added = true;
     }
-    if (added) scrollToBottom(false);
+    if (added) {
+      scrollToBottom(false);
+      void refreshInboxMarks(); // a job result appended just now also offers Mark unread / Mark read
+    }
   } catch {
     /* the next trigger tries again */
   } finally {
@@ -2087,17 +2096,19 @@ function addAssistantBubble(text, meta = {}) {
   return bubble;
 }
 
-// ---------- message actions: copy, edit & resend, branch, mark unread ----------
-// Each message has an action row under it. A reply gets Copy, Branch and Mark unread, then its time; a user message gets its time,
-// then Copy and Edit, right-aligned. The row always takes its height, so nothing moves when the buttons appear; with a
-// mouse the buttons and the time fade in on hover, and a touch device shows only the time (the long-press menu below
-// carries the actions). Every row keeps a small record on the element (hermesMiniMsg):
-// role, text shown, durable row id (null until known), time in epoch seconds (0 = unknown), and whether it had attachments.
+// ---------- message actions: copy, edit & resend, branch, mark unread / mark read ----------
+// Each message has an action row under it. A reply gets Copy, Branch and Mark unread (Mark read once it is held
+// unread), then its time; a user message gets its time, then Copy and Edit, right-aligned. The row always takes its
+// height, so nothing moves when the buttons appear; with a mouse the buttons and the time fade in on hover, and a touch
+// device shows only the time (the long-press menu below carries the actions). Every row keeps a small record on the
+// element (hermesMiniMsg): role, text shown, durable row id (null until known), time in epoch seconds (0 = unknown),
+// whether it had attachments, and whether the Inbox holds it unread by hand (markedUnread).
 
 const ICON_ATTRS = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
 const ICON_EDIT = `<svg ${ICON_ATTRS}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 const ICON_BRANCH = `<svg ${ICON_ATTRS}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`;
 const ICON_UNREAD = `<svg ${ICON_ATTRS}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>`;
+const ICON_READ = `<svg ${ICON_ATTRS}><path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-5.2a2 2 0 0 1 2.4 0l8 5.2z"/><path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"/></svg>`;
 const nowSec = () => Date.now() / 1000;
 let shownBusy = false; // the streaming state the action buttons were last synced to
 
@@ -2108,6 +2119,7 @@ function messageRecord(role, text, meta, hasAttachments) {
     rowId: Number.isInteger(meta.rowId) ? meta.rowId : null,
     ts: meta.ts !== undefined ? meta.ts : nowSec(),
     attached: Boolean(hasAttachments || meta.attached),
+    markedUnread: false,
   };
 }
 
@@ -2156,10 +2168,23 @@ function addMessageActions(row) {
   } else {
     if (time) bar.append(time);
     bar.append(copy, actionButton("branch", "Branch from this reply", ICON_BRANCH, () => branchFrom(row)));
-    bar.append(actionButton("unread", "Mark unread", ICON_UNREAD, () => markReplyUnread(row)));
+    bar.append(actionButton("unread", "Mark unread", ICON_UNREAD, () => toggleReplyUnread(row)));
   }
   row.append(bar);
   syncActionAvailability(bar);
+}
+
+// The unread button's label and icon follow the row's flag: a reply the Inbox holds unread offers Mark read, so a tap
+// repeats nothing and clears the hold. syncActionAvailability keeps it current when refreshInboxMarks() learns the state.
+function syncUnreadButton(button, meta) {
+  const marked = Boolean(meta && meta.markedUnread);
+  const label = marked ? "Mark read" : "Mark unread";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  if (button.dataset.state !== (marked ? "read" : "unread")) {
+    button.dataset.state = marked ? "read" : "unread";
+    button.innerHTML = marked ? ICON_READ : ICON_UNREAD;
+  }
 }
 
 // Edit is offered for a typed user message only. A message that carried an image or a file is not resent by an edit.
@@ -2179,6 +2204,7 @@ function syncActionAvailability(root = els.log) {
     } else {
       button.disabled = busy || state.readOnly
         || (button.dataset.action === "unread" && unreadBusy.has(button.closest(".msg")));
+      if (button.dataset.action === "unread") syncUnreadButton(button, meta);
     }
   }
 }
@@ -2186,7 +2212,7 @@ function syncActionAvailability(root = els.log) {
 // ---------- message menu (touch long press) and select mode ----------
 // On a touch device a long press (450 ms, cancelled by a 10 px move or by lifting) on a message's bubble opens the
 // same actions the row's buttons offer, anchored at the press point. The menu is the drawer's row-menu card (same
-// look), built on demand: Copy, then Edit (user) or Branch and Mark unread (reply), then Select text, each with its icon on the left.
+// look), built on demand: Copy, then Edit (user) or Branch and Mark unread / Mark read (reply, by the row's flag), then Select text, each with its icon on the left.
 // It reuses the history pattern: one entry pushed on open, consumed by every in-app close. Select text puts that one
 // message into native selection mode so Android's handles and copy toolbar appear.
 
@@ -2236,7 +2262,10 @@ function openMsgMenu(row, x, y) {
     }
   } else if (!busy && !state.readOnly) {
     items.push(msgMenuItem("Branch", ICON_BRANCH, () => branchFrom(row)));
-    items.push(msgMenuItem("Mark unread", ICON_UNREAD, () => markReplyUnread(row)));
+    // The same toggle the action row offers: a reply held unread is marked read again from here.
+    items.push(meta.markedUnread
+      ? msgMenuItem("Mark read", ICON_READ, () => toggleReplyUnread(row))
+      : msgMenuItem("Mark unread", ICON_UNREAD, () => toggleReplyUnread(row)));
   }
   items.push(msgMenuItem("Select text", ICON_SELECT, () => enterSelectMode(row, caret)));
   els.msgMenu.append(...items);
@@ -2844,26 +2873,34 @@ async function branchFrom(row) {
   showToast("Branch successful", "success");
 }
 
-// Mark unread: the reply comes back unread in the Inbox. The mark is manual, so the read an on-screen row sends
-// (plugin_api.py inbox_mark_read drops non-manual ids that are held) cannot undo it while the chat stays open,
-// until it is read by hand or by Mark all. unreadBusy keeps a double press to one request.
+// Mark unread / Mark read: one button that follows the reply's Inbox state. Mark unread brings the reply back unread in
+// the Inbox; the mark is manual, so the read an on-screen row sends (plugin_api.py inbox_mark_read drops non-manual ids
+// that are held) cannot undo it while the chat stays open, until it is read by hand or by Mark all. Mark read (shown
+// once the reply is held unread, from /inbox/state) releases that hold. unreadBusy keeps a double press to one request.
 const unreadBusy = new Set();
-async function markReplyUnread(row) {
+async function toggleReplyUnread(row) {
   const meta = row.hermesMiniMsg;
   if (!meta || unreadBusy.has(row)) return;
   if (state.streaming || state.sending || state.switching || state.editing || state.readOnly) return;
+  const markingRead = Boolean(meta.markedUnread);
   unreadBusy.add(row);
   syncActionAvailability();
   try {
     const rowId = await resolveRowId(row);
     if (!rowId) throw new Error("this reply is not saved yet. Try again in a moment.");
-    inboxReadIds.delete(rowId); // a queued automatic read would be refused anyway; do not send it
-    await inbox.markUnread(rowId);
-    showToast("Marked unread");
+    if (markingRead) {
+      await inbox.markReadByHand(rowId);
+      showToast("Marked read");
+    } else {
+      inboxReadIds.delete(rowId); // a queued automatic read would be refused anyway; do not send it
+      await inbox.markUnread(rowId);
+      showToast("Marked unread");
+    }
+    meta.markedUnread = !markingRead;
   } catch (error) {
     if (!(error instanceof AuthRedirect)) {
-      sysLine(`Could not mark unread: ${errorText(error)}`);
-      showToast("Could not mark unread", "error");
+      sysLine(`Could not mark ${markingRead ? "read" : "unread"}: ${errorText(error)}`);
+      showToast(`Could not mark ${markingRead ? "read" : "unread"}`, "error");
     }
   } finally {
     unreadBusy.delete(row);
@@ -5673,6 +5710,37 @@ const inboxRowObserver = typeof IntersectionObserver === "function"
 
 function watchInboxRow(row) {
   if (inboxRowObserver) inboxRowObserver.observe(row);
+}
+
+// The action row's label follows the Inbox's own read state: a reply the Inbox holds unread shows Mark read. Only rows
+// whose id is already known are asked for, in chunks the route's limit allows. Labels can be stale if another device
+// changes the state while this chat is open, which is harmless: a tap repeats the current state (Mark unread on one
+// already held, or Mark read on one already read). A failed read leaves every flag as it was and says nothing.
+const INBOX_STATE_CHUNK = 200;
+async function refreshInboxMarks() {
+  const rows = chatRows().filter((row) => {
+    const meta = row.hermesMiniMsg;
+    return meta && meta.role === "assistant" && Number.isInteger(meta.rowId) && meta.rowId > 0;
+  });
+  const ids = [...new Set(rows.map((row) => row.hermesMiniMsg.rowId))];
+  if (!ids.length) return;
+  for (let start = 0; start < ids.length; start += INBOX_STATE_CHUNK) {
+    const chunk = ids.slice(start, start + INBOX_STATE_CHUNK);
+    const asked = new Set(chunk);
+    let states;
+    try {
+      states = await inbox.readState(chunk);
+    } catch {
+      return;
+    }
+    for (const row of rows) {
+      const rowId = row.hermesMiniMsg.rowId;
+      if (!asked.has(rowId)) continue;
+      const state = states[String(rowId)];
+      row.hermesMiniMsg.markedUnread = Boolean(state && state.marked_unread);
+    }
+    syncActionAvailability();
+  }
 }
 
 // The to-do panel: its own data, kept by the plugin (todo.js owns the dialog and the history

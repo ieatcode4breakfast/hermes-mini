@@ -488,6 +488,7 @@ INBOX_PAGE = 50
 INBOX_MAX_TEXT = 400
 INBOX_MAX_READ_IDS = 50000
 INBOX_MAX_POST_IDS = 1000
+INBOX_MAX_STATE_IDS = 200
 _INBOX_LOCK = threading.Lock()
 
 # app.js chatEntries() constants, ported verbatim (each used by the rule it belongs to below).
@@ -831,6 +832,18 @@ def _is_held(row: sqlite3.Row, unread: set[int], held: set[tuple[str, str]]) -> 
     return bool(uid) and (str(row["session_id"]), str(uid)) in held
 
 
+def _read_flags(row: sqlite3.Row, *, watermark: int, read: set[int], unread: set[int],
+                held: set[tuple[str, str]], copies: set[int]) -> tuple[bool, bool]:
+    """The feed's read rule for one row: (read, marked_unread).
+
+    Marked unread by hand wins; otherwise a row is read when it is at or under the Mark-all watermark, in the read
+    list, or a compaction copy of a message read under another id (_read_copies). `held` is _held_keys().
+    """
+    on_hold = _is_held(row, unread, held)
+    row_id = int(row["id"])
+    return not on_hold and (row_id <= watermark or row_id in read or row_id in copies), on_hold
+
+
 def _candidate_rows(conn: sqlite3.Connection, session_ids: list[str], *, before: tuple[float, int] | None = None,
                     id_gt: int | None = None, id_lt: int | None = None, limit: int = 200, by_id: bool = False,
                     asc: bool = False, only_ids: list[int] | None = None) -> list[sqlite3.Row]:
@@ -924,10 +937,10 @@ def _feed_page(conn: sqlite3.Connection, titles: dict[str, str], before: tuple[f
             item = _inbox_item(row, titles)
             cursor = (float(row["timestamp"] or 0), int(row["id"]))
             if item is not None:
-                item_id = item["id"]
-                on_hold = _is_held(row, unread, held)  # marked unread by hand: held until marked read by hand
-                item["read"] = not on_hold and (item_id <= watermark or item_id in read or item_id in copies)
-                item["marked_unread"] = on_hold
+                # Marked unread by hand is held until marked read by hand; otherwise the watermark, the read list or a
+                # read compaction copy makes it read. _read_flags is the one place that rule lives (the state route too).
+                item["read"], item["marked_unread"] = _read_flags(
+                    row, watermark=watermark, read=read, unread=unread, held=held, copies=copies)
             if item is not None and not (unread_only and item["read"]):
                 items.append(item)
                 if len(items) >= limit:
@@ -1024,7 +1037,7 @@ def _unread_count(conn: sqlite3.Connection, titles: dict[str, str], state: dict[
         copies = _read_copies(conn, rows, watermark, read, unread)
         for row in rows:
             cursor = int(row["id"])
-            if not _is_held(row, unread, held) and (cursor in read or cursor in copies):
+            if _read_flags(row, watermark=watermark, read=read, unread=unread, held=held, copies=copies)[0]:
                 continue
             if _inbox_item(row, titles) is None:
                 continue
@@ -1062,6 +1075,52 @@ async def get_inbox(before: str | None = None, limit: int = INBOX_PAGE, unread: 
         log.warning("inbox read failed: %s", exc)
         return JSONResponse({"detail": "inbox unavailable"}, status_code=503)
     return JSONResponse({"items": items, "next": next_cursor})
+
+
+@router.get("/inbox/state")
+async def get_inbox_state(ids: str = ""):
+    """The read state of specific messages, by row id: {"states": {"<id>": {"read": ..., "marked_unread": ...}}}.
+
+    The chat's own action row asks this so a reply held unread shows Mark read instead of Mark unread. The flags come
+    from the feed's own rule (_read_flags), so the button and the Inbox can never disagree. Ids that are not an Inbox
+    message (deleted, another chat, not a drawn bubble) are simply omitted.
+    """
+    wanted: list[int] = []
+    for part in ids.split(",") if ids else []:
+        part = part.strip()
+        if not (part.isascii() and part.isdigit()) or int(part) <= 0:
+            return JSONResponse({"detail": "ids must be comma-separated whole message ids"}, status_code=400)
+        wanted.append(int(part))
+    if not wanted:
+        return JSONResponse({"detail": "ids must be comma-separated whole message ids"}, status_code=400)
+    if len(wanted) > INBOX_MAX_STATE_IDS:
+        return JSONResponse({"detail": f"ids must be at most {INBOX_MAX_STATE_IDS} message ids"}, status_code=400)
+    wanted = sorted(set(wanted))
+    try:
+        with _INBOX_LOCK:
+            state = _read_inbox_state()
+        watermark = int(state.get("watermark") or 0)
+        read_ids = set(state.get("read") or [])
+        unread = set(state.get("unread") or [])
+        conn = _inbox_conn()
+        try:
+            titles = _scope_titles(conn)
+            held = _held_keys(conn, unread)
+            rows = _candidate_rows(conn, list(titles), only_ids=wanted, limit=len(wanted), by_id=True)
+            copies = _read_copies(conn, rows, watermark, read_ids, unread)
+            states: dict[str, dict[str, bool]] = {}
+            for row in rows:
+                if _inbox_item(row, titles) is None:
+                    continue
+                read, marked_unread = _read_flags(
+                    row, watermark=watermark, read=read_ids, unread=unread, held=held, copies=copies)
+                states[str(int(row["id"]))] = {"read": read, "marked_unread": marked_unread}
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        log.warning("inbox state read failed: %s", exc)
+        return JSONResponse({"detail": "inbox unavailable"}, status_code=503)
+    return JSONResponse({"states": states})
 
 
 @router.get("/merged-jobs")

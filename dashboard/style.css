@@ -1569,7 +1569,14 @@ body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, va
 @keyframes sched-pulse { 50% { opacity: 0.35; } }
 .sched-row.paused .sched-name { color: var(--muted); }
 .sched-failed { margin-top: 2px; font-size: 13px; color: var(--danger); }
-.sched-empty { margin: 24px 0; text-align: center; color: var(--muted); font-size: 14px; }
+/* "Nothing scheduled" (and "Loading…") sits in the middle of the card: on a phone the panel is full height, and the
+   empty list would otherwise take that height and push the message to the bottom. */
+.sched-list:empty { flex: 0 0 auto; }
+.sched-empty {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+  margin: 24px 0; text-align: center; color: var(--muted); font-size: 14px;
+}
+.sched-empty[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .sched-row.running .sched-status::before { animation: none; } }
 
 /* Appearance switch at the bottom of the chats panel: System / Light / Dark as one small segmented pill. */

@@ -422,7 +422,8 @@ class SkillNarrationTest(unittest.TestCase):
 
 
 class MessageUnreadActionTest(unittest.TestCase):
-    """A reply can be marked unread again from the chat; a user message cannot, and one press sends one request."""
+    """A reply can be marked unread again from the chat, and the same button marks it read once it is held unread; a
+    user message cannot, and one press sends one request."""
 
     def setUp(self):
         self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
@@ -432,7 +433,7 @@ class MessageUnreadActionTest(unittest.TestCase):
         return self.app[self.app.index("function addMessageActions("):self.app.index("// Edit is offered for a typed user message")]
 
     def _handler(self):
-        body = self.app[self.app.index("async function markReplyUnread("):]
+        body = self.app[self.app.index("async function toggleReplyUnread("):]
         return body[:body.index("\n}\n")]
 
     def test_reply_bar_offers_mark_unread_after_branch(self):
@@ -445,9 +446,27 @@ class MessageUnreadActionTest(unittest.TestCase):
         user = bar[bar.index('if (meta.role === "user") {'):bar.index("} else {")]
         self.assertNotIn("unread", user)
 
+    def test_the_open_envelope_icon_is_defined(self):
+        self.assertIn("const ICON_UNREAD = `<svg ${ICON_ATTRS}>", self.app)
+        start = self.app.index("const ICON_READ = `<svg ${ICON_ATTRS}>")
+        icon = self.app[start:self.app.index("\n", start)]
+        self.assertIn("m22 10-8.97 5.7", icon)  # the open flap, not the sealed unread card
+        self.assertNotEqual(icon, self.app[self.app.index("const ICON_UNREAD = `<svg"):][:len(icon)])
+
+    def test_both_labels_follow_the_marked_unread_flag(self):
+        sync = self.app[self.app.index("function syncUnreadButton("):self.app.index("// Edit is offered for a typed user message")]
+        self.assertIn('const label = marked ? "Mark read" : "Mark unread";', sync)
+        self.assertIn("button.innerHTML = marked ? ICON_READ : ICON_UNREAD;", sync)
+        self.assertIn("syncUnreadButton(button, meta);", self.app[self.app.index("function syncActionAvailability("):])
+        # The record carries the flag, so every row starts as not held.
+        record = self.app[self.app.index("function messageRecord("):self.app.index("// \"3:16 PM\" today")]
+        self.assertIn("markedUnread: false", record)
+
     def test_long_press_menu_offers_mark_unread(self):
         menu = self.app[self.app.index("function openMsgMenu("):self.app.index("// Places the card near the press point")]
         self.assertIn('msgMenuItem("Mark unread", ICON_UNREAD', menu)
+        self.assertIn('msgMenuItem("Mark read", ICON_READ', menu)
+        self.assertIn("meta.markedUnread", menu)
 
     def test_inbox_posts_a_manual_unread_and_refreshes(self):
         body = self.inbox[self.inbox.index("async function markUnread("):]
@@ -455,7 +474,26 @@ class MessageUnreadActionTest(unittest.TestCase):
         self.assertIn("${INBOX_API}/unread", body)
         self.assertIn("manual: true", body)
         self.assertIn("if (open) void loadHead();", body)
-        self.assertIn("markUnread,", self.inbox[self.inbox.rindex("  return {"):])
+        exports = self.inbox[self.inbox.rindex("  return {"):]
+        self.assertIn("markUnread,", exports)
+        self.assertIn("markReadByHand,", exports)
+        self.assertIn("readState,", exports)
+
+    def test_mark_read_by_hand_posts_manual_and_refreshes(self):
+        body = self.inbox[self.inbox.index("async function markReadByHand("):]
+        body = body[:body.index("\n  }")]
+        self.assertIn("${INBOX_API}/read", body)
+        self.assertIn("manual: true", body)
+        self.assertIn("ids: [messageId]", body)
+        self.assertIn("if (open) void loadHead();", body)
+        self.assertIn("void refreshBadge();", body)
+        self.assertNotIn("catch", body)  # a failure is the caller's to report
+
+    def test_read_state_asks_the_state_route(self):
+        body = self.inbox[self.inbox.index("async function readState("):]
+        body = body[:body.index("\n  }")]
+        self.assertIn("${INBOX_API}/state?ids=${ids.join(\",\")}", body)
+        self.assertIn("data.states", body)
 
     def test_one_press_sends_one_request(self):
         body = self._handler()
@@ -468,8 +506,46 @@ class MessageUnreadActionTest(unittest.TestCase):
         self.assertIn("const rowId = await resolveRowId(row);", body)
         self.assertIn('if (!rowId) throw new Error(', body)
 
+    def test_the_press_marks_read_or_unread_from_the_flag(self):
+        body = self._handler()
+        self.assertIn("const markingRead = Boolean(meta.markedUnread);", body)
+        self.assertIn("await inbox.markReadByHand(rowId);", body)
+        self.assertIn('showToast("Marked read");', body)
+        self.assertIn("await inbox.markUnread(rowId);", body)
+        self.assertIn('showToast("Marked unread");', body)
+        self.assertIn("meta.markedUnread = !markingRead;", body)
+
     def test_failure_is_reported(self):
-        self.assertIn('showToast("Could not mark unread", "error")', self._handler())
+        body = self._handler()
+        self.assertIn('showToast(`Could not mark ${markingRead ? "read" : "unread"}`, "error")', body)
+
+    def test_the_history_load_refreshes_the_marks(self):
+        load = self.app[self.app.index("async function loadHistory("):self.app.index("// Loads the next older page")]
+        self.assertIn("void refreshInboxMarks();", load)
+        marks = self.app[self.app.index("async function refreshInboxMarks("):]
+        self.assertIn("inbox.readState(", marks)
+        self.assertIn(".markedUnread = Boolean(state && state.marked_unread)", marks)
+        self.assertIn("syncActionAvailability();", marks)
+        self.assertIn("INBOX_STATE_CHUNK = 200", self.app)
+        self.assertIn("catch {\n      return;", marks)  # a failed read leaves every flag as it was, silently
+
+
+class LoginReturnTest(unittest.TestCase):
+    """A 401 sends the person to Hermes' login with the app's own page as the return address."""
+
+    def test_login_redirect_always_carries_next(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        start = app.index("if (res.status === 401)")
+        block = app[start:app.index("throw new AuthRedirect", start)]
+        self.assertIn("new URL(body.login_url || `${PREFIX}/login`, location.origin)", block)
+        self.assertIn('if (!login.searchParams.get("next")) login.searchParams.set("next", location.pathname + location.search);', block)
+        self.assertIn("location.assign(login.pathname + login.search)", block)
+        self.assertNotIn("location.assign(body.login_url ||", app)
+
+    def test_empty_schedules_message_is_centred(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".sched-list:empty { flex: 0 0 auto; }", css)
+        self.assertIn(".sched-empty[hidden] { display: none; }", css)
 
 
 if __name__ == "__main__":

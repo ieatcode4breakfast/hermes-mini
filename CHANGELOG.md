@@ -27,6 +27,9 @@ All notable changes to this project are documented here. The format follows
   Computer and To-do buttons up into it and slides them back out, staggered; it is tinted and its icon
   turns while they are out. Folded by default, remembered per device; folded, it carries the open to-do
   count.
+- The quiet line that says what the agent is doing now names skill work: "Reading a skill…" when
+  it opens one, "Looking through your skills…" when it lists them, and "Updating skills…" when it
+  changes one.
 - Inbox messages can be marked read or unread without opening them. On a phone, swipe a message
   right: the strip it uncovers says "Mark read" (red) or "Mark unread" (blue), fades to the full
   colour once letting go would act, and the phone gives a short buzz. With a mouse, hovering a message shows an
@@ -35,6 +38,10 @@ All notable changes to this project are documented here. The format follows
   `inbox-read.json`. A message marked unread by hand stays unread until it is marked read by hand:
   tapping it in the Inbox, the envelope button, or "Mark all as read". Seeing it in the chat does not
   clear it.
+- Mark unread on a reply, from its action row in the chat or its long-press menu. The reply comes
+  back unread in the Inbox, and the button then reads Mark read, which clears the mark again. The
+  chat asks a new `GET /inbox/state` route for those few messages, so the button always says what
+  the Inbox shows. Needs a dashboard restart.
 - Model and provider picker. A tab on the input box's top edge shows the chat's model and
   reasoning level; it opens a sheet listing Hermes's connected providers and their models (search,
   prices where Hermes has them), a five-bar reasoning level meter (tap or drag; none lit is Off) and
@@ -121,6 +128,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Signing in from the app comes back to the app. Hermes' login link for a data request carries no
+  return address, so after the login page Hermes landed on its own dashboard; the app now adds its own
+  page as the return address whenever the link lacks one.
+- On a phone, "Nothing scheduled" (and "Loading…") sits in the middle of the Schedules panel instead
+  of at the bottom.
 - Dictation started while the app is still opening is no longer cut off when the chat history loads.
   Startup is also quicker: the sign-in check, the connection and the agent's name now load at the same
   time instead of one after another.

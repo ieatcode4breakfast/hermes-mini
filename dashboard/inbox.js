@@ -435,6 +435,13 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     void refreshBadge();
   }
 
+  // The read state of specific messages, keyed by row id: {"<id>": {read, marked_unread}}. The chat's action row uses
+  // marked_unread to show Mark read instead of Mark unread. Throws on failure, so a caller can leave its flags as they are.
+  async function readState(ids) {
+    const data = await api(`${INBOX_API}/state?ids=${ids.join(",")}`);
+    return (data && data.states) || {};
+  }
+
   // ---------- actions ----------
 
   async function markRead(ids) {
@@ -447,6 +454,18 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     } catch {
       /* the row still reads as read here; the next view retries */
     }
+  }
+
+  // Mark one message read by hand from a chat (the action row's Mark read, once a reply is held unread). Unlike
+  // markRead above, a failure is the caller's to report: the button's label must not flip on a request that did not land.
+  async function markReadByHand(messageId) {
+    await api(`${INBOX_API}/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [messageId], manual: true }),
+    });
+    if (open) void loadHead();
+    void refreshBadge();
   }
 
   // The swipe and the hover toggle: flip one message without opening it. On the Unread tab a row marked read
@@ -719,6 +738,8 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     refresh: refreshBadge,
     refreshBadge,
     markUnread,
+    markReadByHand,
+    readState,
     messageComplete,
     isOpen: () => open,
   };

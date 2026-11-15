@@ -95,7 +95,9 @@ by the plugin's folder name. Hermes' dashboard authentication (its normal sessio
 OAuth/reverse-proxy gate you have configured) protects the page and every `/api/plugins/hermes-mini/`
 route. Bookmark it, or use your browser's "Install app" / "Add to Home Screen".
 
-You do not need to open the default dashboard page first.
+You do not need to open the default dashboard page first. If the dashboard was already running when you enabled the plugin,
+restart it (and the gateway, which loads the plugin's hooks) so it picks the plugin up. When the page asks
+you to sign in, Hermes' login page brings you back to the app afterwards.
 
 ## First run
 
@@ -131,8 +133,10 @@ there is no reply to show.
   order), delete, reset of the main chat, and a read-only view of a chat that belongs to another
   source.
 - **Inbox**: every agent message across the app's chats, newest first, with unread tracking. A swipe
-  on a phone or an envelope button on hover marks a message read or unread without opening it. The
-  main chat's messages carry the same home icon as the chat list.
+  on a phone or an envelope button on hover marks a message read or unread without opening it; a
+  reply's action row in the chat (and its long-press menu) offers Mark unread, which becomes Mark
+  read while the reply is held unread. The main chat's messages carry the same home icon as the chat
+  list.
 - **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
 - **Schedules**: the agent's scheduled jobs (Hermes cron), each with what it is, when it runs in plain
   words and when it runs next; a job running now says so. Each row's ⋮ menu pauses, resumes or deletes
