@@ -355,5 +355,19 @@ class NarrationShimmerTest(unittest.TestCase):
         self.assertIn("-webkit-text-fill-color: currentColor;", reduced)
 
 
+class WebImageFallbackTest(unittest.TestCase):
+    """A web picture that fails to load is swapped for its alt text, styled like a missing local picture."""
+
+    def test_failed_https_picture_becomes_its_alt_text(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        body = app[app.index("function webImageFallback(bubble)"):app.index("function attachMedia(")]
+        self.assertIn('querySelectorAll("img.md-img")', body)
+        self.assertIn("/^https:/i", body)
+        self.assertIn('el("span", "md-media-slot")', body)
+        self.assertIn('addEventListener("error", fallback, { once: true })', body)
+        attach = app[app.index("function attachMedia("):]
+        self.assertLess(attach.index("webImageFallback(bubble)"), attach.index("inlineMediaTags(bubble)"))
+
+
 if __name__ == "__main__":
     unittest.main()

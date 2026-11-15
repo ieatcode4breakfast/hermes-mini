@@ -152,7 +152,8 @@ there is no reply to show.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
   agent sends with `MEDIA:` show inline; audio plays inline in a voice-note player (play/pause, a
   waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools
-  directory); other files arrive as cards that download only when tapped.
+  directory); other files arrive as cards that download only when tapped. A picture that cannot be
+  loaded (a missing file, a dead web link) shows its alt text instead.
 - **Picture viewer**: full screen, with a back button and a download button; swipe, the arrows or
   the arrow keys slide between a message's pictures; pinch or double-tap to zoom.
 - **Markdown**: GitHub-flavoured markdown with sanitised HTML and syntax highlighting.

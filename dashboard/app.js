@@ -3280,8 +3280,24 @@ function hydrateInlineMedia(bubble, slots) {
   }
 }
 
+// A web picture (https:) that fails to load becomes its alt text, styled like a local picture that could not be
+// fetched, so a dead link leaves no broken-image icon. Inline data: pictures never fail this way and are left alone.
+function webImageFallback(bubble) {
+  for (const img of bubble.querySelectorAll("img.md-img")) {
+    if (!/^https:/i.test(img.getAttribute("src") || "")) continue;
+    const fallback = () => {
+      if (!img.isConnected) return;
+      const alt = el("span", "md-media-slot");
+      alt.textContent = img.getAttribute("alt") || "image";
+      img.replaceWith(alt);
+    };
+    img.addEventListener("error", fallback, { once: true }); // attached in the same task as the render: no miss
+  }
+}
+
 function attachMedia(bubble, text) {
   // MEDIA: directives keep their place, like Markdown local pictures; bare paths still form the bottom grid.
+  webImageFallback(bubble);
   inlineMediaTags(bubble);
   const placed = [...bubble.querySelectorAll("[data-md-src]")];
   const inline = new Set(placed.map((node) => node.dataset.mdSrc));

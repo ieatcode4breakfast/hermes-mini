@@ -57,6 +57,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- A web picture (`https:`) that fails to load now shows its alt text in grey italics, like a local
+  picture that could not be fetched, instead of the browser's broken-image icon.
 - The computer viewer falls back to the name "Hermes", like the rest of the app, when no agent name is
   known (it said "Mini").
 - Push: the VAPID subject is the app's push contact or public URL, else Hermes' configured public

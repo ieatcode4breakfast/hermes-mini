@@ -6,7 +6,8 @@
 //  - the model's raw HTML is limited to a short tag allowlist, with no style, id, name, on* or other attributes
 //  - links: only http(s) and mailto keep an href (they open in a new tab); any other link becomes its text
 //  - images: https:, inline base64 raster data: URIs and local paths (/…, ~/…, file://…) render (as
-//    img.md-img; a local one waits in a placeholder for app.js to fill); anything else becomes its alt text
+//    img.md-img; a local one waits in a placeholder for app.js to fill; app.js swaps a web one that fails to load for its
+//    alt text); anything else becomes its alt text
 //  - tables are wrapped in div.table-wrap; a column whose body cells are all numeric, currency or percent is right-aligned
 //  - fenced code is pre > code.hljs.language-<name>; call enhance(container) after inserting the HTML to add the
 //    language label and the Copy button
