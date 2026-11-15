@@ -333,5 +333,27 @@ class StartupDictationAndModelChipTest(unittest.TestCase):
         self.assertIn("chip.hidden = !settled && !model && !info.pending;", model)
         self.assertIn(".model-tab[hidden], .model-tab-meta[hidden] { display: none; }", css)
 
+class NarrationShimmerTest(unittest.TestCase):
+    """The live narrator label sweeps a sliding highlight across crisp text in both light and dark modes."""
+
+    def test_narration_shimmer_animation_and_reduced_motion(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn("--narration-base: color-mix(in srgb, var(--fg) 75%, var(--muted));", css)
+        self.assertIn("--narration-shine: #ffffff;", css)
+        self.assertIn("--narration-base: color-mix(in srgb, var(--muted) 70%, transparent);", css)
+        self.assertIn("--narration-shine: color-mix(in srgb, var(--fg) 88%, var(--accent));", css)
+        self.assertIn("animation: narration-shimmer 1.8s infinite linear;", css)
+        self.assertIn("-webkit-background-clip: text;", css)
+        self.assertIn("background-clip: text;", css)
+        self.assertIn("-webkit-text-fill-color: transparent;", css)
+        self.assertIn("@keyframes narration-shimmer", css)
+        self.assertIn("0% { background-position: 100% 50%; }", css)
+        self.assertIn("100% { background-position: 0% 50%; }", css)
+        reduced = css[css.index("@media (prefers-reduced-motion: reduce)"):]
+        self.assertIn("animation: none;", reduced)
+        self.assertIn("background: none;", reduced)
+        self.assertIn("-webkit-text-fill-color: currentColor;", reduced)
+
+
 if __name__ == "__main__":
     unittest.main()

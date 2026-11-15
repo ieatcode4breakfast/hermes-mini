@@ -538,13 +538,50 @@ input, textarea, select { font-family: inherit; }
   40% { opacity: 1; transform: translateY(-3px) scale(1.06); }
 }
 .narration {
+  --narration-base: color-mix(in srgb, var(--fg) 75%, var(--muted));
+  --narration-shine: #ffffff;
   display: inline-block; margin-left: 8px; max-width: calc(100% - 44px);
   font-size: 13.5px; line-height: 1.4; color: var(--muted); vertical-align: middle;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: linear-gradient(
+    105deg,
+    var(--narration-base) 0%,
+    var(--narration-base) 38%,
+    var(--narration-shine) 50%,
+    var(--narration-base) 62%,
+    var(--narration-base) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: narration-shimmer 1.8s infinite linear;
   transition: opacity 0.1s linear;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .narration {
+    --narration-base: color-mix(in srgb, var(--muted) 70%, transparent);
+    --narration-shine: color-mix(in srgb, var(--fg) 88%, var(--accent));
+  }
+}
+:root[data-theme="dark"] .narration {
+  --narration-base: color-mix(in srgb, var(--muted) 70%, transparent);
+  --narration-shine: color-mix(in srgb, var(--fg) 88%, var(--accent));
+}
+@keyframes narration-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
 .narration.fading { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .narration { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .narration {
+    transition: none;
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
 /* Phones: let narration wrap onto as many lines as it needs instead of clipping it with an ellipsis. */
 @media (max-width: 600px) {
   /* The dots centre on the whole wrapped line, however many lines it takes. */
