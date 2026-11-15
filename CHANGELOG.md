@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A test that checks every piece of Hermes the plugin uses (imports, attributes read from Hermes modules,
+  declared hooks, `ctx` calls) still exists in the Hermes it runs against. The plugin's Hermes calls fail
+  soft, so without it a Hermes update that removed one would only show as a quietly missing feature.
+
 ## [0.2.0] — 2026-11-15
 
 ### Added
