@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Screenshots: a gallery in the README (phone and desktop, dark and light, sample data) with a short
+  demo clip, from `docs/media/`, which also holds a 1280x640 banner for the plugin catalog.
 - Inline audio player. An audio file a reply attaches with `MEDIA:` (mp3, m4a, aac, ogg, opus, wav, flac)
   shows as a voice-note pill: play/pause, a waveform you tap or drag to seek, the time, and download.
   The waveform and length come from a new `GET /audio-meta` route (decoded with ffmpeg, from PATH or

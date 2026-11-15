@@ -13,6 +13,36 @@ desktop.
   the serving profile's — with **Hermes** as the fallback when none is set.
 - **One plugin**: settings and state live outside the plugin, so updating the code never touches them.
 
+## Screenshots
+
+Screenshots use sample data.
+
+<p><img src="docs/media/demo.gif" alt="Sending a message and watching the agent narrate its work" width="300"></p>
+
+<p>
+<a href="docs/media/phone-01-chat.png"><img src="docs/media/phone-01-chat.png" alt="A chat with code and a table" width="180"></a>
+<a href="docs/media/phone-02-working.png"><img src="docs/media/phone-02-working.png" alt="The agent at work, with its narration line" width="180"></a>
+<a href="docs/media/phone-03-chats.png"><img src="docs/media/phone-03-chats.png" alt="The chats list" width="180"></a>
+<a href="docs/media/phone-04-inbox.png"><img src="docs/media/phone-04-inbox.png" alt="The inbox with scheduled-job results" width="180"></a>
+</p>
+<p>
+<a href="docs/media/phone-05-todo.png"><img src="docs/media/phone-05-todo.png" alt="To-dos, nested, with a Done section" width="180"></a>
+<a href="docs/media/phone-06-schedules.png"><img src="docs/media/phone-06-schedules.png" alt="Scheduled jobs" width="180"></a>
+<a href="docs/media/phone-07-models.png"><img src="docs/media/phone-07-models.png" alt="The model and provider picker" width="180"></a>
+<a href="docs/media/phone-08-menu.png"><img src="docs/media/phone-08-menu.png" alt="A message's long-press menu" width="180"></a>
+</p>
+<p>
+<a href="docs/media/phone-09-audio.png"><img src="docs/media/phone-09-audio.png" alt="The inline audio player" width="180"></a>
+<a href="docs/media/phone-10-light.png"><img src="docs/media/phone-10-light.png" alt="Light theme" width="180"></a>
+</p>
+
+<p>
+<a href="docs/media/desktop-01-computer.png"><img src="docs/media/desktop-01-computer.png" alt="On a computer: the chats list, the chat and the agent's computer side by side" width="800"></a>
+<a href="docs/media/desktop-02-chat.png"><img src="docs/media/desktop-02-chat.png" alt="On a computer: the chats list docked beside the chat" width="263"></a>
+<a href="docs/media/desktop-03-todo.png"><img src="docs/media/desktop-03-todo.png" alt="On a computer: a chat with the to-do panel open" width="263"></a>
+<a href="docs/media/desktop-04-light.png"><img src="docs/media/desktop-04-light.png" alt="On a computer: light theme" width="263"></a>
+</p>
+
 ## Automatic messages
 
 Mini suppresses routine gateway lifecycle notices and first-time command tips delivered through
