@@ -57,11 +57,12 @@
   --z-inbox: 66;                /* the Inbox card */
   --z-header-over-panel: 67;    /* the photo and name, above the open Inbox */
   --z-computer: 70;             /* the full-screen / docked computer */
-  --z-computer-chrome: 71;      /* the drawer scrim and the resize seam over the docked computer */
-  --z-viewer: 72;               /* the full-screen picture viewer */
-  --z-drawer-over-computer: 72; /* the chats drawer opened over the docked computer */
-  --z-panel-over-computer: 73;  /* To-do/Inbox cards opened while the computer is docked */
-  --z-header-over-computer: 74; /* ... with the photo and name still above them */
+  --z-header-beside-computer: 71; /* the header while the computer is docked: its round buttons sit over the pane */
+  --z-computer-chrome: 72;      /* the drawer scrim and the resize seam over the docked computer */
+  --z-viewer: 73;               /* the full-screen picture viewer */
+  --z-drawer-over-computer: 73; /* the chats drawer opened over the docked computer */
+  --z-panel-over-computer: 74;  /* To-do/Inbox cards opened while the computer is docked */
+  --z-header-over-computer: 75; /* ... with the photo and name still above them */
 }
 /* No Android tap flash on tapped elements; keyboard focus rings only (not after a tap). */
 * { -webkit-tap-highlight-color: transparent; }
@@ -1686,6 +1687,12 @@ body.docked.computer-docked .todo-scrim, body.docked.computer-docked .todo-dialo
    lifted. The Inbox's photo and name rise above it as they do undocked. */
 body.docked.computer-docked .inbox-dialog { z-index: var(--z-panel-over-computer); }
 body.docked.computer-docked.inbox-open .topbar { z-index: var(--z-header-over-computer); }
+/* With the computer docked, the right-hand round buttons (Tools and its tray) leave the chat column for the window's
+   top-right corner, over the computer pane's empty top edge, where they sit on a phone or an undocked window (the
+   person, 15 Nov 2026). Same top/right offsets, measured from the window instead of the chat column; the header rises
+   above the pane so they show. The chats-menu button stays on the left of the chat. */
+body.docked.computer-docked .topbar { z-index: var(--z-header-beside-computer); }
+body.docked.computer-docked .topbar > .fab:not(.fab-menu) { position: fixed; }
 
 /* Resizable seam between the chat and the docked computer. Invisible until hovered or dragged,
    then a thin grey line. --chat-w is the chat column's width (app.js, remembered per device). */

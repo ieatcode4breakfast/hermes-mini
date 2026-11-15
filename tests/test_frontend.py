@@ -775,7 +775,7 @@ class ZIndexLadderTest(unittest.TestCase):
     LADDER = (
         "--z-composer", "--z-header", "--z-composer-above", "--z-drawer-scrim", "--z-drawer",
         "--z-panel-scrim", "--z-panel", "--z-inbox-scrim", "--z-inbox", "--z-header-over-panel",
-        "--z-computer", "--z-computer-chrome", "--z-viewer", "--z-drawer-over-computer",
+        "--z-computer", "--z-header-beside-computer", "--z-computer-chrome", "--z-viewer", "--z-drawer-over-computer",
         "--z-panel-over-computer", "--z-header-over-computer",
     )
 
@@ -803,6 +803,15 @@ class ZIndexLadderTest(unittest.TestCase):
                     continue
                 offenders.append(f"{name}: z-index: {value}")
         self.assertEqual(offenders, [])
+
+    def test_docked_computer_keeps_the_round_buttons_at_the_window_edge(self):
+        self.assertIn("body.docked.computer-docked .topbar { z-index: var(--z-header-beside-computer); }", self.style)
+        self.assertIn("body.docked.computer-docked .topbar > .fab:not(.fab-menu) { position: fixed; }", self.style)
+        value = {n: int(v) for n, v in re.findall(r"(--z-[a-z-]+): (\d+);", self.style)}
+        # Above the computer pane, below everything that must cover the buttons when it opens.
+        self.assertGreater(value["--z-header-beside-computer"], value["--z-computer"])
+        for over in ("--z-computer-chrome", "--z-viewer", "--z-drawer-over-computer", "--z-panel-over-computer"):
+            self.assertLess(value["--z-header-beside-computer"], value[over], over)
 
     def test_every_layer_used_is_named(self):
         defined = set(re.findall(r"(--z-[a-z-]+)\s*:", self.style + self.screen))

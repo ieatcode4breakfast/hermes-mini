@@ -12,6 +12,11 @@ All notable changes to this project are documented here. The format follows
   declared hooks, `ctx` calls) still exists in the Hermes it runs against. The plugin's Hermes calls fail
   soft, so without it a Hermes update that removed one would only show as a quietly missing feature.
 
+### Changed
+
+- With the computer view open beside the chat, the round buttons on the right (Tools, Schedules, Computer, To-do)
+  sit in the window's top-right corner, over the computer pane, instead of between the chat and the computer.
+
 ## [0.2.0] — 2026-11-15
 
 ### Added
