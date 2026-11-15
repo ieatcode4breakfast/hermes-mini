@@ -31,10 +31,10 @@ class FakeSessionDB:
     def get_session(self, session_id):
         return self.rows.get(session_id)
 
-    def _read_one(self, sql, params=()):
-        if "FROM messages" in sql and self.latest is not None:
-            return self.latest
-        return None
+    def get_messages(self, session_id, include_inactive=False, include_compacted=False, limit=None, offset=0,
+                     latest=False, after_id=None, include_ancestors=False):
+        # Only the newest-message probe of the post-LLM hook reads messages here.
+        return [self.latest] if self.latest is not None else []
 
 
 def fake_hermes_state():
@@ -127,6 +127,17 @@ class NotificationTest(HookTestCase):
         calls = self.notified()
         self.hooks._post_llm_call(session_id="s1", assistant_response="NO_REPLY")
         self.assertEqual(calls, [])
+
+    def test_reply_hook_skips_when_the_stored_tail_is_a_tool_step(self):
+        # The newest persisted message (read through SessionDB.get_messages) is still a tool call.
+        self.add_session("s1", title="Hermes Mini")
+        calls = self.notified()
+        FakeSessionDB.latest = {"finish_reason": "tool_calls", "tool_calls": [{"id": "c1"}]}
+        self.hooks._post_llm_call(session_id="s1", assistant_response="Working on it")
+        self.assertEqual(calls, [])
+        FakeSessionDB.latest = {"finish_reason": "stop", "tool_calls": []}
+        self.hooks._post_llm_call(session_id="s1", assistant_response="Done.")
+        self.assertEqual(len(calls), 1)
 
     def test_reply_hook_notifies_for_a_real_reply(self):
         self.add_session("s1", title="Hermes Mini")

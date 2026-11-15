@@ -21,6 +21,7 @@
   --col: 820px; /* reading column on wide screens: header, log and composer are centred at this width */
   --line-strong: #c4c7d0;
   --zebra: rgba(20, 22, 30, 0.035);
+  --panel: #e6e7ec; /* the chats panel: a shade off the page, so it reads as its own column with no divider */
   --hl-kw: #7b3fe4;
   --hl-str: #0f7a4a;
   --hl-num: #b35400;
@@ -81,6 +82,7 @@
     --code-bg: #0c0d10;
     --line-strong: #3b3e48;
     --zebra: rgba(255, 255, 255, 0.035);
+    --panel: #17181c;
     --hl-kw: #b197fc;
     --hl-str: #8ce99a;
     --hl-num: #ffb36b;
@@ -117,6 +119,7 @@
   --code-bg: #0c0d10;
   --line-strong: #3b3e48;
   --zebra: rgba(255, 255, 255, 0.035);
+  --panel: #17181c;
   --hl-kw: #b197fc;
   --hl-str: #8ce99a;
   --hl-num: #ffb36b;
@@ -997,7 +1000,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .scrim.open { opacity: 1; visibility: visible; transition: opacity 260ms ease-out, visibility 0s; }
 .drawer {
   position: fixed; top: 0; bottom: 0; left: 0; z-index: var(--z-drawer); width: min(86vw, 340px);
-  display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
+  display: flex; flex-direction: column; background: var(--panel); color: var(--fg);
   padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left);
   box-shadow: 10px 0 36px rgba(0, 0, 0, 0.28);
   transform: translateX(-102%); visibility: hidden; outline: none;
@@ -1039,7 +1042,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .group-head {
   position: sticky; top: 0; z-index: 1; margin: 0; padding: 14px 12px 6px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  background: color-mix(in srgb, var(--panel) 88%, transparent); /* the panel's own shade, not the page's */
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   font-size: 12px; font-weight: 650; letter-spacing: 0.01em; color: var(--muted);
 }
@@ -1992,6 +1995,13 @@ body:not(.tools-open) .fab.fab-tray {
   transition: transform 160ms var(--ease-spring), background-color 160ms ease, box-shadow 180ms ease,
     translate 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms),
     opacity 200ms ease-in calc((3 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
+}
+/* On a computer with the computer view open, the Computer button stays out while the tray is folded: it sits in the
+   first slot under Tools (one slot up from its own), so the open view always has its button (the person, 15 Nov 2026). */
+body.computer-docked:not(.tools-open) #screenBtn {
+  translate: 0 -56px; scale: 1; opacity: 1; visibility: visible; pointer-events: auto;
+  transition: transform 160ms var(--ease-spring), background-color 160ms ease, box-shadow 180ms ease,
+    translate 300ms var(--ease-out), scale 300ms var(--ease-out), opacity 200ms ease, visibility 0s;
 }
 /* Tools looks pressed while its tray is out, the way Computer does while the computer is open. */
 body.tools-open #toolsBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }

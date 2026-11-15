@@ -63,6 +63,8 @@ LEGACY_HOME_TITLES: tuple[str, ...] = ()
 DISPLAY_KIND = "job_delivery"
 PREFIX = "[Scheduled job result]"
 MAX_LEN = 60000
+# How many of the most recent chats a case-insensitive title lookup reads (bridge._resolve_session_id).
+TITLE_SCAN_LIMIT = 1000
 # Gateway lifecycle notices: "⚠️ Hermes is shutting down — ...", "♻ Restarting gateway. ...". Matched at
 # the start only, so a real reply that mentions a restart still gets through.
 _LIFECYCLE_NOTICE = re.compile(r"^\W{0,4}(?:Hermes is (?:shutting down|restarting)\b|Restarting gateway\b)")
@@ -161,11 +163,13 @@ def _resolve_session_id(db, target: str) -> tuple[Optional[str], str]:
         # A spelling difference should not move a result to the wrong chat: accept a
         # case-insensitive title only when it names one live chat. Two case variants are ambiguous
         # and fall back instead of guessing.
-        rows = db._read_all(
-            "SELECT id FROM sessions WHERE lower(title) = lower(?) "
-            "AND COALESCE(archived, 0) = 0 LIMIT 2",
-            (name,),
-        )
+        # SessionDB's public session list, most recent first (catalog rule 9: no private db calls). A title
+        # older than the newest TITLE_SCAN_LIMIT chats is not matched this way and falls back like any miss.
+        needle = name.lower()
+        rows = [
+            row for row in db.search_sessions(limit=TITLE_SCAN_LIMIT)
+            if (row.get("title") or "").lower() == needle and not row.get("archived")
+        ][:2]
         if len(rows) == 1:
             return str(rows[0]["id"]), "title"
         log.warning("bridge: target %r is unavailable — falling back to the main chat", name)

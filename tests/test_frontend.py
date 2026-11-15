@@ -586,6 +586,28 @@ class SocketAuthOrderTest(unittest.TestCase):
         self.assertLess(fn.index("const token = await sessionToken();"), fn.index("if (window.__HERMES_AUTH_REQUIRED__)"))
 
 
+class ChatsPanelShadeTest(unittest.TestCase):
+    def test_panel_has_its_own_shade_in_both_themes_and_no_divider(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertEqual(css.count("--panel: "), 3)  # light, dark (system), dark (forced)
+        drawer = css[css.index("\n.drawer {"):]
+        self.assertIn("background: var(--panel);", drawer[:300])
+        docked = css[css.index("body.docked .drawer {"):]
+        self.assertIn("border-right: 0;", docked[:300])
+        head = css[css.index(".group-head {"):]
+        self.assertIn("var(--panel)", head[:200])  # the sticky day header matches the panel
+
+
+class ComputerButtonStaysOutTest(unittest.TestCase):
+    def test_docked_computer_keeps_its_button_when_tools_fold(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        rule = css[css.index("body.computer-docked:not(.tools-open) #screenBtn {"):]
+        self.assertIn("visibility: visible; pointer-events: auto;", rule[:200])
+        # it must come after the fold rule, so it wins at equal specificity or more
+        self.assertGreater(css.index("body.computer-docked:not(.tools-open) #screenBtn {"),
+                           css.index("body:not(.tools-open) .fab.fab-tray {"))
+
+
 class AttachMenuOverHeaderTest(unittest.TestCase):
     def test_the_menu_is_in_the_top_layer_not_lifted_by_z_index(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")

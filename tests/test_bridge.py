@@ -25,15 +25,10 @@ class FakeSessionDB:
     def get_session_by_title(self, title):
         return next((row for row in self.rows if row.get("title") == title), None)
 
-    def _read_all(self, sql, params=()):
-        # The resolver's only read-all is the case-insensitive live-title probe (LIMIT 2).
-        needle = str(params[0]).lower()
-        found = [
-            row
-            for row in self.rows
-            if (row.get("title") or "").lower() == needle and not row.get("archived")
-        ]
-        return found[:2]
+    def search_sessions(self, source=None, limit=20, offset=0, **kwargs):
+        # The public session list the case-insensitive title probe scans (most recent first).
+        self.scan_limit = limit
+        return list(self.rows)[offset:offset + limit]
 
 
 ROWS = [
@@ -89,6 +84,12 @@ class ResolveSessionTest(RegistryTestCase):
         self.assertEqual(
             self.bridge._resolve_session_id(self.db(), "reminders"), ("rem-row", "title"),
         )
+
+    def test_case_insensitive_probe_uses_the_public_list(self):
+        db = self.db()
+        self.bridge._resolve_session_id(db, "reminders")
+        self.assertEqual(db.scan_limit, self.bridge.TITLE_SCAN_LIMIT)
+        self.assertNotIn("_read", self.bridge._resolve_session_id.__code__.co_names)
 
     def test_case_insensitive_pair_is_ambiguous_and_falls_back(self):
         db = FakeSessionDB([

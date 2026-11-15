@@ -64,6 +64,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Two reads of Hermes' session store now go through SessionDB's public methods (`get_messages`,
+  `search_sessions`) instead of its private query helpers, as the plugin catalog asks. A scheduled job
+  delivered to a chat by a differently-cased title now matches among the 1,000 most recent chats.
+- On a computer, while the computer view is open, its button stays visible under Tools even with the tray folded.
+- The chats panel has its own background shade (a touch darker than the page in light theme, a touch
+  lighter in dark), so it reads as a separate column on a computer without a divider line.
 - Menus, popup windows and toasts are now drawn in the browser's top layer (the Popover API, `popover="manual"`),
   so no z-index or parent stacking context can ever put one behind another element. This fixes the "+" attach
   menu being drawn behind the agent's picture in a new chat, and the same class of bug in the chat row menu,

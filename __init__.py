@@ -396,14 +396,13 @@ def _post_llm_call(*args: Any, **kwargs: Any) -> None:
             from hermes_state import SessionDB
 
             db = SessionDB()
-            row = db._read_one(
-                "SELECT finish_reason, tool_calls FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1",
-                (session,),
-            )
+            # SessionDB's public reader: the newest active message only (catalog rule 9: no private db calls).
+            latest = db.get_messages(session, limit=1, latest=True)
+            row = latest[-1] if latest else None
             if row is not None:
-                if str(row["finish_reason"] or "") == "tool_calls":
+                if str(row.get("finish_reason") or "") == "tool_calls":
                     return None
-                tc = row["tool_calls"]
+                tc = row.get("tool_calls")
                 if tc and str(tc) not in ("", "[]"):
                     return None
         except Exception:
