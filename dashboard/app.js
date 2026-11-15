@@ -3775,7 +3775,7 @@ const NARRATION_TOOL_LABELS = [
   ["patch", "Updating a file…"],
   ["skill_view", "Reading a skill…"],
   ["skills_list", "Looking through your skills…"],
-  ["skill_manage", "Updating a skill…"],
+  ["skill_manage", "Updating skills…"],
   ["search_files", "Looking through your files…"],
   ["hindsight_recall", "Remembering what we talked about…"],
   ["hindsight_retain", "Remembering what we talked about…"],

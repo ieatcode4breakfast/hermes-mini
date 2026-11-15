@@ -403,8 +403,8 @@ class SkillNarrationTest(unittest.TestCase):
                 return label
         return ""
 
-    def test_skill_manage_says_it_is_updating_a_skill(self):
-        self.assertEqual(self._label("skill_manage"), "Updating a skill\u2026")
+    def test_skill_manage_says_it_is_updating_skills(self):
+        self.assertEqual(self._label("skill_manage"), "Updating skills\u2026")
 
     def test_reading_and_listing_do_not_claim_an_update(self):
         for name in ("skill_view", "skills_list"):
