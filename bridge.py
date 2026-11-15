@@ -106,7 +106,7 @@ def _plain(text: str) -> str:
     """Markdown symbols stripped and whitespace collapsed, for the notification body."""
     value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", text)
     value = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", value)
-    value = re.sub(r"[*_`>#~|]+", "", value)
+    value = mini_core.plain_markdown(value)  # only marks that format; `column_total` keeps its underscore
     return " ".join(value.split())
 
 

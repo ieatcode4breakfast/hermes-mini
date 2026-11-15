@@ -163,6 +163,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Inbox previews and notification text keep the characters markdown did not use for formatting:
+  `column_total` no longer reads `columntotal`, and `2*3`, `~/notes`, `a > b`, `#42` and `a|b` come through
+  as written. Bold, italics, strikethrough, code marks, headings, quotes, rules and table pipes are still
+  removed. Needs a dashboard restart (Inbox) and a gateway restart (notifications).
 - The computer view's background follows a theme change while it is open, instead of keeping the colour of
   the theme it opened in.
 - The "+" attach menu opens over the agent's picture in a new chat instead of behind it.

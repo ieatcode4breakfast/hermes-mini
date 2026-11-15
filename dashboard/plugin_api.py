@@ -608,8 +608,7 @@ def _plain_text(text: str) -> str:
     value = IMAGE_MD_RE.sub(" Photo ", str(text or ""))
     value = MEDIA_PATH_RE.sub(" Photo ", value)
     value = LINK_MD_RE.sub(r"\1", value)
-    value = re.sub(r"```[^\n]*", "", value)  # fences, keeping their contents
-    value = re.sub(r"[*_`>#~|]+", "", value)  # bridge.py _plain's set, and the app's markdown marks
+    value = core.plain_markdown(value)  # only marks that format; `column_total` keeps its underscore
     value = re.sub(r"(?m)^\s{0,3}(?:[-+*]|\d+\.)\s+", "", value)  # list bullets
     value = re.sub(r"\s+", " ", value).strip()
     return value[:INBOX_MAX_TEXT]

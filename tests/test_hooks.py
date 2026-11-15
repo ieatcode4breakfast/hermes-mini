@@ -148,6 +148,13 @@ class NotificationTest(HookTestCase):
         self.assertEqual(args[0], "reply")
         self.assertEqual(kwargs["match"], "Here is the answer.")
 
+    def test_reply_body_keeps_underscores(self):
+        self.add_session("s1", title="Hermes Mini")
+        calls = self.notified()
+        self.hooks._post_llm_call(session_id="s1", assistant_response="**Updated** `column_total` in sales_q3")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0][2], "Updated column_total in sales_q3")
+
     def test_approval_hook_skips_coalesced_requests(self):
         calls = self.notified()
         self.hooks._pre_approval_request(session_id="s1", command="rm -rf /", coalesced=True)

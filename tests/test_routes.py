@@ -117,6 +117,22 @@ class InboxJobWrapperTest(RouteTestCase):
         self.assertNotIn("Cronjob Response", item["text"])
         self.assertEqual(item["text"], "Jump reminder — time to jump!")
 
+    def test_a_preview_keeps_underscores_and_drops_formatting(self):
+        conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE m (id INTEGER, role TEXT, display_kind TEXT, content TEXT, session_id TEXT, "
+            "timestamp REAL, display_metadata TEXT, finish_reason TEXT, tool_calls TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO m VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, "assistant", "", "## Totals\n**Done:** `column_total` and snake_case_name, 2*3=6", "s", 1.0,
+             None, "stop", None),
+        )
+        item = self.api._inbox_item(conn.execute("SELECT * FROM m").fetchone(), {})
+        self.assertEqual(item["text"], "Totals Done: column_total and snake_case_name, 2*3=6")
+
 
 class InboxDbCase(RouteTestCase):
     """A small state.db with one app chat; helpers for the Inbox routes. Holds no tests itself."""

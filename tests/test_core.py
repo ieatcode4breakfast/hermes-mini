@@ -195,5 +195,32 @@ class CronWrapperTest(DisposableHome):
             self.assertEqual(self.core.strip_cron_wrapper(text), text)
 
 
+class PlainMarkdownTest(DisposableHome):
+    def plain(self, text):
+        return self.core.plain_markdown(text)
+
+    def test_marks_inside_text_survive(self):
+        for text in ("column_total", "snake_case_name", "foo_bar_ and _baz", "2*3*4", "5 * 3", "/tmp/*.log *.txt",
+                     "~/notes", "a > b", "#42 and C#", "a|b", "x ~ y"):
+            with self.subTest(text=text):
+                self.assertEqual(self.plain(text), text)
+
+    def test_emphasis_is_removed(self):
+        self.assertEqual(self.plain("**bold** __b__ *it* _it_ ~~del~~"), "bold b it it del")
+        self.assertEqual(self.plain("***x*** and **a _b_ c**"), "x and a b c")
+
+    def test_code_is_kept_verbatim(self):
+        self.assertEqual(self.plain("`code_x` and `a*b*c`"), "code_x and a*b*c")
+        self.assertEqual(self.plain("```py\nx_y = 1\n```").strip(), "x_y = 1")
+        self.assertEqual(self.plain("\\_x\\_"), "_x_")
+
+    def test_line_marks_are_removed_only_at_line_start(self):
+        self.assertEqual(self.plain("# Head\n> quote\n> > deep\nmid > line"), "Head\nquote\ndeep\nmid > line")
+        self.assertEqual(self.plain("above\n---\nbelow"), "above\n\nbelow")
+
+    def test_tables_lose_their_pipes(self):
+        self.assertEqual(" ".join(self.plain("| a_b | c |\n|---|:---:|\n| 1 | 2 |").split()), "a_b c 1 2")
+
+
 if __name__ == "__main__":
     unittest.main()

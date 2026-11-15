@@ -102,7 +102,7 @@ def _plain(text: Any) -> str:
     value = "" if text is None else str(text)
     value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", value)  # images -> alt text
     value = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", value)  # links -> label
-    value = re.sub(r"[*_`>#~|]+", "", value)
+    value = mini_core.plain_markdown(value)  # only marks that format; `column_total` keeps its underscore
     return " ".join(value.split())
 
 

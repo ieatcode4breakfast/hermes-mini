@@ -59,6 +59,10 @@ class ResolveSessionTest(RegistryTestCase):
     def db(self, rows=None):
         return FakeSessionDB([dict(row) for row in (rows or ROWS)])
 
+    def test_job_notification_text_keeps_underscores(self):
+        self.assertEqual(self.bridge._plain("**Report:** `column_total` = 4_200 in [sales_q3](x)"),
+                         "Report: column_total = 4_200 in sales_q3")
+
     def test_reserved_main_wins_over_a_chat_named_main(self):
         db = self.db()
         self.assertEqual(self.bridge._resolve_session_id(db, "main"), ("home", "home"))

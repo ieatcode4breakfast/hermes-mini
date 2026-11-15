@@ -4,7 +4,7 @@
 const HEADER = "Cronjob Response: ";
 const RULE = "-------------";
 const FOOTER = "To stop or manage this job, send me a new message";
-const JOB_ID = /\(job[ _]?id: /i; // the inbox's markdown stripping turns job_id into jobid
+const JOB_ID = /\(job[ _]?id: /i; // older inbox previews flattened job_id into jobid
 
 // Tolerant of the raw multi-line wrapper and the inbox's flattened one-line preview. Anything that
 // does not carry the full shape is returned unchanged, so an ordinary message is never trimmed.

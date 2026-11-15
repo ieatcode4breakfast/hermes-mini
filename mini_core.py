@@ -99,6 +99,50 @@ def strip_cron_wrapper(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Markdown to plain text (inbox previews, notification bodies)
+# ---------------------------------------------------------------------------
+
+# Only marks that act as markdown are removed: `column_total`, `2*3`, `~/notes`, `a > b`, `#42` and `a|b`
+# come through as written. A mark this cannot pair is left in place; a stray `*` reads better than a lost `_`.
+_MD_ESCAPE_RE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!>~|])")
+_MD_CODE_SPAN_RE = re.compile(r"(`+)(.+?)\1", re.S)
+_MD_FENCE_RE = re.compile(r"(?m)^[ \t]{0,3}(?:`{3,}|~{3,})[^\n]*$")
+_MD_RULE_RE = re.compile(r"(?m)^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+_MD_TABLE_SEP_RE = re.compile(r"(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*$")
+_MD_TABLE_ROW_RE = re.compile(r"(?m)^[ \t]{0,3}\|(.*?)\|?[ \t]*$")
+_MD_HEADING_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,6}(?:[ \t]+|$)")
+_MD_QUOTE_RE = re.compile(r"(?m)^[ \t]{0,3}(?:>[ \t]?)+")
+_MD_EMPHASIS_RE = re.compile(r"(?<![\w*~])(\*\*|__|~~|\*|_)(?=\S)(.+?)(?<=\S)\1(?![\w*~])", re.S)
+_MD_SLOT_RE = re.compile("(\\d+)")
+
+
+def plain_markdown(text: Any) -> str:
+    """Markdown marks removed where they format, kept where they are part of the text. Line breaks are kept."""
+    value = "" if text is None else str(text)
+    kept: list[str] = []
+
+    def keep(literal: str) -> str:
+        kept.append(literal)
+        return f"{len(kept) - 1}"
+
+    value = _MD_FENCE_RE.sub("", value)  # fence lines go, their contents stay
+    # Escapes and code spans are verbatim: nothing below may touch them.
+    value = _MD_ESCAPE_RE.sub(lambda m: keep(m.group(1)), value)
+    value = _MD_CODE_SPAN_RE.sub(lambda m: keep(m.group(2).strip() or m.group(2)), value)
+    value = _MD_RULE_RE.sub("", value)
+    value = _MD_TABLE_SEP_RE.sub("", value)
+    value = _MD_TABLE_ROW_RE.sub(lambda m: re.sub(r"[ \t]*\|[ \t]*", "  ", m.group(1)).strip(), value)
+    value = _MD_HEADING_RE.sub("", value)
+    value = _MD_QUOTE_RE.sub("", value)
+    for _ in range(3):  # nested emphasis (***x***, **a _b_**) peels one layer per pass
+        stripped = _MD_EMPHASIS_RE.sub(r"\2", value)
+        if stripped == value:
+            break
+        value = stripped
+    return _MD_SLOT_RE.sub(lambda m: kept[int(m.group(1))], value)
+
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
