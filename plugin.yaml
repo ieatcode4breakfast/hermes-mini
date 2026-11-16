@@ -1,5 +1,5 @@
 name: hermes-mini
-version: 0.2.0
+version: 0.2.1
 description: >-
   Hermes Mini — a mobile-first chat app for your Hermes agent. Multi-chat inbox, to-dos, live
   narration, steering, optional Web Push, dictation through Hermes' configured speech-to-text

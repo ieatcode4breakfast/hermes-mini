@@ -272,9 +272,9 @@ def _yaml_loaders():
     """
     loaders = []
     try:
-        import hermes_yaml
+        from hermes_yaml import safe_load  # public plugin API
 
-        loaders.append(hermes_yaml.safe_load)
+        loaders.append(safe_load)
     except Exception:  # noqa: BLE001 - optional outside a Hermes install
         pass
     try:
@@ -295,11 +295,12 @@ def _yaml_loaders():
 def _yaml_module():
     """Hermes' shared YAML policy when available; the dumper is only used for our own settings file."""
     try:
-        import hermes_yaml
-
-        return hermes_yaml
+        from hermes_yaml import safe_dump  # public plugin API
     except Exception:  # noqa: BLE001 - optional in a bare test harness
         return None
+    import types
+
+    return types.SimpleNamespace(safe_dump=safe_dump)
 
 
 def read_document(path: Path) -> dict[str, Any]:
@@ -525,10 +526,12 @@ def profile_label() -> str:
     agent's name.
     """
     try:
-        from hermes_cli.profiles import get_active_profile_name  # documented profile helper
+        from hermes_constants import profile_name_for_home  # public plugin API
 
-        name = str(get_active_profile_name() or "").strip()
+        name = str(profile_name_for_home(hermes_home()) or "").strip()
     except Exception:  # noqa: BLE001 - derive from the home path instead
+        name = ""
+    if not name:  # not a profile home Hermes recognises (a custom HERMES_HOME): read the path
         home = hermes_home()
         parts = home.parts
         name = ""

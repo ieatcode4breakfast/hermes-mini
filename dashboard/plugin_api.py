@@ -88,11 +88,8 @@ def _narration_system_prompt() -> str:
     )
 
 
-NARRATION_PROVIDER = None
-NARRATION_MODEL = None
 NARRATION_MAX_TOKENS = 80
 NARRATION_TIMEOUT = 8.0
-NARRATION_REASONING = {"enabled": True, "effort": "low"}
 
 # Web Push endpoints we accept. Everything else is refused so this route cannot be used to make the
 # dashboard POST to arbitrary hosts.
@@ -253,22 +250,21 @@ async def narrate(request: Request):
         if not has_events:
             return _null()  # nothing new to narrate: no model call
 
-        from agent.auxiliary_client import async_call_llm
+        from agent.plugin_llm import PluginLlm  # public plugin API: the host's model access for plugins
 
-        response = await async_call_llm(
-            task="hermes_mini_narration",
-            provider=NARRATION_PROVIDER,
-            model=NARRATION_MODEL,
-            messages=[
+        # On the plugin's own auxiliary task (registered in __init__.py, low reasoning), so the call follows the
+        # route the person picked for it and no override is needed.
+        result = await PluginLlm(plugin_id=core.PLUGIN_ID).acomplete(
+            [
                 {"role": "system", "content": _narration_system_prompt()},
                 {"role": "user", "content": _build_user_message(body)},
             ],
-            temperature=None,
             max_tokens=NARRATION_MAX_TOKENS,
             timeout=NARRATION_TIMEOUT,
-            reasoning_config=NARRATION_REASONING,
+            task="hermes_mini_narration",
+            purpose="narration",
         )
-        content = response.choices[0].message.content
+        content = result.text
         line = _clean_line(content)
         if not line:
             log.warning("narrate: model returned no usable line")

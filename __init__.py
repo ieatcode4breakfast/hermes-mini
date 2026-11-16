@@ -299,9 +299,9 @@ def _app_chat(*candidates: Any) -> tuple[str, str | None] | None:
 def _context_session_id() -> str:
     """The session the current tool call runs in, for hooks whose payload carries only a gateway key."""
     try:
-        from tools import approval_context
+        from gateway.session_context import get_session_env  # public plugin API: the task-local session identity
 
-        return str(approval_context._approval_session_id.get() or "")
+        return str(get_session_env("HERMES_SESSION_ID") or "")
     except Exception:  # noqa: BLE001
         return ""
 
@@ -662,7 +662,8 @@ def register(ctx: Any) -> None:
                 "hermes_mini_narration",
                 display_name="Hermes Mini turn narration",
                 description="Short live progress line while a reply streams in the app",
-                defaults={"provider": "auto", "model": "", "timeout": 8},
+                # Low reasoning: one short line, not a turn (the call itself carries no reasoning setting).
+                defaults={"provider": "auto", "model": "", "timeout": 8, "reasoning_effort": "low"},
                 inherit_from="title_generation",
             )
         except Exception:  # noqa: BLE001

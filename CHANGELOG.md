@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-16
+
 ### Added
 
 - A test that checks every piece of Hermes the plugin uses (imports, attributes read from Hermes modules,
@@ -22,6 +24,12 @@ All notable changes to this project are documented here. The format follows
 
 - With the computer view open beside the chat, the round buttons on the right (Tools, Schedules, Computer, To-do)
   sit in the window's top-right corner, over the computer pane, instead of between the chat and the computer.
+- Uses Hermes' public plugin API in four more places, so fewer parts of the plugin can break on a Hermes update:
+  the narration line goes through `agent.plugin_llm` on the plugin's own auxiliary task (now set to low reasoning
+  there, since the call carries none), the chat a hook call belongs to falls back to the session identity
+  (`gateway.session_context.get_session_env`), the profile name comes from `hermes_constants.profile_name_for_home`,
+  and settings files use `hermes_yaml.safe_load` / `safe_dump`. Nothing changes in the app. Needs a dashboard and a
+  gateway restart.
 
 ## [0.2.0] — 2026-11-15
 
