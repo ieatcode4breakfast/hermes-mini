@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a change or a new feature for Hermes Mini.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The change you would like
+      description: How it should work from the person's side. Alternatives you considered are welcome too.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This fits the project's [scope](https://github.com/ieatcode4breakfast/hermes-mini/blob/main/CONTRIBUTING.md#scope) (a plugin-only change, no framework or build step, useful beyond one person's setup).
+          required: true

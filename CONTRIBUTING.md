@@ -58,6 +58,28 @@ scripts you changed:
 node --check dashboard/app.js   # and any other changed module
 ```
 
+## Scope
+
+Hermes Mini stays small on purpose. Before you start on something sizeable, check that it fits.
+
+Fits:
+
+- **One plugin.** Everything lives in this repository and loads through Hermes' own plugin discovery.
+- **Plain ES modules.** The app is JavaScript and CSS the browser loads directly, with no build step.
+- **Plugin-only.** It uses documented Hermes plugin surfaces and never patches Hermes itself.
+- **External state.** Settings and data live under `$HERMES_HOME`, never in the plugin folder, as
+  [AGENTS.md](AGENTS.md) describes.
+
+Doesn't fit:
+
+- **Changes to Hermes core.** If the plugin needs a hook or API Hermes doesn't offer, propose it
+  upstream in Hermes instead.
+- **Frameworks or bundlers.** No React, Vue, TypeScript compile step, npm build or generated files.
+- **Features tied to one person's setup.** A change should be useful to anyone running Hermes, not
+  only to one machine, account or workflow.
+
+If you're unsure, open a feature request first and ask.
+
 ## What a good change includes
 
 - **A test that would fail without it.** The suite covers paths, settings, validation, routes,
@@ -85,8 +107,10 @@ node --check dashboard/app.js   # and any other changed module
 
 ## Reporting bugs and security issues
 
-- Bugs and feature ideas: open an issue with the Hermes version, what you expected, and what
-  happened. If it involves one optional feature, say whether it was configured.
+- Bugs and feature ideas: open an issue and pick the bug or feature form. The bug form asks for
+  the Hermes version, how Hermes Mini was installed, the browser and device, which optional
+  features are configured, and what you expected against what happened.
+- Questions about setup and use: ask in the repository's Discussions.
 - Security problems: follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 ## Commits

@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in Hermes Mini does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems go through [SECURITY.md](https://github.com/ieatcode4breakfast/hermes-mini/blob/main/SECURITY.md), not a public issue.
+        Please leave out names, addresses, tokens and chat content you would not want public.
+  - type: input
+    id: hermes-version
+    attributes:
+      label: Hermes version
+      description: The output of `hermes --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How Hermes Mini was installed
+      options:
+        - From the plugin catalog (hermes plugins install hermes-mini)
+        - From GitHub (hermes plugins install ieatcode4breakfast/hermes-mini)
+        - Manual install (copied folder or git clone)
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Hermes Mini version or commit
+      description: The `version` in plugin.yaml, or `git rev-parse --short HEAD` in the plugin folder.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      description: For example "Chrome 131 on Android 15, installed to the home screen" or "Safari on iPhone 15, in a tab".
+    validations:
+      required: true
+  - type: checkboxes
+    id: features
+    attributes:
+      label: Optional features configured
+      description: Tick the ones set up on this install, whether or not the bug involves them.
+      options:
+        - label: Push notifications
+        - label: Dictation (a Hermes speech-to-text provider)
+        - label: Narration
+        - label: Computer view (Hermes' Bot Desktop)
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Include the steps to make it happen, if you know them.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or console output
+      description: Browser console errors, or the relevant lines from the Hermes dashboard or gateway log.
+      render: text
