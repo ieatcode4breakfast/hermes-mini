@@ -1183,6 +1183,34 @@ async function attachThread() {
   await attachHome(fresh);
 }
 
+// The live session id is dead (session.reclaimed, or a send that found no session): every send to it would fail and a
+// running turn's dots would never stop. Resuming the stored chat gives it a fresh live session. A failure here goes
+// through the ordinary reconnect path.
+let reattachRun = null;
+function reattachChat() {
+  if (reattachRun) return reattachRun;
+  reattachRun = (async () => {
+    state.liveSid = null;
+    state.ready = false;
+    if (state.streaming) finishTurn();
+    updateComposer();
+    try {
+      await attachThread();
+    } catch (error) {
+      if (error instanceof AuthRedirect) return;
+      if (state.ws) dropSocket(state.ws);
+      else scheduleReconnect();
+    }
+  })().finally(() => {
+    reattachRun = null;
+  });
+  return reattachRun;
+}
+
+function isLostSession(error) {
+  return /session not found/i.test(errorText(error));
+}
+
 function isMissing(error) {
   return error instanceof MissingSession || error.status === 404 || /not found/i.test(errorText(error));
 }
@@ -4277,6 +4305,11 @@ function onEvent(event) {
       }
       break;
     }
+    case "session.reclaimed": {
+      // Hermes closed this chat's live session (idle timeout, eviction, orphan reap) while the socket stayed open.
+      if (isThisChat(payload)) void reattachChat();
+      break;
+    }
     case "session.replay_gap": {
       if (state.ready) void loadHistory().catch(() => undefined);
       break;
@@ -5488,7 +5521,8 @@ async function send() {
     }
   } catch (error) {
     // Nothing was submitted: give the text and attachments back so the user can retry.
-    sysLine(`Send failed: ${errorText(error)}`);
+    const lost = isLostSession(error);
+    sysLine(lost ? LOST_SESSION_TEXT : `Send failed: ${errorText(error)}`);
     els.input.value = saved.text;
     autosize();
     state.attachments = saved.attachments;
@@ -5501,10 +5535,13 @@ async function send() {
     userRow?.remove();
     // A first send that failed leaves a chat that never became real: back to the empty state.
     if (state.viewedUnsent) setEmptyState(true);
+    if (lost) void reattachChat();
   } finally {
     state.sending = false;
   }
 }
+
+const LOST_SESSION_TEXT = "Not sent: Hermes had closed this chat. It's reopening, so send it again in a moment.";
 
 // Sends the typed text into the running task without stopping it (session.steer: Hermes adds it to the next tool
 // result, so the agent reads it mid-task). The message shows as a user bubble and the live reply continues below it.
