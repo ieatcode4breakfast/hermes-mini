@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Question sets: Skip skips only the question on screen (the agent is told that one was skipped) instead of
+  closing the whole set. Back reopens the previous question with its answer marked, and a set of two or more
+  ends on a review step listing every answer with Change; the last answer is only sent on Submit, so any answer
+  can be changed until then. A single question still sends at once. Front end only (new `clarify.js`).
+
 ## [0.2.1] — 2026-11-16
 
 ### Added

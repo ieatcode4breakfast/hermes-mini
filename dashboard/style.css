@@ -679,6 +679,19 @@ input, textarea, select { font-family: inherit; }
 .resolved-value, .resolved-outcome { color: var(--fg); }
 .resolved-note { color: var(--muted); }
 .card.resolved .resolved-outcome { margin: 0; font-size: 13.5px; line-height: 1.4; }
+/* A question reopened by Back or Change marks the choice given before. */
+.card.clarify .btn.chosen {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+/* The review step before Submit: each answer with a Change link. */
+.review-answer { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 13.5px; line-height: 1.4; }
+.review-answer .resolved-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.review-change {
+  border: 0; background: none; padding: 2px 0; font: inherit; font-weight: 550;
+  color: var(--accent); cursor: pointer;
+}
+:where(:root[data-input="mouse"]) .review-change:hover { text-decoration: underline; }
 
 .composer {
   border-top: 1px solid var(--line); background: var(--bg);

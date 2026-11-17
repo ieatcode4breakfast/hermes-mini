@@ -217,7 +217,8 @@ there is no reply to show.
   configured.
 - **Steering**: send while a reply is running to steer the current turn.
 - **Approvals and questions**: answer them in the app; an approval can also be approved or denied
-  from its notification.
+  from its notification. A set of questions goes one at a time: Skip skips just that question, Back
+  reopens the one before, and a review step lists every answer with Change before you Submit.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
   agent sends with `MEDIA:` show inline; audio plays inline in a voice-note player (play/pause, a
   waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools

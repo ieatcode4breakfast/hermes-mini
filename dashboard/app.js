@@ -19,6 +19,7 @@ import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js"
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
 import { createModelPicker, shortModel } from "./model.js";
+import * as clarifyFlow from "./clarify.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -4326,14 +4327,19 @@ function addResolvedClarify(items) {
   return card;
 }
 
+// Only answers Hermes received count: one held for Submit and never sent shows as the card's outcome says.
 function resolveClarify(entry, outcome, notice) {
   if (!entry || entry.resolved) return;
   entry.resolved = true;
+  const { flow } = entry;
   fillResolvedClarify(
     entry.el,
-    entry.questions.map((question) => {
-      const value = entry.locked[question.qid];
-      if (value !== undefined) return { question: question.question, status: "answered", value: clarifyAnswerText(value) };
+    flow.questions.map((question) => {
+      const value = flow.answers[question.qid];
+      if (flow.sent.has(question.qid) && value !== undefined) {
+        if (value === null) return { question: question.question, status: "skipped" };
+        return { question: question.question, status: "answered", value: clarifyAnswerText(value) };
+      }
       return { question: question.question, status: outcome === "skipped" ? "skipped" : "unanswered" };
     }),
     notice,
@@ -4450,32 +4456,47 @@ function showClarify(id, params) {
   setEmptyState(false);
   sealTurnForCard();
   els.log.append(card);
-  const entry = { el: card, method: "clarify", params, questions, locked, index: 0 };
+  const entry = { el: card, method: "clarify", params, flow: clarifyFlow.startFlow(questions, locked), busy: false };
   state.cards.set(id, entry);
-  entry.index = Math.max(
-    0,
-    questions.findIndex((q) => !(q.qid in locked)),
-  );
   renderClarify(id, entry);
   scrollToBottom(true);
 }
 
+// A multi-select question takes one choice here, sent as a one-item list.
+function clarifyWireValue(question, answer) {
+  return question.multi_select ? JSON.stringify([answer]) : answer;
+}
+
+// One question at a time. Skip answers just this question; Back reopens the one before (or, after a Change,
+// the review). A set of two or more ends on a review step, and nothing in it is final until Submit.
 function renderClarify(id, entry) {
-  const { el: card, questions } = entry;
+  if (entry.flow.reviewing) {
+    renderClarifyReview(id, entry);
+    return;
+  }
+  const { el: card, flow } = entry;
   card.replaceChildren();
-  const question = questions[entry.index];
-  const header = questions.length > 1 ? `Question ${entry.index + 1} of ${questions.length}` : "Question";
-  card.append(el("h2", "", header));
+  const question = clarifyFlow.currentQuestion(flow);
+  const total = flow.questions.length;
+  card.append(el("h2", "", total > 1 ? `Question ${flow.index + 1} of ${total}` : "Question"));
   card.append(el("p", "", question.question));
 
-  const busy = { value: false };
+  // A reopened question shows its earlier answer: the matching choice is marked, typed text refills the box.
+  const previous = clarifyFlow.currentAnswer(flow);
+  const previousText = previous === undefined || previous === null ? "" : clarifyAnswerText(previous);
   const choices = Array.isArray(question.choices) ? question.choices.filter((c) => typeof c === "string") : [];
+  let matched = false;
   if (choices.length) {
     const actions = el("div", "actions");
     for (const choice of choices) {
       const button = el("button", "btn", choice);
+      if (previousText && bareChoice(choice) === previousText) {
+        button.classList.add("chosen");
+        button.setAttribute("aria-pressed", "true");
+        matched = true;
+      }
       button.addEventListener("click", () => {
-        if (!busy.value) void submitClarify(id, entry, bareChoice(choice), busy);
+        void answerClarify(id, entry, clarifyWireValue(question, bareChoice(choice)));
       });
       actions.append(button);
     }
@@ -4487,17 +4508,30 @@ function renderClarify(id, entry) {
   input.type = "text";
   input.placeholder = choices.length ? "Or type an answer" : "Type an answer";
   input.enterKeyHint = "send";
+  if (previousText && !matched) input.value = previousText;
   const send = el("button", "btn primary", "Send");
-  const skip = el("button", "btn", "Skip");
   row.append(input, send);
   card.append(row);
+
   const actions = el("div", "actions");
+  if (flow.returnToReview || flow.index > 0) {
+    const back = el("button", "btn", "Back");
+    back.addEventListener("click", () => {
+      if (entry.busy) return;
+      if (flow.returnToReview) clarifyFlow.backToReview(flow);
+      else clarifyFlow.goBack(flow);
+      renderClarify(id, entry);
+    });
+    actions.append(back);
+  }
+  const skip = el("button", "btn", "Skip");
+  skip.addEventListener("click", () => void answerClarify(id, entry, null));
   actions.append(skip);
   card.append(actions);
 
   const submitText = () => {
     const text = input.value.trim();
-    if (text && !busy.value) void submitClarify(id, entry, text, busy);
+    if (text) void answerClarify(id, entry, clarifyWireValue(question, text));
   };
   send.addEventListener("click", submitText);
   input.addEventListener("keydown", (event) => {
@@ -4506,37 +4540,71 @@ function renderClarify(id, entry) {
       submitText();
     }
   });
-  skip.addEventListener("click", () => {
-    if (busy.value) return;
-    // A response without answers is cancel-all: answers locked so far stand, the rest show as skipped.
-    answerServerRequest(id, {});
-    resolveClarify(entry, "skipped");
-  });
 }
 
-async function submitClarify(id, entry, answer, busy) {
-  const question = entry.questions[entry.index];
-  busy.value = true;
-  const value = question.multi_select ? JSON.stringify([answer]) : answer;
+function renderClarifyReview(id, entry) {
+  const { el: card, flow } = entry;
+  card.replaceChildren();
+  card.append(el("h2", "", "Your answers"));
+  for (const [index, row] of clarifyFlow.answerRows(flow).entries()) {
+    card.append(el("p", "resolved-question", row.question));
+    const line = el("div", "review-answer");
+    const skipped = row.status !== "answered";
+    line.append(el("span", skipped ? "resolved-value resolved-note" : "resolved-value", skipped ? "Skipped" : clarifyAnswerText(row.value)));
+    const change = el("button", "review-change", "Change");
+    change.setAttribute("aria-label", `Change the answer to question ${index + 1}`);
+    change.addEventListener("click", () => {
+      if (entry.busy) return;
+      clarifyFlow.changeAnswer(flow, index);
+      renderClarify(id, entry);
+    });
+    line.append(change);
+    card.append(line);
+  }
+  const actions = el("div", "actions");
+  const submit = el("button", "btn primary", "Submit");
+  submit.addEventListener("click", () => void runClarifyStep(id, entry, clarifyFlow.submitLocks));
+  actions.append(submit);
+  card.append(actions);
+}
+
+function answerClarify(id, entry, value) {
+  return runClarifyStep(id, entry, (flow) => clarifyFlow.answerCurrent(flow, value));
+}
+
+// Applies one step to the flow and sends the locks it hands back. The lock that leaves nothing unanswered ends
+// the set. A failed send puts the card back as it was, so the same tap can be tried again.
+async function runClarifyStep(id, entry, step) {
+  if (entry.busy || entry.resolved) return;
+  entry.busy = true;
+  const { flow } = entry;
+  const saved = clarifyFlow.saveState(flow);
+  const locks = step(flow);
   try {
-    const reply = await rpc("clarify.lock", { request_id: id, question_id: question.qid, answer: value });
-    // The wait itself ended (expired): nothing was locked now, and the card closes as it stood.
-    if (reply.status === "expired") {
-      resolveClarify(entry, "cancelled");
-      return;
+    let remaining = null;
+    for (const lock of locks) {
+      const reply = await rpc("clarify.lock", { request_id: id, question_id: lock.qid, answer: lock.value });
+      // The wait itself ended (expired): this answer was not taken, and the card closes as it stood.
+      if (reply.status === "expired") {
+        flow.sent.delete(lock.qid);
+        resolveClarify(entry, "cancelled");
+        return;
+      }
+      remaining = Array.isArray(reply.remaining) ? reply.remaining : [];
     }
-    entry.locked[question.qid] = value;
-    const remaining = Array.isArray(reply.remaining) ? reply.remaining : [];
-    if (remaining.length === 0) {
+    if (remaining !== null && remaining.length === 0) {
       resolveClarify(entry, "submitted");
       return;
     }
-    const next = entry.questions.findIndex((q) => remaining.includes(q.qid));
-    entry.index = next >= 0 ? next : entry.index;
+    // Hermes' own list of what is still open wins: anything it lacks is sent again on the next answer or Submit.
+    if (remaining !== null) for (const qid of remaining) flow.sent.delete(qid);
     renderClarify(id, entry);
   } catch (error) {
-    busy.value = false;
+    clarifyFlow.restoreState(flow, saved);
+    renderClarify(id, entry);
     sysLine(`Could not send answer: ${errorText(error)}`);
+  } finally {
+    entry.busy = false;
   }
 }
 
