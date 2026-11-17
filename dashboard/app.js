@@ -117,6 +117,7 @@ const savedView = safeStorageGet(VIEW_KEY);
 const state = {
   ws: null,
   wsReady: false, // gateway.ready seen on the current socket
+  hiddenTurn: false, // the running turn is display_kind "hidden" (message.start): nothing of it is drawn
   connectionEpoch: 0, // bumped on every gateway.ready: display viewer ids are valid only for one RPC connection
   ready: false, // thread attached; sending allowed
   connecting: null,
@@ -3875,6 +3876,7 @@ function touchTurn() {
 function finishTurn() {
   const turn = state.turn;
   state.streaming = false;
+  state.hiddenTurn = false;
   state.sealedSegment = ""; // the bubble a tool round closed belongs to this turn only
   setTimeout(() => void syncJobDeliveries(), 800); // a job result that arrived mid-reply
   // Narration belongs to this turn: stop the loop, drop any in-flight answer, and clear the line.
@@ -4116,7 +4118,10 @@ function onEvent(event) {
       // sends no event with its text, so fetch it from the saved chat and show it.
       const local = Date.now() - (state.localStartAt || 0) < 20000;
       state.localStartAt = 0;
-      if (!local) void showRemoteUserMessage();
+      // A hidden turn (display_kind "hidden": model-facing scaffolding such as a diagnostic check) is never drawn; the
+      // saved chat skips it too, so drawing it live made a reply that vanished on reload.
+      state.hiddenTurn = payload.display_kind === "hidden";
+      if (!local && !state.hiddenTurn) void showRemoteUserMessage();
       state.streaming = true;
       state.sealedSegment = "";
       const n = state.narration;
@@ -4135,6 +4140,10 @@ function onEvent(event) {
     case "message.delta": {
       if (typeof payload.text !== "string" || !payload.text) break;
       state.streaming = true;
+      if (state.hiddenTurn) {
+        updateComposer();
+        break;
+      }
       const turn = ensureTurn();
       // Assistant text has started: the narration line steps aside until the next tool round.
       hideNarration();
@@ -4145,13 +4154,15 @@ function onEvent(event) {
     }
     case "message.complete": {
       const text = typeof payload.text === "string" && payload.text.trim() ? payload.text : null;
-      if (text && isSilenceMarker(text)) {
-        // "NO_REPLY" and friends: the agent chose not to answer (usually a background-task check-in). Show nothing.
+      if (state.hiddenTurn || (text && isSilenceMarker(text))) {
+        // A hidden turn, or "NO_REPLY" and friends (the agent chose not to answer, usually a background-task
+        // check-in): show nothing.
+        const hidden = state.hiddenTurn;
         const turn = state.turn;
         if (turn && turn.row) turn.row.remove();
         state.turn = null;
         finishTurn();
-        inbox.messageComplete(); // a finished turn is new Inbox activity
+        if (!hidden) inbox.messageComplete(); // a finished turn is new Inbox activity
         break;
       }
       // The final text is the last segment only. When it repeats the bubble a tool round already closed (no text came
@@ -4174,7 +4185,7 @@ function onEvent(event) {
       // Commentary beside tool calls. Streamed text is already on screen, so this only closes its bubble; text that
       // was not streamed is drawn as its own finished bubble. Either way the next text starts a new bubble.
       const text = typeof payload.text === "string" ? payload.text.trim() : "";
-      if (!text || isSilenceMarker(text)) break;
+      if (!text || isSilenceMarker(text) || state.hiddenTurn) break;
       if (!payload.already_streamed) {
         sealSegment();
         ensureTurn().text = text;
@@ -4254,6 +4265,18 @@ function onEvent(event) {
       else if (promptCards.isPromptMethod(card.method)) resolvePromptCard(card, "cancelled");
       break;
     }
+    case "approval.cancelled": {
+      // Hermes dropped pending approvals (interrupt, reap, teardown) and resolved them as deny. It is a broadcast, so
+      // match this chat; an open card for a dropped request closes the same way as request.cancel.
+      if (!isThisChat(payload)) break;
+      const ids = new Set(Array.isArray(payload.request_ids) ? payload.request_ids.map(String) : []);
+      for (const card of state.cards.values()) {
+        if (card.resolved || card.method !== "approval") continue;
+        // No ids at all (entries without one): every open approval card of this chat was dropped.
+        if (!ids.size || ids.has(String(card.params.request_id || ""))) resolveApproval(card, null);
+      }
+      break;
+    }
     case "session.replay_gap": {
       if (state.ready) void loadHistory().catch(() => undefined);
       break;
@@ -4261,6 +4284,13 @@ function onEvent(event) {
     default:
       break;
   }
+}
+
+// A broadcast (session-less) frame names its chat in the payload: the live runtime id or the stored chat id.
+function isThisChat(payload) {
+  const sid = String(payload.session_id || "");
+  const stored = String(payload.stored_session_id || "");
+  return Boolean((sid && sid === state.liveSid) || (stored && stored === state.storedId));
 }
 
 function updateComposer() {
@@ -4452,12 +4482,15 @@ function rejectServerRequest(id, code, message) {
   }
 }
 
-// Answers an open server request without a preceding RPC (clarify's result frame, and cancel-all).
+// Answers an open server request without a preceding RPC (clarify's result frame, and cancel-all). Returns whether
+// the frame went out; a caller that shows "sent" checks it.
 function answerServerRequest(id, result) {
   try {
     sendFrame({ jsonrpc: "2.0", id, result });
+    return true;
   } catch {
     /* connection gone: the backend withdraws the request itself */
+    return false;
   }
 }
 
@@ -4597,11 +4630,17 @@ function showPromptCard(id, method, params) {
   actions.append(skip, submit);
   card.append(actions);
 
+  const failed = el("p", "prompt-error", PROMPT_NOT_SENT);
+  failed.hidden = true;
+  card.append(failed);
   const syncSubmit = () => {
     submit.disabled = promptCards.buildPromptResult(method, currentValues()) === null;
   };
   for (const item of inputs) {
-    item.input.addEventListener("input", syncSubmit);
+    item.input.addEventListener("input", () => {
+      failed.hidden = true;
+      syncSubmit();
+    });
     item.input.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.isComposing) return;
       event.preventDefault();
@@ -4614,10 +4653,16 @@ function showPromptCard(id, method, params) {
 
   const finish = (result, kind) => {
     if (entry.resolved) return;
+    for (const item of inputs) item.input.value = "";
+    if (!answerServerRequest(id, result)) {
+      // Nothing reached Hermes: the card stays open (values cleared, as after a send) so it can be answered again
+      // once the connection is back. If Hermes withdrew the request meanwhile, the reattach removes the card.
+      failed.hidden = false;
+      syncSubmit();
+      return;
+    }
     skip.disabled = true;
     submit.disabled = true;
-    for (const item of inputs) item.input.value = "";
-    answerServerRequest(id, result);
     resolvePromptCard(entry, kind);
   };
   submit.addEventListener("click", () => {
@@ -4633,6 +4678,8 @@ function showPromptCard(id, method, params) {
   state.cards.set(id, entry);
   scrollToBottom(true);
 }
+
+const PROMPT_NOT_SENT = "Not sent — the connection dropped. Enter it again once it's back.";
 
 // Answered: the fields and buttons go, and the card keeps only how it ended.
 function resolvePromptCard(entry, kind, customNotice) {

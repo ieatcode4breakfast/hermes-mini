@@ -226,7 +226,7 @@ class PromptCardWiringTest(unittest.TestCase):
     def test_values_are_cleared_on_answer_and_the_fields_leave_the_card(self):
         show = self.app.split("function showPromptCard(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn("for (const item of inputs) item.input.value = \"\";", show)
-        self.assertIn("answerServerRequest(id, result);", show)
+        self.assertIn("if (!answerServerRequest(id, result)) {", show)
         self.assertIn("promptCards.buildPromptResult(method, null)", show)
         resolve = self.app.split("function resolvePromptCard(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn('entry.el.classList.add("resolved")', resolve)
@@ -234,6 +234,20 @@ class PromptCardWiringTest(unittest.TestCase):
         self.assertIn('querySelector(".actions")', resolve)
         self.assertIn("spec.sentOutcome", resolve)
         self.assertIn("spec.sentInsteadOutcome", resolve)
+
+    def test_a_send_that_never_left_keeps_the_card_open(self):
+        answer = self.app.split("function answerServerRequest(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("return true;", answer)
+        self.assertIn("return false;", answer)
+        show = self.app.split("function showPromptCard(", 1)[1].split("\nfunction ", 1)[0]
+        finish = show.split("const finish = (result, kind) => {", 1)[1].split("};", 1)[0]
+        failure = finish.split("if (!answerServerRequest(id, result)) {", 1)[1].split("}", 1)[0]
+        self.assertIn("failed.hidden = false;", failure)
+        self.assertIn("return;", failure)
+        self.assertNotIn("resolvePromptCard", failure)
+        # The values are cleared before the send either way.
+        self.assertLess(finish.index('item.input.value = ""'), finish.index("answerServerRequest"))
+        self.assertIn("Not sent", self.app.split("const PROMPT_NOT_SENT = ", 1)[1].split(";", 1)[0])
 
     def test_service_worker_precaches_the_module(self):
         sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")

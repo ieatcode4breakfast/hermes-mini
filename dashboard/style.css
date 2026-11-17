@@ -703,6 +703,8 @@ input, textarea, select { font-family: inherit; }
 }
 .card .prompt-help { color: var(--muted); font-size: 13px; margin: 0 0 8px; overflow-wrap: anywhere; }
 .prompt-help a { color: var(--accent); }
+.card .prompt-error { color: var(--danger); font-size: 13px; margin: 8px 0 0; }
+.card .prompt-error[hidden] { display: none; }
 .prompt-fields { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 .prompt-field { display: flex; flex-direction: column; gap: 4px; }
 .prompt-field label { font-size: 13px; font-weight: 550; color: var(--muted); }
