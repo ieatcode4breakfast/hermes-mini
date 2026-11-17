@@ -218,7 +218,8 @@ there is no reply to show.
 - **Steering**: send while a reply is running to steer the current turn.
 - **Approvals and questions**: answer them in the app; an approval can also be approved or denied
   from its notification. A set of questions goes one at a time: Skip skips just that question, Back
-  reopens the one before, and a review step lists every answer with Change before you Submit.
+  reopens the one before, and a review step lists every answer with Change before you Submit. A "pick any
+  that apply" question takes several answers.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
   agent sends with `MEDIA:` show inline; audio plays inline in a voice-note player (play/pause, a
   waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools
@@ -228,8 +229,8 @@ there is no reply to show.
   the arrow keys slide between a message's pictures; pinch or double-tap to zoom.
 - **Markdown**: GitHub-flavoured markdown with sanitised HTML and syntax highlighting.
 - **Edit and branch**: edit and resend your message, or branch a conversation.
-- **Dictation**: record and insert at the caret, through whatever speech-to-text provider Hermes is
-  configured to use.
+- **Dictation**: record and insert at the caret, with the spaces a keyboard would add, through whatever
+  speech-to-text provider Hermes is configured to use.
 - **Notifications** (optional): Web Push for approvals, questions and finished replies, with
   per-chat mute. A notification stays until it is tapped or swiped away.
 - **Scheduled job results**: Hermes cron output can be posted into the main chat or a chosen side

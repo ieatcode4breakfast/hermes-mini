@@ -12,6 +12,24 @@ All notable changes to this project are documented here. The format follows
   closing the whole set. Back reopens the previous question with its answer marked, and a set of two or more
   ends on a review step listing every answer with Change; the last answer is only sent on Submit, so any answer
   can be changed until then. A single question still sends at once. Front end only (new `clarify.js`).
+- A reply with tool rounds is drawn live the way a reload draws it: text written before a tool call becomes its own
+  bubble, and commentary Hermes sends beside tool calls without streaming it (`message.interim`) now appears live
+  instead of only after a reload.
+- "Pick any that apply" questions take several answers: choices toggle, typed text is one more item, and Next (or
+  Send) sends the list.
+- Dictation adds the spaces a keyboard would: before the dictated text when the text before the cursor needs one, and
+  after it so typing or dictating again just continues.
+- Long pauses for compaction ("Summarizing the earlier conversation…") or a resumed turn ("Resuming interrupted
+  turn…") show in the narration line.
+
+### Fixed
+
+- A message that failed to send no longer stays in the chat looking sent; its text is back in the box.
+- A reply that starts "The connection to …" (about a database, say) is no longer replaced with the "could not finish
+  this reply" notice; only Hermes' own two connection-failure wordings are. Browser and Python copies alike.
+- A turn that fails with no reply text now says so in plain words instead of leaving the message unanswered.
+- A scheduled-job result delivered to a chat other than the main chat appears while that chat is open, not only
+  after a reload.
 
 ## [0.2.1] — 2026-11-16
 
