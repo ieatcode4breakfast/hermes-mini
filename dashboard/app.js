@@ -2673,7 +2673,7 @@ async function resolveRowId(row, attempts = 3) {
         }
       }
 
-      // 2. Assistant fallback: preamble-joined text (turn.prefix + text) or latest turn reply
+      // 2. Assistant fallback: a bubble whose text overlaps a stored row's (start or end) or the latest turn reply
       if (meta.role === "assistant" && allRoleStored.length > 0) {
         const wanted = squashSpace(meta.text);
         const candidates = allRoleStored.filter((entry) => {
@@ -3820,7 +3820,7 @@ function ensureTurn() {
     row.hermesMiniMsg = messageRecord("assistant", "", {}, false); // the time is now; the text is filled in when it finishes
     setEmptyState(false);
     els.log.append(row);
-    state.turn = { row, bubble, content, status, text: "", prefix: "", raf: 0, timer: 0, lastPaint: 0, narrationVisible: false, narration };
+    state.turn = { row, bubble, content, status, text: "", raf: 0, timer: 0, lastPaint: 0, narrationVisible: false, narration };
     paintTurn(state.turn);
   }
   return state.turn;
@@ -3865,6 +3865,7 @@ function touchTurn() {
 function finishTurn() {
   const turn = state.turn;
   state.streaming = false;
+  state.sealedSegment = ""; // the bubble a tool round closed belongs to this turn only
   setTimeout(() => void syncJobDeliveries(), 800); // a job result that arrived mid-reply
   // Narration belongs to this turn: stop the loop, drop any in-flight answer, and clear the line.
   const n = state.narration;
@@ -4098,6 +4099,7 @@ function onEvent(event) {
       state.localStartAt = 0;
       if (!local) void showRemoteUserMessage();
       state.streaming = true;
+      state.sealedSegment = "";
       const n = state.narration;
       n.token += 1;
       n.events = [];
@@ -4133,13 +4135,32 @@ function onEvent(event) {
         inbox.messageComplete(); // a finished turn is new Inbox activity
         break;
       }
-      if (text) {
-        const turn = ensureTurn();
-        turn.text = turn.prefix && turn.prefix.trim() !== text.trim() ? turn.prefix + text : text;
+      // The final text is the last segment only. When it repeats the bubble a tool round already closed (no text came
+      // after the tools), or there is none, the trailing row holds just the typing dots and is dropped.
+      const repeat = text && state.sealedSegment && squashSpace(displayText(text)) === squashSpace(state.sealedSegment);
+      if (text && !repeat) {
+        ensureTurn().text = text;
+      } else if (state.sealedSegment && state.turn && !state.turn.text.trim()) {
+        state.turn.row.remove();
+        state.turn = null;
       }
       if (typeof payload.warning === "string" && payload.warning) sysLine(failureText(payload.warning));
       finishTurn();
       inbox.messageComplete(); // refresh the Inbox head and badge
+      break;
+    }
+    case "message.interim": {
+      // Commentary beside tool calls. Streamed text is already on screen, so this only closes its bubble; text that
+      // was not streamed is drawn as its own finished bubble. Either way the next text starts a new bubble.
+      const text = typeof payload.text === "string" ? payload.text.trim() : "";
+      if (!text || isSilenceMarker(text)) break;
+      if (!payload.already_streamed) {
+        sealSegment();
+        ensureTurn().text = text;
+      }
+      sealSegment();
+      if (state.streaming) ensureTurn();
+      touchTurn();
       break;
     }
     case "error": {
@@ -4148,12 +4169,9 @@ function onEvent(event) {
       break;
     }
     case "tool.start": {
-      // Activity only keeps the typing indicator alive. Tool names are never shown. Separate text segments.
+      // Tool names are never shown. Text written before the tool becomes its own bubble (sealSegment).
+      sealSegment();
       const turn = state.turn || (state.streaming ? ensureTurn() : null);
-      if (turn && turn.text) {
-        if (!turn.text.endsWith("\n")) turn.text += "\n\n";
-        turn.prefix = turn.text;
-      }
       if (turn) showNarration(narrationLabel(payload.name), turn);
       narrationPush({
         kind: "tool",
@@ -4302,11 +4320,28 @@ function fillResolvedClarify(card, items, notice) {
 function sealTurnForCard() {
   const turn = state.turn;
   if (!turn) return;
+  hideNarration();
+  closeTurnRow(turn);
+}
+
+// A tool round closes the bubble written so far, and later text starts a new bubble: the same split a reload draws
+// from history, which keeps one bubble per stored assistant row. The turn keeps running; the next row takes the
+// typing dots and the narration line. Returns whether a bubble was closed.
+function sealSegment() {
+  const turn = state.turn;
+  if (!turn || !turn.text.trim()) return false;
+  state.sealedSegment = displayText(turn.text);
+  closeTurnRow(turn);
+  return true;
+}
+
+// Ends the live row of a turn as a finished bubble (or drops it when it holds only the typing dots) and lets go of
+// state.turn, so the next ensureTurn() starts a new row below it.
+function closeTurnRow(turn) {
   if (turn.raf) cancelAnimationFrame(turn.raf);
   if (turn.timer) clearTimeout(turn.timer);
   turn.raf = 0;
   turn.timer = 0;
-  hideNarration();
   const text = turn.text.trim();
   if (!text) {
     turn.row.remove(); // only the typing dots so far: nothing to keep
