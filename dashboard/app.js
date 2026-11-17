@@ -4011,6 +4011,15 @@ function showNarration(text, turn) {
   }, 100);
 }
 
+// The status.update text worth showing a person, or "" (tui_gateway: _status_update, session_auto_continue).
+function statusLine(payload) {
+  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+  if (!text || text.length > 120 || text.includes("\n")) return "";
+  if (payload.kind === "compacting") return "Summarizing the earlier conversation…"; // Hermes' own line is too long here
+  if (payload.kind === "process" && /^Resuming interrupted turn\b/.test(text)) return text;
+  return "";
+}
+
 function hideNarration() {
   const n = state.narration;
   clearTimeout(n.fadeTimer);
@@ -4210,9 +4219,16 @@ function onEvent(event) {
       break;
     }
     case "tool.progress":
-    case "status.update":
       touchTurn();
       break;
+    case "status.update": {
+      // Most status lines (heartbeats, goal and loop verdicts, process notices) stay hidden. Compaction and a resumed
+      // turn show in the narration line, so a long pause reads as work instead of a hung reply.
+      const line = statusLine(payload);
+      if (line && state.streaming) showNarration(line, ensureTurn());
+      touchTurn();
+      break;
+    }
     case "request.cancel": {
       // A withdrawn request stays as the record of what happened: resolved cards are left alone, an unanswered one is
       // kept in place with the closed look.
