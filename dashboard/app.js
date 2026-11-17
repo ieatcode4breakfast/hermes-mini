@@ -118,6 +118,8 @@ const state = {
   ws: null,
   wsReady: false, // gateway.ready seen on the current socket
   hiddenTurn: false, // the running turn is display_kind "hidden" (message.start): nothing of it is drawn
+  stream: null, // the running turn's chunk cursor { turnId, segment, applied } (streamChunk)
+  historyRows: [], // the rows the last loadHistory drew, oldest first (seedInflight checks them)
   connectionEpoch: 0, // bumped on every gateway.ready: display viewer ids are valid only for one RPC connection
   ready: false, // thread attached; sending allowed
   connecting: null,
@@ -1234,6 +1236,7 @@ async function attachHome(fresh) {
   let running = false;
   let openRequests = [];
   let pendingConnection = null;
+  let inflight = null;
   let messageCount = 0;
   if (!fresh) {
     try {
@@ -1243,6 +1246,7 @@ async function attachHome(fresh) {
       running = Boolean(resumed.running);
       openRequests = resumed.open_requests || [];
       pendingConnection = resumed.pending_connection || null;
+      inflight = resumed.inflight || null;
       messageCount = Number(resumed.message_count) || 0;
     } catch (error) {
       if (!/not found/i.test(errorText(error))) throw error;
@@ -1257,7 +1261,7 @@ async function attachHome(fresh) {
   setReadOnly(false);
   updateCaption();
   await loadHistory(messageCount);
-  finishAttach(openRequests, running, pendingConnection);
+  finishAttach(openRequests, running, pendingConnection, inflight);
 }
 
 // Another chat picked from the drawer (or remembered across a reload). Only resumable sources open here, like the
@@ -1275,11 +1279,74 @@ async function attachSession(id) {
   setReadOnly(false);
   updateCaption();
   await loadHistory(Number(resumed.message_count) || 0);
-  finishAttach(resumed.open_requests || [], Boolean(resumed.running), resumed.pending_connection || null);
+  finishAttach(resumed.open_requests || [], Boolean(resumed.running), resumed.pending_connection || null,
+    resumed.inflight || null);
   if (!pendingTarget) restoreScroll(id); // a deep link places its own message instead
 }
 
-function finishAttach(openRequests, running, pendingConnection = null) {
+// A turn still running when the chat (re)attaches: draw the reply streamed so far, which the saved chat does not have
+// yet, so the next chunks continue it instead of starting a cut-off bubble. Like Hermes's desktop, the text is the
+// turn's flat inflight.assistant. Saved assistant rows already past the last user row cover its start; when they do
+// not line up, nothing is drawn rather than drawing text twice.
+function seedInflight(inflight) {
+  if (!inflight || typeof inflight !== "object") return;
+  if (inflight.display_kind === "hidden") {
+    state.hiddenTurn = true;
+    return;
+  }
+  let text = typeof inflight.assistant === "string" ? inflight.assistant : "";
+  const rows = state.historyRows || [];
+  let lastUser = -1;
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    if (rows[i].role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  const saved = rows.slice(lastUser + 1).filter((row) => row.role === "assistant").map((row) => messageText(row));
+  const covered = saved.join("");
+  if (covered.trim()) {
+    if (!text.startsWith(covered)) return;
+    text = text.slice(covered.length);
+  }
+  // Chunks after this pick up their place from the first one that arrives (streamChunk adopts its turn).
+  state.stream = { turnId: null, segment: 0, applied: 0 };
+  if (!text.trim()) return;
+  const turn = ensureTurn();
+  turn.text = text.replace(/^\s+/, "");
+  turn.seeded = true;
+  scheduleTurnPaint(turn);
+}
+
+// Hermes stamps each streamed chunk with turn_id, segment (seals before it) and offset (UTF-16 units of that segment
+// already sent; tui_gateway/stream_segments.py). A re-sent chunk (a retried model call re-streams its segment) must
+// not paint twice: return only the part of the chunk not applied yet, and whether a new segment began without its
+// message.interim. Unstamped chunks are appended as they come.
+function streamChunk(stream, payload) {
+  const text = payload.text;
+  if (!stream || typeof payload.offset !== "number" || typeof payload.segment !== "number") return { text, seal: false };
+  if (payload.turn_id && stream.turnId !== payload.turn_id) {
+    // The first stamped chunk after a reattach (or of a turn whose message.start never came): everything before its
+    // offset is already on screen.
+    stream.turnId = payload.turn_id;
+    stream.segment = payload.segment;
+    stream.applied = payload.offset;
+  }
+  if (payload.segment < stream.segment) return { text: "", seal: false };
+  let seal = false;
+  if (payload.segment > stream.segment) {
+    seal = true;
+    stream.segment = payload.segment;
+    stream.applied = 0;
+  }
+  const end = payload.offset + text.length;
+  if (end <= stream.applied) return { text: "", seal };
+  const fresh = payload.offset < stream.applied ? text.slice(stream.applied - payload.offset) : text;
+  stream.applied = end;
+  return { text: fresh, seal };
+}
+
+function finishAttach(openRequests, running, pendingConnection = null, inflight = null) {
   // Cards whose request the server no longer reports as open are stale.
   const openIds = new Set(openRequests.map((req) => req.id));
   for (const id of [...state.cards.keys()]) {
@@ -1289,6 +1356,8 @@ function finishAttach(openRequests, running, pendingConnection = null) {
   syncConnectionCards(pendingConnection);
   if (els.status.textContent.startsWith("Waiting for your answer")) setStatus("");
   state.streaming = Boolean(running);
+  state.stream = null;
+  if (running) seedInflight(inflight);
   if (running) touchTurn();
   state.composerLocked = false;
   state.ready = true;
@@ -1699,6 +1768,7 @@ async function loadHistory(messageCount = null) {
   state.turn = null;
   clearLog({ keepDictation: true });
   const rows = data.messages || [];
+  state.historyRows = rows;
   older.gen += 1;
   older.sid = state.storedId;
   older.offset = HISTORY_PAGE;
@@ -3913,6 +3983,7 @@ function finishTurn() {
   const turn = state.turn;
   state.streaming = false;
   state.hiddenTurn = false;
+  state.stream = null;
   state.sealedSegment = ""; // the bubble a tool round closed belongs to this turn only
   setTimeout(() => void syncJobDeliveries(), 800); // a job result that arrived mid-reply
   // Narration belongs to this turn: stop the loop, drop any in-flight answer, and clear the line.
@@ -4150,6 +4221,9 @@ function onEvent(event) {
 
   switch (type) {
     case "message.start": {
+      // The same turn's start sent again (a re-sent frame): the turn on screen is that turn, keep it.
+      if (payload.turn_id && state.streaming && state.stream && state.stream.turnId === payload.turn_id) break;
+      state.stream = { turnId: payload.turn_id || null, segment: 0, applied: 0 };
       // A turn this device did not submit: the message came from another device (phone, computer, terminal). Hermes
       // sends no event with its text, so fetch it from the saved chat and show it.
       const local = Date.now() - (state.localStartAt || 0) < 20000;
@@ -4180,10 +4254,16 @@ function onEvent(event) {
         updateComposer();
         break;
       }
+      const chunk = streamChunk(state.stream, payload);
+      if (chunk.seal) sealSegment();
+      if (!chunk.text) {
+        updateComposer();
+        break;
+      }
       const turn = ensureTurn();
       // Assistant text has started: the narration line steps aside until the next tool round.
       hideNarration();
-      turn.text += payload.text;
+      turn.text += chunk.text;
       scheduleTurnPaint(turn);
       updateComposer();
       break;
@@ -4204,7 +4284,11 @@ function onEvent(event) {
       // The final text is the last segment only. When it repeats the bubble a tool round already closed (no text came
       // after the tools), or there is none, the trailing row holds just the typing dots and is dropped.
       const repeat = text && state.sealedSegment && squashSpace(displayText(text)) === squashSpace(state.sealedSegment);
-      if (text && !repeat) {
+      // A reply drawn from inflight after a reload holds the earlier segments too; keep it when it already ends with
+      // the final text.
+      const seededTail = text && state.turn && state.turn.seeded &&
+        squashSpace(displayText(state.turn.text)).endsWith(squashSpace(displayText(text)));
+      if (text && !repeat && !seededTail) {
         ensureTurn().text = text;
       } else if (state.sealedSegment && state.turn && !state.turn.text.trim()) {
         state.turn.row.remove();
@@ -4220,6 +4304,12 @@ function onEvent(event) {
     case "message.interim": {
       // Commentary beside tool calls. Streamed text is already on screen, so this only closes its bubble; text that
       // was not streamed is drawn as its own finished bubble. Either way the next text starts a new bubble.
+      const stream = state.stream;
+      if (stream && typeof payload.segment === "number" && (!payload.turn_id || payload.turn_id === stream.turnId)) {
+        if (payload.segment < stream.segment) break; // a seal already applied, sent again
+        stream.segment = payload.segment + 1;
+        stream.applied = 0;
+      }
       const text = typeof payload.text === "string" ? payload.text.trim() : "";
       if (!text || isSilenceMarker(text) || state.hiddenTurn) break;
       if (!payload.already_streamed) {

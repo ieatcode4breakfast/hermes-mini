@@ -71,7 +71,7 @@ class ConnectionCardTest(unittest.TestCase):
         self.assertIn('owner: { type: "session", session_id: state.liveSid }', answer)
         # A reload brings the open card back from session.resume.
         self.assertIn("pendingConnection = resumed.pending_connection || null;", app)
-        self.assertIn("resumed.pending_connection || null)", app)
+        self.assertIn("resumed.pending_connection || null,\n    resumed.inflight || null);", app)
         self.assertIn("syncConnectionCards(pendingConnection);", app)
         render = app.split("function renderConnection(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn('window.open(conn.openUrl(target), "_blank", "noopener")', render)
