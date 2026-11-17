@@ -5003,7 +5003,7 @@ async function send() {
   state.narration.request = text;
   clearComposer();
   addUserBubble(text, attachments, true);
-  const userRow = els.log.lastElementChild; // the optimistic bubble, removed if a first send fails
+  const userRow = els.log.lastElementChild; // the optimistic bubble, removed if the send fails
   state.streaming = true;
   scheduleTurnPaint(ensureTurn());
   updateComposer();
@@ -5051,11 +5051,10 @@ async function send() {
     renderTray();
     syncMentions();
     finishTurn();
-    if (state.viewedUnsent) {
-      // The first send failed: the chat never became real, so leave no bubble or empty turn behind.
-      userRow?.remove();
-      setEmptyState(true);
-    }
+    // The text is back in the box, so the bubble would only look sent when it was not (and vanish on a reload).
+    userRow?.remove();
+    // A first send that failed leaves a chat that never became real: back to the empty state.
+    if (state.viewedUnsent) setEmptyState(true);
   } finally {
     state.sending = false;
   }
