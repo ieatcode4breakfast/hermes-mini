@@ -27,7 +27,9 @@ class MessagePolicyTest(DisposableHome):
                      'Use /help in the terminal, as you requested.', '> ' + INTRO,
                      '```text\n\n' + INTRO + '\n\n```',
                      'The model provider uses /model for configuration.',
-                     'Your reminder: restart the gateway after work.', RESULT]:
+                     'Your reminder: restart the gateway after work.', RESULT,
+                     'The connection to your database fails because the port is closed.',
+                     'The connection to Postgres kept timing out, so I raised the pool size.']:
             with self.subTest(text=text):
                 self.assertEqual(self.policy.display_text(text), text)
 
@@ -50,6 +52,8 @@ class MessagePolicyTest(DisposableHome):
             'History changed during this turn — the response above is visible but was not saved to session history.': 'could not be saved',
             'I ran out of steps for this turn (10 tool calls). Raise max_iterations in your config.': 'Send “continue”',
             'The model provider is rate-limiting requests. Wait, then /retry.': 'Wait a moment',
+            'The connection to the model provider dropped mid-reply. Send /retry.': 'Wait a moment',
+            'The connection to OpenRouter kept dropping while the model was writing a large action. Try /retry.': 'Wait a moment',
         }
         for source, meaning in cases.items():
             shown = self.policy.display_text(source)
@@ -66,7 +70,10 @@ class MessagePolicyTest(DisposableHome):
                  'The conversation is too long for this model. Run /compress.',
                  'History changed during this turn — the response above is visible but was not saved to session history.',
                  '♻️ Gateway online — Hermes is back and ready.',
-                 '💡 First-time tip — send /verbose.']
+                 '💡 First-time tip — send /verbose.',
+                 'The connection to your database fails because the port is closed.',
+                 'The connection to the model provider dropped mid-reply. Send /retry.',
+                 'The connection to OpenRouter kept dropping while the model was writing a large action.']
         fixtures = [{'text': text, 'notice': notice,
                      'expected': self.policy.display_text(text, notice=notice)}
                     for text in cases for notice in [False, True]]
@@ -81,7 +88,7 @@ for (let i = 1; i <= intro.length; i++) {
   assert.equal(displayText(intro.slice(0,i), {streaming:true}), '');
   assert.equal(displayText(result + '\\n\\n' + intro.slice(0,i), {streaming:true}), result);
 }
-console.log('22 parity fixtures and all introduction stream boundaries passed');
+console.log('28 parity fixtures and all introduction stream boundaries passed');
 '''
         run = subprocess.run(['node', '--input-type=module', '-e', script,
                               str(PROJECT_ROOT / 'dashboard/message-policy.js')],
