@@ -75,15 +75,14 @@ Install the Hermes Mini plugin for me:
 2. Check that `hermes plugins list` shows hermes-mini as enabled.
 3. Tell me the address to open: my dashboard's address followed by
    /dashboard-plugins/hermes-mini/index.html
-4. Do not restart anything yourself. Tell me the commands that restart
-   the Hermes dashboard and gateway the way they run on this machine,
-   and I'll run them so the plugin loads.
+4. Last, restart the Hermes dashboard and gateway the way they normally
+   run on this machine, so the plugin loads. If you're not sure how they
+   run, tell me the commands instead of guessing.
 ```
 
-Hermes asks you to approve the commands. When it's done, run the restart commands it gives you
-yourself. An agent that restarts its own gateway cuts off its reply and can leave the gateway or
-dashboard half-started. Then open the address, sign in with your usual Hermes login, and use your
-browser's "Install app" / "Add to Home Screen".
+Hermes asks you to approve the commands. It tells you the address before it restarts anything,
+because restarting the gateway ends its reply. Then open the address, sign in with your usual
+Hermes login, and use your browser's "Install app" / "Add to Home Screen".
 
 Installing by name uses the Hermes plugin catalog, which pins a reviewed release (currently
 v0.2.1). To get the newest commit on `main` before the catalog catches up, install from GitHub
