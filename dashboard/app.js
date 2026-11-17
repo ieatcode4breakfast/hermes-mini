@@ -547,6 +547,10 @@ const OTHER_REF = /@(?:folder|url|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+
 const ATTACHED_CONTEXT_TAIL = /(?:^|\n)--- Attached Context ---\s*\n[\s\S]*$/;
 const CONTEXT_WARNINGS_TAIL = /(?:^|\n)--- Context Warnings ---[\s\S]*$/;
 const LEGACY_HEARTBEAT = /^\[Background process \S+ heartbeat #\d+ /;
+// tui_gateway/session_history.py _DISCORD_TRIGGERING_NOTE_RE: a Discord routing note older gateways stored inside the
+// person's own message. Hermes strips it for display; so do we.
+const DISCORD_TRIGGERING_NOTE =
+  /(^|\n)\[Triggering message id: `[^`\n]*` — use as `message_id` for reply\/react\/pin via the discord tools\.\]\n*/g;
 const JOB_PREFIX = /^\[Scheduled job result\]\s*/; // bridge.py PREFIX
 // A schedule mentioned in a message (schedules.js mentionText): "[Schedule: <name> · job <id>]". The user bubble draws
 // it inline as a pill with the schedule's name (appendWithSchedules).
@@ -700,11 +704,15 @@ function chatEntries(messages, { notices = false } = {}) {
       continue;
     }
     if (message.role === "user" && LEGACY_HEARTBEAT.test(raw)) continue;
+    // tui_gateway/session_history.py _is_display_hidden_marker: a user row that opens with "[System:" is a gateway
+    // notice stored as a user turn (older ones carry no display_kind), never the person's own words.
+    if (message.role === "user" && (messageText(message).trimStart().startsWith("[System:") ||
+      raw.trimStart().startsWith("[System:"))) continue;
     const images = [];
     const files = [];
     let text = message.role === "assistant" ? displayText(raw) : raw;
     if (message.role === "user") {
-      text = text.replace(ATTACHED_CONTEXT_TAIL, "").replace(CONTEXT_WARNINGS_TAIL, "");
+      text = text.replace(ATTACHED_CONTEXT_TAIL, "").replace(CONTEXT_WARNINGS_TAIL, "").replace(DISCORD_TRIGGERING_NOTE, "$1");
       // The server appends an internal @image: reference to a prompt that carried an image (rendered as a thumbnail) and
       // an @file: reference for an attached file (rendered as a chip). Pull them out, then treat the rest as the text.
       for (const m of text.matchAll(/@image:(\S+)/g)) images.push(m[1]);
