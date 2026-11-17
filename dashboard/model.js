@@ -11,6 +11,7 @@
 // API keys are only ever held in the password field until Save; nothing here touches browser storage.
 
 import { openPopover, closePopover } from "./toast.js";
+import { displayModelName } from "./model-name.js";
 
 const EFFORTS = [["none", "Off"], ["low", "Low"], ["medium", "Med"], ["high", "High"], ["xhigh", "XHigh"], ["max", "Max"]];
 const LONG_PRESS_MS = 550;
@@ -22,10 +23,9 @@ function node(tag, className, text) {
   return n;
 }
 
-// "deepseek/deepseek-v4.1-flash" -> "deepseek-v4.1-flash": the vendor prefix only repeats the provider.
+// "deepseek/deepseek-v4.1-flash" -> "DeepSeek v4.1 Flash" (model-name.js). Display only: the id is what is sent.
 export function shortModel(model) {
-  const id = String(model || "").trim();
-  return id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
+  return displayModelName(model);
 }
 
 function effortLabel(effort) {
@@ -444,7 +444,9 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     const current = isDraft() && draftPick ? draftPick : { model: info.model, provider: info.provider };
     const ordered = [...rows].sort((a, b) => Number(b.slug === current.provider) - Number(a.slug === current.provider));
     for (const row of ordered) {
-      const models = (row.models || []).filter((m) => !query || m.toLowerCase().includes(query) || row.name.toLowerCase().includes(query));
+      // The search matches the id, the friendly name, or the provider.
+      const models = (row.models || []).filter((m) => !query || m.toLowerCase().includes(query) ||
+        displayModelName(m).toLowerCase().includes(query) || row.name.toLowerCase().includes(query));
       if (query && !models.length) continue;
       const group = node("section", "model-group");
       const open = Boolean(query); // collapsed by default; a search opens the groups it matches
@@ -472,7 +474,9 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
         item.classList.toggle("on", on);
         if (on) item.setAttribute("aria-current", "true");
         item.disabled = unavailable.has(model);
-        item.append(node("span", "model-option-name", model));
+        const label = node("span", "model-option-name", displayModelName(model));
+        label.title = model; // the exact id, for telling look-alikes apart
+        item.append(label);
         const price = priceText(row.pricing?.[model]);
         if (price) item.append(node("span", "model-option-price", price));
         item.addEventListener("click", () => void pickModel(model, row.slug));
