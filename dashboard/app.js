@@ -2121,17 +2121,20 @@ function addJobBubble(text, meta = {}) {
   return bubble;
 }
 
-// Job results arrive outside any turn (the gateway writes them), so nothing streams them in. Pull the newest rows and
-// append job results newer than the last row on screen. Runs on the bridge's push, on return to the app and after a
-// reply finishes; skipped mid-reply and off the main chat.
+// Job results arrive outside any turn (the gateway writes them), so nothing streams them in. A job may be delivered to
+// the main chat or to a named one (bridge.py), and the push names no chat: pull the newest rows of the chat on screen and
+// append job results newer than the last row on screen. Runs on the bridge's push, on return to the app and after a reply
+// finishes; skipped mid-reply, in a draft, and while another chat is being opened.
 let jobSyncBusy = false;
 async function syncJobDeliveries() {
-  if (jobSyncBusy || state.streaming || state.switching || !state.storedId || state.viewedId !== state.homeId) return;
+  if (jobSyncBusy || state.streaming || state.switching || !state.storedId) return;
   jobSyncBusy = true;
   const storedId = state.storedId;
+  const viewedId = state.viewedId;
   try {
     const data = await api(`/api/sessions/${encodeURIComponent(storedId)}/messages?limit=20&order=latest`);
-    if (state.storedId !== storedId || state.streaming) return;
+    // Another chat was opened (or the same one left and re-opened) meanwhile: those rows are not this chat's.
+    if (state.storedId !== storedId || state.viewedId !== viewedId || state.streaming || state.switching) return;
     const shownIds = new Set(chatRows().map((node) => Number(node.hermesMiniMsg.rowId)).filter(Number.isInteger));
     const lastShown = Math.max(0, ...shownIds);
     let added = false;

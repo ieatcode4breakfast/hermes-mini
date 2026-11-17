@@ -176,6 +176,37 @@ class JobWrapperTest(unittest.TestCase):
 
 
 
+class JobDeliveryInAnyChatTest(unittest.TestCase):
+    """A job result appended live belongs to the chat on screen: a named chat gets it too, and no other chat does."""
+
+    def setUp(self):
+        self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.fn = self.app[self.app.index("async function syncJobDeliveries("):self.app.index("\nfunction addAssistantBubble(")]
+
+    def test_the_chat_on_screen_is_not_required_to_be_the_main_chat(self):
+        self.assertNotIn("state.viewedId !== state.homeId", self.fn)
+        self.assertNotIn("state.homeId", self.fn)
+
+    def test_it_fetches_the_open_chats_rows_and_notices_a_chat_change_mid_fetch(self):
+        self.assertIn("const storedId = state.storedId;", self.fn)
+        self.assertIn("const viewedId = state.viewedId;", self.fn)
+        self.assertIn("/api/sessions/${encodeURIComponent(storedId)}/messages?limit=20&order=latest", self.fn)
+        self.assertIn(
+            "if (state.storedId !== storedId || state.viewedId !== viewedId || state.streaming || state.switching) return;",
+            self.fn,
+        )
+
+    def test_a_row_already_on_screen_is_never_appended_twice(self):
+        self.assertIn("const shownIds = new Set(", self.fn)
+        self.assertIn("if (entry.kind !== \"job\"", self.fn)
+        self.assertIn("shownIds.has(id)", self.fn)
+
+    def test_the_push_that_triggers_it_names_no_chat_so_every_chat_syncs(self):
+        sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")
+        self.assertIn('client.postMessage({ type: "hermes-mini-job" })', sw)
+        self.assertIn('if (data.type === "hermes-mini-job") {\n      void syncJobDeliveries();', self.app)
+
+
 class ModelPickerTest(unittest.TestCase):
     """The model chip and sheet (model.js) restyle Hermes's own gateway methods; nothing app-side holds model state."""
 
