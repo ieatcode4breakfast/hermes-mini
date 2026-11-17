@@ -692,6 +692,33 @@ input, textarea, select { font-family: inherit; }
 .conn-state { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .conn-buttons { display: flex; gap: 6px; flex-shrink: 0; }
 .card .conn-note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+/* A password, secret or vault prompt card: what was asked, a masked field with Show, and Submit / Skip. */
+.prompt-subtitle { color: var(--muted); font-size: 13px; margin: -2px 0 6px; overflow-wrap: anywhere; }
+.prompt-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.prompt-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent); font: 600 12px ui-monospace, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.card .prompt-help { color: var(--muted); font-size: 13px; margin: 0 0 8px; overflow-wrap: anywhere; }
+.prompt-help a { color: var(--accent); }
+.prompt-fields { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.prompt-field { display: flex; flex-direction: column; gap: 4px; }
+.prompt-field label { font-size: 13px; font-weight: 550; color: var(--muted); }
+.prompt-input-wrap { display: flex; align-items: center; gap: 8px; }
+.prompt-input-wrap input {
+  flex: 1; min-width: 0; font: inherit; color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+  border: 0; border-radius: 12px; padding: 8px 12px;
+  transition: background-color 160ms ease;
+}
+.prompt-input-wrap input:focus {
+  outline: none;
+  background: color-mix(in srgb, var(--fg) 9%, var(--bg));
+  box-shadow: none;
+}
+.prompt-eye { flex: 0 0 auto; padding: 6px 12px; font-size: 13px; }
 /* A multi-select question says so above its choices. */
 .card .clarify-hint { color: var(--muted); font-size: 13px; margin: -2px 0 6px; }
 /* The review step before Submit: each answer with a Change link. */
@@ -831,6 +858,10 @@ textarea::-webkit-scrollbar { display: none; }
    tapping it no longer zooms; the 20px line height, and with it the box's height, stays the same. */
 @supports (-webkit-touch-callout: none) {
   .composer textarea, .composer textarea:focus { font-size: 16px; }
+}
+/* A prompt card's fields are tapped too: 16px on Apple touch devices keeps Safari from zooming into them. */
+@supports (-webkit-touch-callout: none) {
+  .card input, .card input:focus { font-size: 16px; }
 }
 .composer .send { border: 0; }
 /* Voice dictation: recording UI for the configured speech-to-text provider. */

@@ -22,6 +22,7 @@ import { createModelPicker, shortModel } from "./model.js";
 import * as clarifyFlow from "./clarify.js";
 import { dictationInsert } from "./dictation-text.js";
 import * as conn from "./connections.js";
+import * as promptCards from "./prompts.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -788,9 +789,11 @@ function onFrame(frame) {
     // A server->client request (frame.id is a string) or some other notification we do not handle.
     if (frame.id !== undefined && frame.id !== null) {
       const params = frame.params || {};
-      if (belongsToView(params)) {
+      // display.install.sudo is asked of the app itself (session_id ""), not of a chat: show it even while a New
+      // chat draft or a read-only chat is on screen.
+      if (belongsToView(params) || frame.method === "display.install.sudo") {
         onServerRequest(frame.id, frame.method, params);
-      } else if (frame.method === "approval" || frame.method === "clarify") {
+      } else if (frame.method === "approval" || frame.method === "clarify" || promptCards.isPromptMethod(frame.method)) {
         // Another chat is waiting on an answer. Leave it pending: it shows up again when that chat is reopened
         // (the server reports open requests on resume), and this line says why the agent has paused.
         setStatus("Waiting for your answer in another chat");
@@ -4248,6 +4251,7 @@ function onEvent(event) {
       if (!card || card.resolved) break;
       if (card.method === "clarify") resolveClarify(card, "cancelled");
       else if (card.method === "approval") resolveApproval(card, null);
+      else if (promptCards.isPromptMethod(card.method)) resolvePromptCard(card, "cancelled");
       break;
     }
     case "session.replay_gap": {
@@ -4432,6 +4436,10 @@ function closeOpenCards() {
     } else if (card.method === "approval") {
       respondApproval(card, "deny").catch(() => {}); // the Deny button's own RPC
       resolveApproval(card, "deny", APPROVAL_SENT_INSTEAD);
+    } else if (promptCards.isPromptMethod(card.method)) {
+      // An empty answer closes the prompt; a steer that never carried the value is no answer at all.
+      answerServerRequest(id, promptCards.buildPromptResult(card.method, null));
+      resolvePromptCard(card, "sent_instead");
     }
   }
 }
@@ -4461,6 +4469,10 @@ function onServerRequest(id, method, params) {
   }
   if (method === "clarify") {
     showClarify(id, params);
+    return;
+  }
+  if (promptCards.isPromptMethod(method)) {
+    showPromptCard(id, method, params);
     return;
   }
   // Anything we cannot answer gets method-not-found so the backend does not wait out its deadline.
@@ -4504,6 +4516,144 @@ function showApproval(id, params) {
   for (const [choice, button] of extra) button.addEventListener("click", () => answer(choice));
   deny.addEventListener("click", () => answer("deny"));
   scrollToBottom(true);
+}
+
+// A password, secret or vault prompt: what Hermes asked for, one field per value (masked when it is a secret),
+// and Submit / Skip. The values live in the card only long enough to be sent: submit and skip clear every input
+// first, and the answered card drops its fields so no masked value stays in the DOM.
+function showPromptCard(id, method, params) {
+  const spec = promptCards.describePrompt(method, params);
+  if (!spec) {
+    rejectServerRequest(id, -32601, "no handler for server request: " + method);
+    return;
+  }
+  const card = el("div", "card prompt-card");
+  const entry = { el: card, method, params, spec, resolved: false };
+  card.append(el("h2", "", spec.title));
+  if (spec.subtitle) card.append(el("p", "prompt-subtitle", spec.subtitle));
+  if (spec.badge) {
+    const meta = el("div", "prompt-meta");
+    meta.append(el("span", "prompt-badge", spec.badge));
+    card.append(meta);
+  }
+  if (spec.description) card.append(el("p", "", spec.description));
+  if (spec.command) card.append(el("pre", "", spec.command));
+  if (spec.helpUrl) {
+    const help = el("p", "prompt-help");
+    const link = el("a", "", "Documentation / setup link");
+    link.href = spec.helpUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    help.append(link);
+    card.append(help);
+  } else if (spec.helpText) {
+    card.append(el("p", "prompt-help", spec.helpText));
+  }
+
+  const fields = el("div", "prompt-fields");
+  const inputs = [];
+  const currentValues = () => {
+    const values = {};
+    for (const item of inputs) values[item.name] = item.input.value;
+    return values;
+  };
+
+  for (const field of spec.fields) {
+    const wrap = el("div", "prompt-field");
+    wrap.append(el("label", "", field.label));
+    const box = el("div", "prompt-input-wrap");
+    const input = el("input");
+    input.type = field.masked ? "password" : "text";
+    input.placeholder = field.placeholder || "";
+    input.autocomplete = field.autocomplete || "off";
+    input.setAttribute("autocapitalize", "off");
+    input.spellcheck = false;
+    box.append(input);
+    if (field.masked) {
+      const eye = el("button", "btn prompt-eye", "Show");
+      eye.type = "button";
+      eye.setAttribute("aria-label", "Show value");
+      eye.setAttribute("aria-pressed", "false");
+      eye.addEventListener("click", () => {
+        const shown = input.type === "text";
+        input.type = shown ? "password" : "text";
+        eye.textContent = shown ? "Show" : "Hide";
+        eye.setAttribute("aria-label", shown ? "Show value" : "Hide value");
+        eye.setAttribute("aria-pressed", shown ? "false" : "true");
+      });
+      box.append(eye);
+    }
+    wrap.append(box);
+    fields.append(wrap);
+    inputs.push({ name: field.name, input });
+  }
+  card.append(fields);
+
+  const actions = el("div", "actions");
+  const skip = el("button", "btn", spec.skipLabel);
+  skip.type = "button";
+  const submit = el("button", "btn primary", spec.submitLabel);
+  submit.type = "button";
+  actions.append(skip, submit);
+  card.append(actions);
+
+  const syncSubmit = () => {
+    submit.disabled = promptCards.buildPromptResult(method, currentValues()) === null;
+  };
+  for (const item of inputs) {
+    item.input.addEventListener("input", syncSubmit);
+    item.input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.isComposing) return;
+      event.preventDefault();
+      const at = inputs.indexOf(item);
+      if (at < inputs.length - 1) inputs[at + 1].input.focus();
+      else if (!submit.disabled) submit.click();
+    });
+  }
+  syncSubmit();
+
+  const finish = (result, kind) => {
+    if (entry.resolved) return;
+    skip.disabled = true;
+    submit.disabled = true;
+    for (const item of inputs) item.input.value = "";
+    answerServerRequest(id, result);
+    resolvePromptCard(entry, kind);
+  };
+  submit.addEventListener("click", () => {
+    if (entry.resolved) return;
+    const result = promptCards.buildPromptResult(method, currentValues());
+    if (result) finish(result, "sent");
+  });
+  skip.addEventListener("click", () => finish(promptCards.buildPromptResult(method, null), "skipped"));
+
+  setEmptyState(false);
+  sealTurnForCard();
+  els.log.append(card);
+  state.cards.set(id, entry);
+  scrollToBottom(true);
+}
+
+// Answered: the fields and buttons go, and the card keeps only how it ended.
+function resolvePromptCard(entry, kind, customNotice) {
+  if (!entry || entry.resolved) return;
+  entry.resolved = true;
+  entry.el.classList.add("resolved");
+  const fields = entry.el.querySelector(".prompt-fields");
+  if (fields) fields.remove();
+  const actions = entry.el.querySelector(".actions");
+  if (actions) actions.remove();
+  const spec = entry.spec;
+  const outcome =
+    customNotice ||
+    (kind === "sent"
+      ? spec.sentOutcome
+      : kind === "skipped"
+        ? spec.skippedOutcome
+        : kind === "sent_instead"
+          ? spec.sentInsteadOutcome
+          : spec.cancelledOutcome);
+  entry.el.append(el("p", "resolved-outcome", outcome));
 }
 
 function bareChoice(choice) {

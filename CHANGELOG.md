@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Inline prompt cards (new `prompts.js`) for passwords, secrets, and vault requests (`sudo`,
+  `display.install.sudo`, `secret`, `vault.unlock_prompt`, `vault.save_login`, and `vault.code`). Each card masks
+  secret inputs with a Show/Hide toggle, offers Skip, answers over JSON-RPC without putting values in chat
+  history, and skips cleanly if you send a message instead.
 - A "connect an app" card for Hermes' `manage_connections` tool: each app with its state, Open (the sign-in link),
   Allow (a local install or enable) and Skip, plus Done to stop waiting. It updates as Hermes reports progress and
   comes back after a reload. Before, the tool waited for a card the app never showed, so the reply hung for up to

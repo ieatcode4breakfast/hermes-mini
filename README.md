@@ -220,7 +220,8 @@ there is no reply to show.
   from its notification. A set of questions goes one at a time: Skip skips just that question, Back
   reopens the one before, and a review step lists every answer with Change before you Submit. A "pick any
   that apply" question takes several answers. When the agent connects an app (Notion, Slack, ...), a card
-  offers the sign-in link and Skip.
+  offers the sign-in link and Skip. Inline prompt cards also handle sudo passwords, skill secrets, vault
+  unlocks, saved logins, and one-time codes with masked inputs (Show/Hide) and Skip.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
   agent sends with `MEDIA:` show inline; audio plays inline in a voice-note player (play/pause, a
   waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools
