@@ -20,6 +20,7 @@ import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
 import { createModelPicker, shortModel } from "./model.js";
 import * as clarifyFlow from "./clarify.js";
+import { dictationInsert } from "./dictation-text.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -5337,11 +5338,10 @@ function insertDictatedText(rawText) {
   const before = val.slice(0, start);
   const after = val.slice(end);
 
-  const tail = (after.length > 0 && !/^\s/.test(after) && !/^[.,!?;:)\]}]/.test(after)) ? " " : "";
-  const inserted = clean + tail;
+  const { text: inserted, caret } = dictationInsert(before, clean, after);
 
   els.input.value = before + inserted + after;
-  const newPos = start + inserted.length;
+  const newPos = start + caret;
   lastInputCaret.start = newPos;
   lastInputCaret.end = newPos;
   lastInputCaret.tracked = true;

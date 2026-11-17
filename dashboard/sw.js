@@ -26,6 +26,7 @@ const CORE = [
   "todo.js",
   "schedules.js",
   "clarify.js",
+  "dictation-text.js",
   "inbox.js",
   "toast.js",
   "md.js",
