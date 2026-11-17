@@ -111,17 +111,31 @@ class ClarifyFlowTest(unittest.TestCase):
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('import * as clarifyFlow from "./clarify.js";', app)
         render = app.split("function renderClarify(", 1)[1].split("\nfunction ", 1)[0]
+        nav = app.split("function clarifyNavRow(", 1)[1].split("\nfunction ", 1)[0]
         # Skip answers this question with null; it no longer cancels the whole set.
-        self.assertIn("answerClarify(id, entry, null)", render)
-        self.assertNotIn("answerServerRequest", render)
-        for label in ('"Back"', '"Skip"', '"Send"'):
-            self.assertIn(label, render)
+        self.assertIn("answerClarify(id, entry, null)", nav)
+        self.assertNotIn("answerServerRequest", render + nav)
+        self.assertIn('"Send"', render)
+        self.assertIn("clarifyNavRow(id, entry)", render)
+        for label in ('"Back"', '"Skip"'):
+            self.assertIn(label, nav)
         review = app.split("function renderClarifyReview(", 1)[1].split("\nfunction ", 1)[0]
         for label in ('"Your answers"', '"Change"', '"Submit"'):
             self.assertIn(label, review)
         step = app.split("async function runClarifyStep(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn('rpc("clarify.lock"', step)
         self.assertIn("clarifyFlow.restoreState(flow, saved)", step)
+
+    def test_multi_select_toggles_and_sends_a_list(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        render = app.split("function renderClarify(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("if (question.multi_select) {", render)
+        multi = app.split("function renderMultiSelect(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("picked.delete(value)", multi)  # a tap toggles; it does not send
+        self.assertIn("answerClarify(id, entry, JSON.stringify(items))", multi)
+        self.assertIn('"Next" : "Send"', multi)
+        self.assertIn("clarifyNavRow(id, entry)", multi)
+        self.assertIn("send.disabled = picked.size === 0", multi)
 
     def test_module_is_precached(self):
         sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")

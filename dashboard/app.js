@@ -4521,6 +4521,10 @@ function renderClarify(id, entry) {
   const previous = clarifyFlow.currentAnswer(flow);
   const previousText = previous === undefined || previous === null ? "" : clarifyAnswerText(previous);
   const choices = Array.isArray(question.choices) ? question.choices.filter((c) => typeof c === "string") : [];
+  if (question.multi_select) {
+    renderMultiSelect(id, entry, question, choices, previous);
+    return;
+  }
   let matched = false;
   if (choices.length) {
     const actions = el("div", "actions");
@@ -4549,6 +4553,24 @@ function renderClarify(id, entry) {
   row.append(input, send);
   card.append(row);
 
+  card.append(clarifyNavRow(id, entry));
+
+  const submitText = () => {
+    const text = input.value.trim();
+    if (text) void answerClarify(id, entry, clarifyWireValue(question, text));
+  };
+  send.addEventListener("click", submitText);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      submitText();
+    }
+  });
+}
+
+// Back (to the previous question, or to the review after a Change) and Skip, shared by both kinds of question.
+function clarifyNavRow(id, entry) {
+  const { flow } = entry;
   const actions = el("div", "actions");
   if (flow.returnToReview || flow.index > 0) {
     const back = el("button", "btn", "Back");
@@ -4563,19 +4585,78 @@ function renderClarify(id, entry) {
   const skip = el("button", "btn", "Skip");
   skip.addEventListener("click", () => void answerClarify(id, entry, null));
   actions.append(skip);
-  card.append(actions);
+  return actions;
+}
 
-  const submitText = () => {
-    const text = input.value.trim();
-    if (text) void answerClarify(id, entry, clarifyWireValue(question, text));
+// The earlier answer of a multi-select question as a list (it is sent as a JSON list; a plain string is one item).
+function clarifyPicks(value) {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value.map(String);
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map(String);
+  } catch {
+    /* typed text */
+  }
+  return [String(value)];
+}
+
+// "Pick any that apply": a tap toggles a choice, typed text is one more item, and the primary button sends the list
+// (Next when a review follows, else Send). Nothing is sent until that button.
+function renderMultiSelect(id, entry, question, choices, previous) {
+  const { el: card, flow } = entry;
+  const earlier = clarifyPicks(previous);
+  const picked = new Set(earlier.filter((item) => choices.some((choice) => bareChoice(choice) === item)));
+  const typedBefore = earlier.filter((item) => !picked.has(item)).join(", ");
+  card.append(el("p", "clarify-hint", "Pick any that apply."));
+  const input = el("input");
+  const send = el("button", "btn primary", clarifyFlow.hasReview(flow) ? "Next" : "Send");
+  const refresh = () => {
+    send.disabled = picked.size === 0 && !input.value.trim();
   };
-  send.addEventListener("click", submitText);
+  if (choices.length) {
+    const options = el("div", "actions");
+    for (const choice of choices) {
+      const value = bareChoice(choice);
+      const button = el("button", "btn", choice);
+      const mark = () => {
+        button.classList.toggle("chosen", picked.has(value));
+        button.setAttribute("aria-pressed", picked.has(value) ? "true" : "false");
+      };
+      mark();
+      button.addEventListener("click", () => {
+        if (picked.has(value)) picked.delete(value);
+        else picked.add(value);
+        mark();
+        refresh();
+      });
+      options.append(button);
+    }
+    card.append(options);
+  }
+  const row = el("div", "answer-row");
+  input.type = "text";
+  input.placeholder = choices.length ? "Add your own (optional)" : "Type an answer";
+  input.enterKeyHint = "send";
+  input.value = typedBefore;
+  row.append(input, send);
+  card.append(row);
+  card.append(clarifyNavRow(id, entry));
+  const submit = () => {
+    const items = [...picked];
+    const typed = input.value.trim();
+    if (typed) items.push(typed);
+    if (items.length) void answerClarify(id, entry, JSON.stringify(items));
+  };
+  send.addEventListener("click", submit);
+  input.addEventListener("input", refresh);
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.isComposing) {
       event.preventDefault();
-      submitText();
+      submit();
     }
   });
+  refresh();
 }
 
 function renderClarifyReview(id, entry) {

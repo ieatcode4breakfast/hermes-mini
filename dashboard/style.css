@@ -684,6 +684,8 @@ input, textarea, select { font-family: inherit; }
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
+/* A multi-select question says so above its choices. */
+.card .clarify-hint { color: var(--muted); font-size: 13px; margin: -2px 0 6px; }
 /* The review step before Submit: each answer with a Change link. */
 .review-answer { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 13.5px; line-height: 1.4; }
 .review-answer .resolved-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
