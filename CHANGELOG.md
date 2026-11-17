@@ -35,6 +35,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A passage no longer appears twice in a reply when Hermes re-sends part of it (a retried model call). The app
+  uses the turn, segment and offset Hermes stamps on every streamed chunk and keeps only text it has not shown.
+- Reloading mid-reply no longer cuts the reply off: the text streamed so far comes back in one bubble and the rest
+  continues in it.
+- A chat whose session Hermes closed (idle timeout, eviction) reopens by itself instead of showing typing dots
+  forever and failing every send.
+- An approval Hermes withdraws (`approval.cancelled`) closes its card instead of leaving buttons that error.
+- A hidden diagnostic turn is no longer drawn for a moment and then gone after a reload.
+- Old chats no longer show internal `[System: …]` rows or Discord routing notes as your own message, matching
+  Hermes' own history view.
+- A password or secret card no longer says it was sent when the connection dropped as you tapped Submit; it stays
+  open and says it was not sent.
 - A message that failed to send no longer stays in the chat looking sent; its text is back in the box.
 - A reply that starts "The connection to …" (about a database, say) is no longer replaced with the "could not finish
   this reply" notice; only Hermes' own two connection-failure wordings are. Browser and Python copies alike.
