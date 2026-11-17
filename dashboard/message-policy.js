@@ -18,6 +18,14 @@ export function failureText(text) {
   return "The assistant could not finish this reply. Wait a moment and send your message again. If it keeps happening, the person who manages this setup needs to check it.";
 }
 
+// A turn that failed with no reply text: Hermes' raw error can be anything (provider JSON, a stack line), so it is
+// shown only through the wording above, never as is. An error the wording does not know reads as the general one.
+export function turnFailureText(error) {
+  const value = String(error || "").trim();
+  if (FAILURE.test(value)) return failureText(value);
+  return "The assistant could not finish this reply. Wait a moment and send your message again. If it keeps happening, the person who manages this setup needs to check it.";
+}
+
 export function displayText(text, { notice = false, streaming = false } = {}) {
   const value = String(text || "").trim();
   if (notice && NOTICE.test(value)) return "";

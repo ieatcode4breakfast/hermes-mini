@@ -7,7 +7,7 @@
 //  - after gateway.ready the client advertises client.capabilities {server_requests: true}, otherwise the
 //    backend treats it as an old client and fails approvals and clarify immediately
 
-import { displayText, failureText } from "./message-policy.js";
+import { displayText, failureText, turnFailureText } from "./message-policy.js";
 import { localImagePath, mediaTags } from "./media-path.js";
 import { render as renderMarkdown, enhance, copyText, makeCopyButton, COPY_ICON } from "./md.js";
 import { createDrawer, sourceLabel } from "./drawer.js";
@@ -4145,6 +4145,8 @@ function onEvent(event) {
         state.turn = null;
       }
       if (typeof payload.warning === "string" && payload.warning) sysLine(failureText(payload.warning));
+      // A failed turn with no text: say so instead of leaving the message with no reply at all.
+      if (!text && payload.status === "error") sysLine(turnFailureText(payload.error));
       finishTurn();
       inbox.messageComplete(); // refresh the Inbox head and badge
       break;
