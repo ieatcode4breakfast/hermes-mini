@@ -21,6 +21,7 @@ import { stripCronWrapper } from "./jobtext.js";
 import { createModelPicker, shortModel } from "./model.js";
 import * as clarifyFlow from "./clarify.js";
 import { dictationInsert } from "./dictation-text.js";
+import * as conn from "./connections.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -1192,6 +1193,7 @@ function isConnectionError(error) {
 async function attachHome(fresh) {
   let running = false;
   let openRequests = [];
+  let pendingConnection = null;
   let messageCount = 0;
   if (!fresh) {
     try {
@@ -1200,6 +1202,7 @@ async function attachHome(fresh) {
       modelUi.setInfo(resumed.info);
       running = Boolean(resumed.running);
       openRequests = resumed.open_requests || [];
+      pendingConnection = resumed.pending_connection || null;
       messageCount = Number(resumed.message_count) || 0;
     } catch (error) {
       if (!/not found/i.test(errorText(error))) throw error;
@@ -1214,7 +1217,7 @@ async function attachHome(fresh) {
   setReadOnly(false);
   updateCaption();
   await loadHistory(messageCount);
-  finishAttach(openRequests, running);
+  finishAttach(openRequests, running, pendingConnection);
 }
 
 // Another chat picked from the drawer (or remembered across a reload). Only resumable sources open here, like the
@@ -1232,17 +1235,18 @@ async function attachSession(id) {
   setReadOnly(false);
   updateCaption();
   await loadHistory(Number(resumed.message_count) || 0);
-  finishAttach(resumed.open_requests || [], Boolean(resumed.running));
+  finishAttach(resumed.open_requests || [], Boolean(resumed.running), resumed.pending_connection || null);
   if (!pendingTarget) restoreScroll(id); // a deep link places its own message instead
 }
 
-function finishAttach(openRequests, running) {
+function finishAttach(openRequests, running, pendingConnection = null) {
   // Cards whose request the server no longer reports as open are stale.
   const openIds = new Set(openRequests.map((req) => req.id));
   for (const id of [...state.cards.keys()]) {
     if (!openIds.has(id)) removeCard(id);
   }
   for (const req of openRequests) onServerRequest(req.id, req.method, req.params || {});
+  syncConnectionCards(pendingConnection);
   if (els.status.textContent.startsWith("Waiting for your answer")) setStatus("");
   state.streaming = Boolean(running);
   if (running) touchTurn();
@@ -4232,6 +4236,11 @@ function onEvent(event) {
       touchTurn();
       break;
     }
+    case "connection.request":
+    case "connection.update":
+      showConnection(payload);
+      touchTurn();
+      break;
     case "request.cancel": {
       // A withdrawn request stays as the record of what happened: resolved cards are left alone, an unanswered one is
       // kept in place with the closed look.
@@ -4743,6 +4752,108 @@ async function runClarifyStep(id, entry, step) {
     sysLine(`Could not send answer: ${errorText(error)}`);
   } finally {
     entry.busy = false;
+  }
+}
+
+// ---------- "connect an app" card (manage_connections) ----------
+
+// op_id -> { el, opId, payload, seq, resolved, busy }. Kept apart from state.cards: these are not server requests
+// with a reply frame, they are answered through connection.respond.
+const connCards = new Map();
+
+// Opens the card, or brings it up to date. The first one for an operation splits the reply around it like the other
+// cards; a settled operation leaves the card as a compact record.
+function showConnection(payload) {
+  const opId = typeof payload?.op_id === "string" ? payload.op_id : "";
+  if (!opId || !Array.isArray(payload.targets)) return;
+  let entry = connCards.get(opId);
+  if (!entry) {
+    if (conn.isSettled(payload)) return; // nothing to ask: the agent reports the outcome itself
+    const card = el("div", "card connection");
+    setEmptyState(false);
+    sealTurnForCard();
+    els.log.append(card);
+    entry = { el: card, opId, payload, seq: Number(payload.seq), resolved: false, busy: false };
+    connCards.set(opId, entry);
+    scrollToBottom(true);
+  } else {
+    if (entry.resolved || !conn.isNewer(entry.seq, payload)) return;
+    entry.payload = { ...entry.payload, ...payload };
+    entry.seq = Number(payload.seq);
+  }
+  if (conn.isSettled(entry.payload)) entry.resolved = true;
+  renderConnection(entry);
+}
+
+// After a reconnect: the operation Hermes still reports open comes back; any other open card is over.
+function syncConnectionCards(pending) {
+  for (const entry of connCards.values()) {
+    if (entry.resolved || (pending && pending.op_id === entry.opId)) continue;
+    entry.resolved = true;
+    renderConnection(entry);
+  }
+  if (pending) showConnection(pending);
+}
+
+function renderConnection(entry) {
+  const { el: card, payload } = entry;
+  card.replaceChildren();
+  card.classList.toggle("resolved", entry.resolved);
+  card.append(el("h2", "", conn.cardTitle(payload)));
+  for (const target of payload.targets) {
+    const row = el("div", "conn-row");
+    const text = el("div", "conn-text");
+    text.append(el("span", "conn-name", conn.appName(target)));
+    text.append(el("span", "conn-state", entry.resolved && !conn.isResolved(target) ? "Not connected" : conn.stateLabel(target)));
+    row.append(text);
+    if (!entry.resolved) {
+      const buttons = el("div", "conn-buttons");
+      for (const kind of conn.rowButtons(target)) {
+        if (kind === "open") {
+          const open = el("button", "btn primary", "Open");
+          open.setAttribute("aria-label", `Sign in to ${conn.appName(target)}`);
+          open.addEventListener("click", () => window.open(conn.openUrl(target), "_blank", "noopener"));
+          buttons.append(open);
+        } else if (kind === "allow") {
+          const allow = el("button", "btn primary", "Allow");
+          allow.addEventListener("click", () => void answerConnection(entry, conn.rowAnswer(target, "approved")));
+          buttons.append(allow);
+        } else {
+          const skip = el("button", "btn", "Skip");
+          skip.addEventListener("click", () => void answerConnection(entry, conn.rowAnswer(target, "skipped")));
+          buttons.append(skip);
+        }
+      }
+      if (buttons.childElementCount) row.append(buttons);
+    }
+    card.append(row);
+  }
+  if (!entry.resolved) {
+    card.append(el("p", "conn-note", "Sign in, then come back here. The card updates by itself."));
+    const actions = el("div", "actions");
+    const done = el("button", "btn", "Done");
+    done.addEventListener("click", () => void answerConnection(entry, conn.doneAnswer()));
+    actions.append(done);
+    card.append(actions);
+  }
+}
+
+async function answerConnection(entry, result) {
+  if (entry.busy || entry.resolved) return;
+  entry.busy = true;
+  for (const button of entry.el.querySelectorAll("button")) button.disabled = true;
+  try {
+    await rpc("connection.respond", {
+      owner: { type: "session", session_id: state.liveSid },
+      op_id: entry.opId,
+      result,
+    });
+    // The card itself changes when Hermes sends the update that follows.
+  } catch (error) {
+    sysLine(`Could not send that: ${errorText(error)}`);
+  } finally {
+    entry.busy = false;
+    if (!entry.resolved) for (const button of entry.el.querySelectorAll("button")) button.disabled = false;
   }
 }
 

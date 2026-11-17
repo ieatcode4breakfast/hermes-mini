@@ -684,6 +684,14 @@ input, textarea, select { font-family: inherit; }
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
+/* The "connect an app" card: one row per app, its state, and Open / Allow / Skip. */
+.conn-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.conn-row + .conn-row { border-top: 1px solid var(--line); }
+.conn-text { display: flex; flex-direction: column; min-width: 0; }
+.conn-name { font-size: 14px; font-weight: 600; }
+.conn-state { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.conn-buttons { display: flex; gap: 6px; flex-shrink: 0; }
+.card .conn-note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
 /* A multi-select question says so above its choices. */
 .card .clarify-hint { color: var(--muted); font-size: 13px; margin: -2px 0 6px; }
 /* The review step before Submit: each answer with a Change link. */

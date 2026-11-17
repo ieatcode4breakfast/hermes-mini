@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A "connect an app" card for Hermes' `manage_connections` tool: each app with its state, Open (the sign-in link),
+  Allow (a local install or enable) and Skip, plus Done to stop waiting. It updates as Hermes reports progress and
+  comes back after a reload. Before, the tool waited for a card the app never showed, so the reply hung for up to
+  ten minutes. Credentials an install asks for still have to be entered in Hermes' desktop app.
+
 ### Changed
 
 - Question sets: Skip skips only the question on screen (the agent is told that one was skipped) instead of

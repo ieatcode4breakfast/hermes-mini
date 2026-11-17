@@ -219,7 +219,8 @@ there is no reply to show.
 - **Approvals and questions**: answer them in the app; an approval can also be approved or denied
   from its notification. A set of questions goes one at a time: Skip skips just that question, Back
   reopens the one before, and a review step lists every answer with Change before you Submit. A "pick any
-  that apply" question takes several answers.
+  that apply" question takes several answers. When the agent connects an app (Notion, Slack, ...), a card
+  offers the sign-in link and Skip.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
   agent sends with `MEDIA:` show inline; audio plays inline in a voice-note player (play/pause, a
   waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools
