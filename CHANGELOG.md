@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read
+  "DeepSeek v4.1 Flash" instead of `deepseek-v4.1-flash` (new `model-name.js`, following Hermes's desktop app).
+  The picker search matches the name or the id, and the id is still what is sent.
 - Inline prompt cards (new `prompts.js`) for passwords, secrets, and vault requests (`sudo`,
   `display.install.sudo`, `secret`, `vault.unlock_prompt`, `vault.save_login`, and `vault.code`). Each card masks
   secret inputs with a Show/Hide toggle, offers Skip, answers over JSON-RPC without putting values in chat
