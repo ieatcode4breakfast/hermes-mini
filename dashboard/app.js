@@ -23,6 +23,7 @@ import * as clarifyFlow from "./clarify.js";
 import { dictationInsert } from "./dictation-text.js";
 import * as conn from "./connections.js";
 import * as promptCards from "./prompts.js";
+import { createIdentityEditor } from "./identity-edit.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -6603,17 +6604,19 @@ document.getElementById("schedBtn").addEventListener("click", () => {
   if (schedules.isOpen()) void schedules.close();
   else void inbox.close().then(() => todo.close()).then(() => schedules.open());
 });
-// the agent's photo and name are the Inbox's button: a tap opens it, a second tap closes it.
+// The Inbox row in the chats panel opens the Inbox, and a second tap closes it. On a phone the panel is an overlay,
+// so it steps aside first; a docked panel stays.
 const toggleInbox = () => {
-  if (inbox.isOpen()) void inbox.close();
-  else void todo.close().then(() => schedules.close()).then(() => inbox.open());
+  if (inbox.isOpen()) {
+    void inbox.close();
+    return;
+  }
+  const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
+  void Promise.resolve(panel).then(() => todo.close()).then(() => schedules.close()).then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
-els.inboxBtn.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter" && event.key !== " ") return;
-  event.preventDefault();
-  toggleInbox();
-});
+// The agent's picture and name open the name and picture editor (identity-edit.js).
+createIdentityEditor({ rpc, identityApi, api, showToast });
 void todo.refresh();
 void inbox.refreshBadge();
 

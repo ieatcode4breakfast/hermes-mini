@@ -2,7 +2,8 @@
 // from the plugin's authenticated routes, then apply them to the page and gate the optional controls.
 //
 // The name is Hermes' own: the default profile's bot title, then the serving profile's bot title, then
-// its display name or a named profile id, and finally "Hermes". The app never renames the agent.
+// its display name or a named profile id, and finally "Hermes". identity-edit.js changes the name and picture through
+// Hermes's own profile methods; this module only reads them.
 //
 // Imported by app.js as a normal ES module, so there is exactly one place that talks to these routes.
 
@@ -127,6 +128,7 @@ export async function loadStatus() {
         home_label: data.home_label || data.name || "Hermes",
         onboarding_complete: data.onboarding_complete === true,
         has_custom_avatar: data.has_custom_avatar === true,
+        profile: typeof data.profile === "string" && data.profile ? data.profile : "default",
       };
       if (data.features && typeof data.features === "object") {
         state.features = { ...state.features, ...data.features };

@@ -327,6 +327,12 @@ input, textarea, select { font-family: inherit; }
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
 }
 .fab-count[hidden] { display: none; }
+/* Unread Inbox messages, on the chats button: a small dot, since the count lives on the Inbox row in the panel. */
+.menu-dot {
+  position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--user-gradient); box-shadow: 0 0 0 2px var(--surface); pointer-events: none;
+}
+.menu-dot[hidden] { display: none; }
 /* Names the chat on screen when it is not the home thread: one muted, truncated line under the name pill. */
 /* A soft pill like the name pill, so messages scrolling underneath never show through the caption. */
 .caption {
@@ -1091,6 +1097,20 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-new-icon { display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
 .drawer-new:hover .drawer-new-icon { color: var(--fg); }
 .drawer-new-icon svg { width: 14px; height: 14px; }
+/* Inbox row, directly under the main chat: icon and word sized like New chat, the unread count at its right end. */
+.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
+.drawer-inbox .chat-title { flex: 1; font-size: 14px; }
+/* A plain icon in the text colour, not the home row's accent: open tray when all is read, closed envelope otherwise. */
+.drawer-inbox-icon { display: flex; flex: none; color: var(--fg); }
+.drawer-inbox-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.drawer-inbox.has-unread .chat-title { font-weight: 650; }
+.row-count {
+  flex: none; box-sizing: border-box; min-width: 22px; height: 20px; margin-right: 1px; padding: 0 7px; border-radius: 999px;
+  background: var(--user-gradient); color: #fff; box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 32%, transparent);
+  font-size: 12px; font-weight: 600; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.row-count[hidden] { display: none; }
+.drawer-inbox[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .drawer-note { min-height: 0; margin: var(--drawer-gap) 20px 0; font-size: 12px; color: var(--danger); }
 .drawer-note:empty { display: none; }
 .drawer-list {
@@ -1857,16 +1877,12 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
 .identity[role="button"]:focus-visible .avatar { outline: 2px solid var(--accent); outline-offset: 3px; }
 .identity[role="button"]:active .avatar { transform: scale(0.92); }
 .identity.centred[role="button"]:active .avatar { transform: scale(1.38); }
-.avatar-count { top: -2px; right: auto; left: calc(50% + 17px); }
 /* Centred over an empty chat the photo is scaled 1.5x (64px to 96px around its centre): the count follows it there.
    It still opens the Inbox; only the moves themselves (flying, lowering) are untappable. */
 .identity.centred[role="button"]:not(.flying):not(.lowering) { pointer-events: auto; }
-.identity.centred .avatar-count { top: -18px; left: calc(50% + 26px); }
-.identity.flying .avatar-count, .identity.lowering .avatar-count { display: none; }
 /* While the Inbox is open, only the photo and name stay above the dimmed page; the other round buttons step back. */
 body.inbox-open .topbar { z-index: var(--z-header-over-panel); transition: z-index 0s; }
 body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
-body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 16px rgba(0, 0, 0, 0.28); }
 
 /* The Inbox card (a side panel): its surface, radius and shadow, one step above the To-do card; above the rename
    dialog's old layer, below the confirm dialog. */
@@ -1881,6 +1897,8 @@ body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color
   transform: translateY(-8px) scale(0.96); transform-origin: var(--caret-x, 50%) 0; opacity: 0; visibility: hidden;
   transition: transform 150ms var(--ease-exit), opacity 150ms ease-in, visibility 0s linear 150ms;
 }
+/* Opened from the chats panel now, so no pointer at the agent's picture. */
+.inbox-dialog::before { display: none; }
 .inbox-dialog::before {
   content: ""; position: absolute; top: -7px; left: calc(var(--caret-x, 50%) - 8px); width: 16px; height: 16px;
   background: var(--tab-strip); /* the frame's colour, like the title row it sits on */ border-radius: 3px; transform: rotate(45deg); pointer-events: none;
@@ -2366,4 +2384,39 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .sched-pill svg {
   width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px;
   fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ---------- name and picture (identity-edit.js) ----------
+   The rename card, with the picture large and centred above the name. */
+.identity-dialog { width: min(calc(100vw - 32px), 400px); padding-top: 20px; padding-bottom: 20px; text-align: center; }
+.identity-title { margin-bottom: 12px; }
+.identity-dialog .rename-actions { margin-top: 16px; }
+.identity-pick {
+  position: relative; display: block; width: 112px; height: 112px; margin: 0 auto 14px; padding: 0; border: 0;
+  border-radius: 50%; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms var(--ease-out);
+}
+.identity-pick:active { transform: scale(0.95); }
+.identity-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.identity-preview {
+  display: block; width: 112px; height: 112px; border-radius: 50%; object-fit: cover;
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg)); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.identity-pick-badge {
+  position: absolute; right: 2px; bottom: 2px; display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%; background: var(--user-gradient); color: #fff;
+  box-shadow: 0 0 0 3px var(--surface), 0 3px 10px color-mix(in srgb, var(--accent) 36%, transparent);
+}
+.identity-pick-badge svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+:where(:root[data-input="mouse"]) .identity-pick:hover .identity-preview { filter: brightness(0.92); }
+.identity-pick.fresh .identity-preview { animation: identity-pop 420ms var(--ease-out); }
+.identity-label { display: block; margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
+.identity-name { text-align: center; font-weight: 500; }
+.identity-dialog .rename-error { text-align: center; }
+.identity-dialog.busy .identity-pick { pointer-events: none; opacity: 0.7; }
+/* After a save, the header picture gives a small pop so the change is noticed. */
+.identity.just-saved .avatar { animation: identity-pop 520ms var(--ease-out); }
+@keyframes identity-pop { 0% { transform: scale(0.86); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .identity-pick, .identity-pick.fresh .identity-preview, .identity.just-saved .avatar { transition: none; animation: none; }
 }

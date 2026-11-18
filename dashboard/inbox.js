@@ -411,6 +411,9 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     markAllBtn.disabled = count === 0;
     // A closed envelope while anything is unread, the open tray once all is read.
     for (const id of ["inboxBtn", "inboxBack"]) document.getElementById(id)?.classList.toggle("has-unread", count > 0);
+    // The Inbox row lives in the chats panel: a dot on the panel's button says there is something to read.
+    const dot = document.getElementById("menuDot");
+    if (dot) dot.hidden = count === 0;
   }
 
   async function refreshBadge() {
@@ -573,11 +576,11 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     const vTop = vv ? vv.offsetTop : 0;
     const vWidth = vv ? vv.width : window.innerWidth;
     const vHeight = vv ? vv.height : window.innerHeight;
-    const photo = btn.querySelector(".avatar") || btn;
-    const anchor = photo.getBoundingClientRect();
-    const whole = btn.getBoundingClientRect();
-    const centre = anchor.left + anchor.width / 2;
-    const top = Math.max(vTop + 8, whole.bottom + 12);
+    // Opened from the chats panel's Inbox row: the panel sits under the agent's name, centred over the chat column.
+    const head = document.getElementById("identityBtn") || btn;
+    const chat = (document.getElementById("log") || document.body).getBoundingClientRect();
+    const centre = chat.left + chat.width / 2;
+    const top = Math.max(vTop + 8, head.getBoundingClientRect().bottom + 12);
     const phone = window.matchMedia("(max-width: 640px)").matches;
     const width = phone ? vWidth : Math.min(Math.max(440, Math.round(vWidth * 0.5)), vWidth - 32);
     const left = phone ? vLeft : Math.min(Math.max(vLeft + 16, centre - width / 2), vLeft + vWidth - 16 - width);
@@ -626,7 +629,9 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     dialog.classList.remove("open");
     document.body.classList.remove("inbox-open");
     btn.setAttribute("aria-expanded", "false");
-    btn.focus({ preventScroll: true });
+    // Back to the Inbox row when it is on screen (a docked panel); with the panel closed, to the panel's button.
+    const back = btn.offsetParent ? btn : document.getElementById("menuBtn");
+    if (back && back.offsetParent) back.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniInbox === true) {
       backPending = new Promise((resolve) => {
         resolveBack = resolve;

@@ -36,8 +36,10 @@ the plugin installable, replaceable and honest. Read them before changing anythi
 - The agent name follows: the selected bot's title (default profile first, then the serving
   profile), then the profile's display name, then a named profile id, then `Hermes`. The generic
   `default`/`custom` profile names are never shown as a person's agent name.
-- Saving a name or picture must never rename a Hermes bot or profile, and must never touch any file
-  Hermes owns — the one exception is the delivery default in section 2.
+- The agent's name and picture are Hermes's own. The app changes them only when the person saves them in the
+  name and picture editor, and only through Hermes's profile methods (`profiles.configure` for the title,
+  `profiles.set_asset` for the picture). It never writes Hermes's files for them and never renames a profile,
+  and it touches no other file Hermes owns — the one exception is the delivery default in section 2.
 - Everything is per profile. A request served for another profile must read that profile's settings,
   or nothing at all — never another profile's.
 

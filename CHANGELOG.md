@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Edit profile: tapping the agent's picture or name opens a card to change her name and picture. It saves through
+  Hermes's own profile methods (`profiles.set_asset`, and `profiles.configure` as a compare-and-swap that keeps the
+  profile's other display fields), so Hermes and every client that asks it see the change. A picture uploaded
+  through the app's old setup is dropped once a new one is saved. Hermes's desktop app keeps its own copy of a
+  picture it has already shown, so it shows the old one until the picture is picked there too.
+- The Inbox is a row directly under the main chat in the chats panel, with its unread count at the right end;
+  the chats button shows a dot while anything is unread. It used to open from the agent's picture.
 - Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read
   "DeepSeek v4.1 Flash" instead of `deepseek-v4.1-flash` (new `model-name.js`, following Hermes's desktop app).
   The picker search matches the name or the id, and the id is still what is sent.

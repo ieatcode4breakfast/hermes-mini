@@ -2068,6 +2068,8 @@ def _identity_payload() -> dict[str, Any]:
         "onboarding_complete": settings["onboarding"]["complete"],
         "saved_name": settings["agent"]["name"],
         "has_custom_avatar": bool(avatar_file),
+        # The Hermes profile the name and picture are read from: the one the editor saves to.
+        "profile": core.identity_profile(),
     }
 
 
@@ -2127,6 +2129,17 @@ async def save_identity(request: Request):
         log.warning("identity save failed: %s", exc)
         return JSONResponse({"detail": "Could not save your settings."}, status_code=500)
     return JSONResponse(_identity_payload())
+
+
+@router.post("/identity/forget-upload")
+async def forget_uploaded_avatar():
+    """After a new picture is saved through Hermes, stop showing one uploaded through the app's old setup."""
+    try:
+        removed = core.forget_uploaded_avatar()
+    except OSError as exc:
+        log.warning("forget uploaded picture failed: %s", exc)
+        return JSONResponse({"detail": "Could not update your settings."}, status_code=500)
+    return JSONResponse({"removed": removed, **_identity_payload()})
 
 
 @router.get("/avatar/{filename}")

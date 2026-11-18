@@ -54,11 +54,12 @@
     <header class="topbar">
       <button id="menuBtn" class="fab fab-menu" type="button" aria-label="Chats" aria-controls="drawer" aria-expanded="false" title="Chats">
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <!-- Unread Inbox messages while the chats panel is closed: the Inbox row inside it holds the count. -->
+        <span id="menuDot" class="menu-dot" hidden></span>
       </button>
-      <!-- Tapping the agent's picture or name opens the Inbox; the unread count sits on the picture. -->
-      <div class="identity" id="inboxBtn" role="button" tabindex="0" aria-label="Inbox" aria-haspopup="dialog" aria-controls="inboxDialog" aria-expanded="false">
+      <!-- Tapping the agent's picture or name opens the name and picture editor (identity-edit.js). -->
+      <div class="identity" id="identityBtn" role="button" tabindex="0" aria-label="Name and picture" aria-haspopup="dialog" aria-controls="identityDialog" aria-expanded="false">
         <img class="avatar loading" id="agentAvatar" alt="" width="64" height="64">
-        <span id="inboxCount" class="fab-count avatar-count" hidden></span>
         <h1 class="name" id="agentName">&nbsp;</h1>
         <p id="caption" class="caption" hidden></p>
         <span id="status" class="status" aria-live="polite">Connecting…</span>
@@ -163,6 +164,15 @@
       <span>New chat</span>
       <span class="drawer-new-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z"/></svg></span>
     </button>
+    <!-- Inbox: placed by drawer.js directly under the main chat; the unread count sits at the row's right end. -->
+    <button id="inboxBtn" class="chat-row drawer-inbox" type="button" aria-haspopup="dialog" aria-controls="inboxDialog" aria-expanded="false">
+      <span class="drawer-inbox-icon" aria-hidden="true">
+        <svg class="inbox-icon-read" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        <svg class="inbox-icon-unread" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg>
+      </span>
+      <span class="chat-title">Inbox</span>
+      <span id="inboxCount" class="row-count" hidden></span>
+    </button>
     <p id="drawerNote" class="drawer-note" aria-live="polite"></p>
     <div id="drawerList" class="drawer-list"></div>
     <div class="drawer-foot">
@@ -232,6 +242,24 @@
     <div class="rename-actions">
       <button id="renameCancel" class="rename-cancel" type="button">Cancel</button>
       <button id="renameSubmit" class="rename-submit" type="button" disabled><span class="rename-label">Rename</span><span class="rename-spin" aria-hidden="true"></span></button>
+    </div>
+  </div>
+
+  <!-- Name and picture (identity-edit.js): the agent's own name and picture, saved through Hermes's profile methods. -->
+  <div id="identityScrim" class="scrim identity-scrim" popover="manual" aria-hidden="true"></div>
+  <div id="identityDialog" class="rename-dialog identity-dialog" role="dialog" aria-modal="true" aria-labelledby="identityTitle" popover="manual">
+    <h2 id="identityTitle" class="rename-title identity-title">Edit profile</h2>
+    <button id="identityPick" class="identity-pick" type="button" aria-label="Change picture">
+      <img id="identityPreview" class="identity-preview" alt="" width="112" height="112">
+      <span class="identity-pick-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+    </button>
+    <input id="identityFile" type="file" accept="image/png,image/jpeg,image/webp,image/*" hidden>
+    <label class="identity-label" for="identityName">Name</label>
+    <input id="identityName" class="rename-input identity-name" type="text" maxlength="60" autocomplete="off" spellcheck="false" enterkeyhint="done">
+    <p id="identityError" class="rename-error" role="alert" hidden></p>
+    <div class="rename-actions">
+      <button id="identityCancel" class="rename-cancel" type="button">Cancel</button>
+      <button id="identitySave" class="rename-submit" type="button" disabled><span class="rename-label">Save</span><span class="rename-spin" aria-hidden="true"></span></button>
     </div>
   </div>
 

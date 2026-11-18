@@ -565,6 +565,20 @@ def identity_from_hermes() -> tuple[str, str]:
     return FALLBACK_AGENT_NAME, "default"
 
 
+def identity_profile() -> str:
+    """The Hermes profile whose name and picture the app shows, so an edit lands where it is read.
+
+    The default profile is read first (its title, then its picture), so it is the one to edit whenever it has
+    either; otherwise the serving profile, when it is a named one.
+    """
+    default = default_hermes_home()
+    if bot_title(default) or any((default / "assets" / f"avatar.{ext}").is_file() for ext in _HERMES_AVATAR_EXTS):
+        return "default"
+    if hermes_home() != default:
+        return profile_label() or "default"
+    return "default"
+
+
 def agent_identity() -> dict[str, str]:
     """The name and avatar for user-facing text and images.
 
@@ -732,6 +746,22 @@ def save_identity(name: Any, avatar_bytes: bytes | None, complete: bool = True) 
     if avatar_bytes is not None and previous and previous != normalized["agent"]["avatar"]:
         remove_avatar(previous)
     return normalized
+
+
+def forget_uploaded_avatar() -> bool:
+    """Drop a picture uploaded through the app's old setup, so the picture Hermes stores is the one shown.
+
+    Called after the person saves a new picture through Hermes (the app's name and picture editor). Touches only
+    the app's own settings and assets. Returns whether there was one.
+    """
+    settings = load_settings()
+    previous = settings["agent"]["avatar"]
+    if not previous:
+        return False
+    settings["agent"]["avatar"] = ""
+    save_settings(settings)
+    remove_avatar(previous)
+    return True
 
 
 # ---------------------------------------------------------------------------

@@ -35,6 +35,7 @@ const CORE = [
   "media-path.js",
   "model.js",
   "model-name.js",
+  "identity-edit.js",
   "pwa.json",
   "favicon-64.png",
   "avatar-placeholder.png",

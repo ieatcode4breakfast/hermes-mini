@@ -165,8 +165,10 @@ you to sign in, Hermes' login page brings you back to the app afterwards.
 
 There is none. Open the app and it is ready to use: the header and composer take the name Hermes
 already has for the bot — the default profile's bot title, then the serving profile's, then its
-display name or a named profile id, and finally **Hermes**. The app never renames the agent, and
-nothing on the page asks for a name or picture of its own.
+display name or a named profile id, and finally **Hermes**. Nothing asks for a name or picture
+first. To change them, tap the agent's picture or name: **Edit profile** saves the new name and picture
+in Hermes itself (through its profile methods), so every Hermes client sees them. Hermes's desktop app
+keeps its own copy of a picture it has already shown; pick the picture there too to update it.
 
 If Hermes has no model configured yet, there is no reply to show until one is connected from the
 model tab or in Hermes; history, to-dos and the inbox still work.
@@ -194,7 +196,8 @@ there is no reply to show.
 - **Chats**: multiple conversations, a main chat, new chat, rename, pin (with a shared manual
   order), delete, reset of the main chat, and a read-only view of a chat that belongs to another
   source.
-- **Inbox**: every agent message across the app's chats, newest first, with unread tracking. A swipe
+- **Inbox**: every agent message across the app's chats, newest first, with unread tracking. It is
+  the row under the main chat in the chats panel, with the unread count at its right end. A swipe
   on a phone or an envelope button on hover marks a message read or unread without opening it; a
   reply's action row in the chat (and its long-press menu) offers Mark unread, which becomes Mark
   read while the reply is held unread. The main chat's messages carry the same home icon as the chat
@@ -405,8 +408,8 @@ not set up, the button is hidden; when it is, **Start Screen** asks Hermes to st
 - **No bell.** `cryptography`/`httpx` are missing from Hermes' environment, or the browser does not
   support Push.
 - **No computer button.** Bot Desktop is unsupported or not installed on this host.
-- **The name is `Hermes`.** No bot title, display name or named profile exists yet. Set a bot name
-  in Hermes and the app picks it up on the next load.
+- **The name is `Hermes`.** No name, display name or named profile exists yet. Tap the agent's
+  picture to set one in Edit profile, or set it in Hermes.
 
 ## Verified, and not
 
