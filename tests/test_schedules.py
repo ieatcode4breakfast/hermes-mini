@@ -110,12 +110,12 @@ class SchedulesPanelTest(unittest.TestCase):
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('import { createSchedules, mentionText } from "./schedules.js";', app)
 
-    def test_tools_button_folds_the_computer_and_todo_buttons(self):
+    def test_tools_button_folds_the_tray_buttons(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "screenBtn", "todoBtn")]
+        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "screenBtn", "todoBtn", "artBtn")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(html.count("fab fab-tray"), 2)
-        self.assertIn('aria-controls="screenBtn todoBtn"', html)
+        self.assertEqual(html.count("fab fab-tray"), 3)
+        self.assertIn('aria-controls="screenBtn todoBtn artBtn"', html)
         css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
         self.assertIn("body:not(.tools-open) .fab.fab-tray", css)
         self.assertIn("body.tools-open #toolsBtn", css)

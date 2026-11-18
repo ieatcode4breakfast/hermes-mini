@@ -15,6 +15,7 @@ import { confirmDialog } from "./confirm.js";
 import { createTodo } from "./todo.js";
 import { createSchedules, mentionText } from "./schedules.js";
 import { createInbox } from "./inbox.js";
+import { createArtifacts } from "./artifacts.js";
 import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js";
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
@@ -80,6 +81,7 @@ const els = {
   tray: $("tray"),
   screenBtn: $("screenBtn"),
   todoBtn: $("todoBtn"),
+  artBtn: $("artBtn"),
   inboxBtn: $("inboxBtn"),
   readonlyText: $("readonlyText"),
   editBar: $("editBar"),
@@ -3143,11 +3145,14 @@ function fetchMedia(path) {
 const FILE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
 const DOWNLOAD_ICON = '<svg class="file-attach-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>';
 
-// A file delivered with MEDIA: downloads only when tapped: the card is the whole attachment until then.
-async function downloadFile(path, name, card) {
-  if (card.classList.contains("busy")) return;
-  card.classList.add("busy");
-  card.disabled = true;
+// A file delivered with MEDIA: downloads only when tapped: the card is the whole attachment until then. The Artifacts
+// panel opens a file through the same download, with no card to show (card is optional).
+async function openFile(path, name, card = null) {
+  if (card && card.classList.contains("busy")) return;
+  if (card) {
+    card.classList.add("busy");
+    card.disabled = true;
+  }
   try {
     const blob = await apiBlob(`/api/fs/download?path=${encodeURIComponent(path)}`);
     const url = URL.createObjectURL(blob);
@@ -3162,8 +3167,10 @@ async function downloadFile(path, name, card) {
   } catch (error) {
     showToast(error && error.status === 404 ? "File not found" : "Couldn't download that file", "error");
   } finally {
-    card.classList.remove("busy");
-    card.disabled = false;
+    if (card) {
+      card.classList.remove("busy");
+      card.disabled = false;
+    }
   }
 }
 
@@ -3256,7 +3263,7 @@ function fileCard(path, name) {
   card.setAttribute("aria-label", `Download ${name}`);
   card.innerHTML = `${FILE_ICON}<span class="file-attach-name"></span>${DOWNLOAD_ICON}`;
   card.querySelector(".file-attach-name").textContent = name;
-  card.addEventListener("click", () => void downloadFile(path, name, card));
+  card.addEventListener("click", () => void openFile(path, name, card));
   return card;
 }
 
@@ -6517,10 +6524,21 @@ const inbox = createInbox({
   isPhone: () => window.matchMedia("(max-width: 640px)").matches,
   openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
 });
+// The Artifacts panel: the pictures, files and links the agent produced, read from the plugin's /artifacts route on
+// every open. A picture opens the viewer, a file the same download a chat card uses, a link a new tab (artifacts.js).
+const artifacts = createArtifacts({
+  api,
+  openViewer,
+  fetchMedia,
+  openFile,
+  openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
+  formatTime: messageTimeLabel, // unix seconds, like the Inbox
+  showToast,
+});
 // Desktop scrollbars show only while the mouse is over their area, touch ones only while scrolling (style.css .sb-on). Every scrolling area under the
 // pointer gets .sb-on - a code block in the chat lights both - and loses it when the pointer leaves it or the window.
 // A class, not :hover: Chrome does not reliably repaint a styled scrollbar when only the hover state changes.
-const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list";
+const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list, .art-body";
 let scrollbarsLit = [];
 function lightScrollbars(target) {
   const next = [];
@@ -6598,7 +6616,15 @@ const schedules = createSchedules({
 });
 // The panels close each other, waiting for each one's history entry so they never race.
 els.todoBtn.addEventListener("click", () => {
-  void inbox.close().then(() => schedules.close()).then(() => todo.open());
+  void artifacts.close().then(() => inbox.close()).then(() => schedules.close()).then(() => todo.open());
+});
+// The Artifacts button, under To-do: a second tap closes the panel.
+els.artBtn.addEventListener("click", () => {
+  if (artifacts.isOpen()) {
+    void artifacts.close();
+    return;
+  }
+  void inbox.close().then(() => todo.close()).then(() => schedules.close()).then(() => artifacts.open());
 });
 // The Inbox row in the chats panel opens the Inbox, and a second tap closes it. On a phone the panel is an overlay,
 // so it steps aside first; a docked panel stays.
@@ -6608,7 +6634,8 @@ const toggleInbox = () => {
     return;
   }
   const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
-  void Promise.resolve(panel).then(() => todo.close()).then(() => schedules.close()).then(() => inbox.open());
+  void Promise.resolve(panel).then(() => artifacts.close()).then(() => todo.close()).then(() => schedules.close())
+    .then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
 // The Schedules row, under the Inbox row, works the same way.
@@ -6618,7 +6645,8 @@ document.getElementById("schedBtn").addEventListener("click", () => {
     return;
   }
   const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
-  void Promise.resolve(panel).then(() => todo.close()).then(() => inbox.close()).then(() => schedules.open());
+  void Promise.resolve(panel).then(() => artifacts.close()).then(() => todo.close()).then(() => inbox.close())
+    .then(() => schedules.open());
 });
 // The agent's picture and name open the name and picture editor (identity-edit.js).
 createIdentityEditor({ rpc, identityApi, api, showToast });

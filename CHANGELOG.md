@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 - The Inbox is a row directly under the main chat in the chats panel, with its unread count at the right end;
   the chats button shows a dot while anything is unread. It used to open from the agent's picture. On a phone it
   opens as a full page, like the To-do and Schedules pages, with a Back button.
+- Artifacts: a new button under To-do in the Tools tray lists the pictures, files and links the agent produced
+  in the app's chats (new `artifacts.js`, `artifact_index.py`, and a read-only `GET /artifacts` route). Tabs, search,
+  a picture grid with the full-screen viewer, file downloads, Open chat and Copy path/link. Links count only when the
+  agent wrote them in a reply; command output adds pictures and documents but not links, tool state or logs. A local
+  file that no longer exists is left out, and each path or link is listed once, from the chat where it first
+  appeared. The extraction rules follow Hermes's desktop app, made stricter. Needs a dashboard restart to load.
 - Schedules is a row directly under the Inbox in the chats panel; its clock button left the Tools tray, which now
   holds Computer and To-do.
 - Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read

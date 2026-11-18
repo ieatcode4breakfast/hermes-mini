@@ -64,9 +64,9 @@
         <p id="caption" class="caption" hidden></p>
         <span id="status" class="status" aria-live="polite">Connecting…</span>
       </div>
-      <!-- Tools: folds the Computer and To-do buttons away under it, and brings them back (app.js). The badge
+      <!-- Tools: folds the Computer, To-do and Artifacts buttons away under it, and brings them back (app.js). The badge
            repeats the open to-do count while they are folded away. -->
-      <button id="toolsBtn" class="fab fab-tools" type="button" aria-label="Tools" title="Tools" aria-expanded="false" aria-controls="screenBtn todoBtn">
+      <button id="toolsBtn" class="fab fab-tools" type="button" aria-label="Tools" title="Tools" aria-expanded="false" aria-controls="screenBtn todoBtn artBtn">
         <svg class="tools-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M21.67 18.17l-5.3-5.3h-.99l-2.54 2.54v.99l5.3 5.3c.39.39 1.02.39 1.41 0l2.12-2.12c.39-.38.39-1.02 0-1.41zM17.34 10.19l1.41-1.41 2.12 2.12c1.17-1.17 1.17-3.07 0-4.24l-3.54-3.54-1.41 1.41V1.71l-.7-.71-3.54 3.54.71.71h2.83l-1.41 1.41 1.06 1.06-2.89 2.89-4.13-4.13V5.06L4.83 2.04 2 4.87 5.03 7.9h1.41l4.13 4.13-.85.85H7.6l-5.3 5.3c-.39.39-.39 1.02 0 1.41l2.12 2.12c.39.39 1.02.39 1.41 0l5.3-5.3v-2.12l5.15-5.15 1.06 1.05z"/></svg>
         <span id="toolsCount" class="fab-count" hidden></span>
       </button>
@@ -78,6 +78,10 @@
       <button id="todoBtn" class="fab fab-tray fab-todo" type="button" aria-label="To-do list" title="To-do list" aria-haspopup="dialog" aria-controls="todoDialog" aria-expanded="false">
         <svg viewBox="0 0 24 24"><path d="M3 5l2 2 3-3"/><path d="M3 12l2 2 3-3"/><path d="M3 19l2 2 3-3"/><path d="M13 6h8"/><path d="M13 13h8"/><path d="M13 20h8"/></svg>
         <span id="todoCount" class="fab-count" hidden></span>
+      </button>
+      <!-- Artifacts, directly under the To-do button: the pictures, files and links the agent made across the chats. -->
+      <button id="artBtn" class="fab fab-tray fab-art" type="button" aria-label="Artifacts" title="Artifacts" aria-haspopup="dialog" aria-controls="artDialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><path d="M7 13.5l4 7H3z"/><path d="M17 14v6M14 17h6"/></svg>
       </button>
     </header>
 
@@ -308,6 +312,33 @@
     </div>
     <div id="schedList" class="sched-list"></div>
     <p id="schedEmpty" class="sched-empty" hidden></p>
+  </div>
+
+  <!-- Artifacts panel, opened from the button under the To-do button. It lists the pictures, files and links the agent
+       produced across the app's chats, newest first; every open reads plugin_api.py /artifacts and the panel stores
+       nothing. Search narrows the list, and the tabs switch between all of them and one kind. Shares the to-do panel's
+       card (todo-* classes) so the two look the same, a little wider on a computer. -->
+  <div id="artScrim" class="scrim todo-scrim" aria-hidden="true"></div>
+  <div id="artDialog" class="todo-dialog art-dialog" role="dialog" aria-modal="true" aria-labelledby="artTitle">
+    <div class="todo-head">
+      <button id="artBack" class="todo-back" type="button" aria-label="Back to chat" title="Back to chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="3.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><path d="M7 13.5l4 7H3z"/><path d="M17 14v6M14 17h6"/></svg>
+      </button>
+      <h2 id="artTitle" class="todo-title"><span>Artifacts</span></h2>
+      <button id="artClose" class="todo-close" type="button" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="art-tools">
+      <input id="artSearch" class="art-search" type="search" placeholder="Search" aria-label="Search artifacts">
+      <div id="artTabs" class="art-tabs" role="tablist" aria-label="Artifact kinds">
+        <button id="artTabAll" class="art-tab" type="button" role="tab" data-tab="all" aria-selected="true" aria-controls="artBody">All <span class="art-tab-count"></span></button>
+        <button id="artTabImages" class="art-tab" type="button" role="tab" data-tab="image" aria-selected="false" aria-controls="artBody">Images <span class="art-tab-count"></span></button>
+        <button id="artTabFiles" class="art-tab" type="button" role="tab" data-tab="file" aria-selected="false" aria-controls="artBody">Files <span class="art-tab-count"></span></button>
+        <button id="artTabLinks" class="art-tab" type="button" role="tab" data-tab="link" aria-selected="false" aria-controls="artBody">Links <span class="art-tab-count"></span></button>
+      </div>
+    </div>
+    <div id="artBody" class="art-body" role="tabpanel" aria-labelledby="artTabAll"></div>
   </div>
 
   <!-- Inbox: every agent message across the app's chats, newest first. It stores nothing: each open reads
