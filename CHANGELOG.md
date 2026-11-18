@@ -14,7 +14,10 @@ All notable changes to this project are documented here. The format follows
   through the app's old setup is dropped once a new one is saved. Hermes's desktop app keeps its own copy of a
   picture it has already shown, so it shows the old one until the picture is picked there too.
 - The Inbox is a row directly under the main chat in the chats panel, with its unread count at the right end;
-  the chats button shows a dot while anything is unread. It used to open from the agent's picture.
+  the chats button shows a dot while anything is unread. It used to open from the agent's picture. On a phone it
+  opens as a full page, like the To-do and Schedules pages, with a Back button.
+- Schedules is a row directly under the Inbox in the chats panel; its clock button left the Tools tray, which now
+  holds Computer and To-do.
 - Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read
   "DeepSeek v4.1 Flash" instead of `deepseek-v4.1-flash` (new `model-name.js`, following Hermes's desktop app).
   The picker search matches the name or the id, and the id is still what is sent.

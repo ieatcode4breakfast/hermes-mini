@@ -99,17 +99,23 @@ class SchedulesPanelTest(unittest.TestCase):
         self.assertIn("SCHEDULE_REF", app)
         self.assertNotIn('method: "PUT"', source)
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        self.assertLess(html.index('id="schedBtn"'), html.index('id="screenBtn"'))
+        # Opened from a row in the chats panel, directly under the Inbox row.
+        drawer = html.split('id="drawer"', 1)[1].split("</aside>", 1)[0]
+        self.assertLess(drawer.index('id="inboxBtn"'), drawer.index('id="schedBtn"'))
+        self.assertIn('class="chat-row drawer-inbox drawer-sched"', drawer)
+        drawer_js = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
+        self.assertEqual(drawer_js.count("if (inboxRow) list.append(inboxRow);\n      if (schedRow) list.append(schedRow);")
+                         + drawer_js.count("if (inboxRow) list.append(inboxRow);\n    if (schedRow) list.append(schedRow);"), 2)
         self.assertIn('id="schedDialog"', html)
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('import { createSchedules, mentionText } from "./schedules.js";', app)
 
-    def test_tools_button_folds_the_three_buttons(self):
+    def test_tools_button_folds_the_computer_and_todo_buttons(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "schedBtn", "screenBtn", "todoBtn")]
+        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "screenBtn", "todoBtn")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(html.count("fab fab-tray"), 3)
-        self.assertIn('aria-controls="schedBtn screenBtn todoBtn"', html)
+        self.assertEqual(html.count("fab fab-tray"), 2)
+        self.assertIn('aria-controls="screenBtn todoBtn"', html)
         css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
         self.assertIn("body:not(.tools-open) .fab.fab-tray", css)
         self.assertIn("body.tools-open #toolsBtn", css)

@@ -50,7 +50,7 @@
 <body>
   <div class="app">
     <!-- Floating header over the chat: chats menu (left), the agent's picture with a name pill (centre),
-         the Tools button with the Schedules, Computer and to-do buttons folded under it (right). -->
+         the Tools button with the Computer and to-do buttons folded under it (right). -->
     <header class="topbar">
       <button id="menuBtn" class="fab fab-menu" type="button" aria-label="Chats" aria-controls="drawer" aria-expanded="false" title="Chats">
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -64,15 +64,11 @@
         <p id="caption" class="caption" hidden></p>
         <span id="status" class="status" aria-live="polite">Connecting…</span>
       </div>
-      <!-- Tools: folds the Schedules, Computer and To-do buttons away under it, and brings them back (app.js). The badge
+      <!-- Tools: folds the Computer and To-do buttons away under it, and brings them back (app.js). The badge
            repeats the open to-do count while they are folded away. -->
-      <button id="toolsBtn" class="fab fab-tools" type="button" aria-label="Tools" title="Tools" aria-expanded="false" aria-controls="schedBtn screenBtn todoBtn">
+      <button id="toolsBtn" class="fab fab-tools" type="button" aria-label="Tools" title="Tools" aria-expanded="false" aria-controls="screenBtn todoBtn">
         <svg class="tools-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M21.67 18.17l-5.3-5.3h-.99l-2.54 2.54v.99l5.3 5.3c.39.39 1.02.39 1.41 0l2.12-2.12c.39-.38.39-1.02 0-1.41zM17.34 10.19l1.41-1.41 2.12 2.12c1.17-1.17 1.17-3.07 0-4.24l-3.54-3.54-1.41 1.41V1.71l-.7-.71-3.54 3.54.71.71h2.83l-1.41 1.41 1.06 1.06-2.89 2.89-4.13-4.13V5.06L4.83 2.04 2 4.87 5.03 7.9h1.41l4.13 4.13-.85.85H7.6l-5.3 5.3c-.39.39-.39 1.02 0 1.41l2.12 2.12c.39.39 1.02.39 1.41 0l5.3-5.3v-2.12l5.15-5.15 1.06 1.05z"/></svg>
         <span id="toolsCount" class="fab-count" hidden></span>
-      </button>
-      <!-- Schedules (schedules.js): the agent's scheduled jobs, the first button under Tools. -->
-      <button id="schedBtn" class="fab fab-tray fab-sched" type="button" aria-label="Schedules" title="Schedules" aria-haspopup="dialog" aria-controls="schedDialog" aria-expanded="false">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5"/><path d="M12 6.5V12l3.5 2.5"/></svg>
       </button>
       <!-- Opens the optional desktop viewer. Hidden when the capability probe says it is unavailable. -->
       <button id="screenBtn" class="fab fab-tray" type="button" aria-label="Computer" title="Computer">
@@ -172,6 +168,13 @@
       </span>
       <span class="chat-title">Inbox</span>
       <span id="inboxCount" class="row-count" hidden></span>
+    </button>
+    <!-- Schedules (schedules.js): the agent's scheduled jobs, placed by drawer.js directly under the Inbox. -->
+    <button id="schedBtn" class="chat-row drawer-inbox drawer-sched" type="button" aria-haspopup="dialog" aria-controls="schedDialog" aria-expanded="false">
+      <span class="drawer-inbox-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6.5V12l3.5 2.5"/></svg>
+      </span>
+      <span class="chat-title">Schedules</span>
     </button>
     <p id="drawerNote" class="drawer-note" aria-live="polite"></p>
     <div id="drawerList" class="drawer-list"></div>
@@ -289,7 +292,7 @@
     <div id="todoList" class="todo-list"></div>
   </div>
 
-  <!-- Schedules panel, opened from the button above the Computer button. It lists Hermes's cron jobs; each row's ⋮
+  <!-- Schedules panel, opened from the Schedules row in the chats panel. It lists Hermes's cron jobs; each row's ⋮
        menu (or a right click, or a long press) pauses, resumes or deletes one, or adds it to the message being written.
        Shares the to-do panel's card (todo-* classes) so the two look the same. -->
   <div id="schedScrim" class="scrim todo-scrim" aria-hidden="true"></div>
@@ -312,6 +315,11 @@
   <div id="inboxScrim" class="scrim inbox-scrim" aria-hidden="true"></div>
   <div id="inboxDialog" class="inbox-dialog" role="dialog" aria-modal="true" aria-labelledby="inboxTitle">
     <div class="inbox-head">
+      <!-- Phones only (the panel is a full page there): back to the chat, like the To-do and Schedules pages. -->
+      <button id="inboxBack" class="inbox-back" type="button" aria-label="Back to chat" title="Back to chat">
+        <svg class="inbox-icon-read" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        <svg class="inbox-icon-unread" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg>
+      </button>
       <h2 id="inboxTitle" class="inbox-title"><span>Inbox</span></h2>
       <button id="inboxClose" class="inbox-close" type="button" aria-label="Close" title="Close">
         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>

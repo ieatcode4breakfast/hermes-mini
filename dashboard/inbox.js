@@ -568,26 +568,34 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
 
   // The panel hangs from the agent's photo: its top sits just under the photo and name, a small
   // pointer on its top edge points at the photo, and it reaches down to the bottom of the visual viewport (a phone's
-  // keyboard included). Phones get the full width; wider screens a card up to half the active screen width (min 440px)
-  // centred on the photo, kept on screen.
+  // keyboard included). Wider screens get a card up to half the active screen width (min 440px) centred on the photo,
+  // kept on screen; phones get a full page.
   function place() {
     const vv = window.visualViewport;
     const vLeft = vv ? vv.offsetLeft : 0;
     const vTop = vv ? vv.offsetTop : 0;
     const vWidth = vv ? vv.width : window.innerWidth;
     const vHeight = vv ? vv.height : window.innerHeight;
+    // Phones: a full page over the visible viewport, like the To-do and Schedules pages.
+    const phone = window.matchMedia("(max-width: 640px)").matches;
+    if (phone) {
+      dialog.style.left = `${vLeft}px`;
+      dialog.style.top = `${vTop}px`;
+      dialog.style.width = `${vWidth}px`;
+      dialog.style.height = `${vHeight}px`;
+      return;
+    }
     // Opened from the chats panel's Inbox row: the panel sits under the agent's name, centred over the chat column.
     const head = document.getElementById("identityBtn") || btn;
     const chat = (document.getElementById("log") || document.body).getBoundingClientRect();
     const centre = chat.left + chat.width / 2;
     const top = Math.max(vTop + 8, head.getBoundingClientRect().bottom + 12);
-    const phone = window.matchMedia("(max-width: 640px)").matches;
-    const width = phone ? vWidth : Math.min(Math.max(440, Math.round(vWidth * 0.5)), vWidth - 32);
-    const left = phone ? vLeft : Math.min(Math.max(vLeft + 16, centre - width / 2), vLeft + vWidth - 16 - width);
+    const width = Math.min(Math.max(440, Math.round(vWidth * 0.5)), vWidth - 32);
+    const left = Math.min(Math.max(vLeft + 16, centre - width / 2), vLeft + vWidth - 16 - width);
     dialog.style.left = `${left}px`;
     dialog.style.top = `${top}px`;
     dialog.style.width = `${width}px`;
-    dialog.style.height = `${Math.max(200, vTop + vHeight - top - (phone ? 0 : 16))}px`;
+    dialog.style.height = `${Math.max(200, vTop + vHeight - top - 16)}px`;
     dialog.style.setProperty("--caret-x", `${Math.round(centre - left)}px`);
   }
 
@@ -650,6 +658,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
   // ---------- events ----------
 
   closeBtn.addEventListener("click", () => void closePanel());
+  $("inboxBack").addEventListener("click", () => void closePanel()); // the phone page's Back button
   scrim.addEventListener("click", () => void closePanel());
   markAllBtn.addEventListener("click", () => void markAll());
   function setFilter(next) {

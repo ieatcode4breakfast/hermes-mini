@@ -310,13 +310,12 @@ input, textarea, select { font-family: inherit; }
   right: auto;
   left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
 }
-/* Right column, top to bottom: Tools (level with the photo), then its tray - Schedules, Computer, To-do - one slot
+/* Right column, top to bottom: Tools (level with the photo), then its tray - Computer, To-do - one slot
    (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), To-do moves up. */
 .fab.fab-tray { top: calc(env(safe-area-inset-top) + 19px + var(--slot) * 56px); }
-#schedBtn { --slot: 1; }
-#screenBtn { --slot: 2; }
-#todoBtn { --slot: 3; }
-#screenBtn[hidden] + #todoBtn { --slot: 2; }
+#screenBtn { --slot: 1; }
+#todoBtn { --slot: 2; }
+#screenBtn[hidden] + #todoBtn { --slot: 1; }
 /* Number of open to-dos on the button's top-right corner; hidden when there are none (todo.js sets both). */
 .fab-count {
   position: absolute; top: -2px; right: -2px; box-sizing: border-box; min-width: 18px; height: 18px;
@@ -1098,7 +1097,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-new:hover .drawer-new-icon { color: var(--fg); }
 .drawer-new-icon svg { width: 14px; height: 14px; }
 /* Inbox row, directly under the main chat: icon and word sized like New chat, the unread count at its right end. */
-.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
+/* .chat-row (below) sets the session rows' 56px and 8px padding; the doubled class keeps these sizes ahead of it. */
+.chat-row.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
 .drawer-inbox .chat-title { flex: 1; font-size: 14px; }
 /* A plain icon in the text colour, not the home row's accent: open tray when all is read, closed envelope otherwise. */
 .drawer-inbox-icon { display: flex; flex: none; color: var(--fg); }
@@ -1111,6 +1111,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .row-count[hidden] { display: none; }
 .drawer-inbox[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+/* Schedules, directly under the Inbox row and drawn the same way (no count), the two rows close together. */
+.chat-row.drawer-sched { margin-top: 0; }
 .drawer-note { min-height: 0; margin: var(--drawer-gap) 20px 0; font-size: 12px; color: var(--danger); }
 .drawer-note:empty { display: none; }
 .drawer-list {
@@ -1647,7 +1649,6 @@ body.bot-screen-open #screenBtn {
 }
 /* The to-do button looks pressed the same way while its panel is open. */
 body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
-body.sched-open #schedBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 
 /* Schedules panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
    when it runs and when it runs next (or "Running now" and "Paused"), a failure note when the last run failed, and the
@@ -1917,6 +1918,7 @@ body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
 }
 .inbox-head .inbox-title { grid-column: 2; grid-row: 1; justify-content: center; }
 .inbox-head .inbox-close { grid-column: 3; grid-row: 1; margin: 0; }
+.inbox-back { display: none; } /* phones only (below) */
 .inbox-title { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: 16px; font-weight: 650; line-height: 1.3; }
 .inbox-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inbox-close {
@@ -2043,12 +2045,33 @@ body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
   .inbox-dialog, .inbox-dialog.open { transition: none; }
 }
 
-/* Phones: full width, square bottom corners down to the screen's edge, still hanging from the photo with its pointer. */
+/* Phones: a full page like the To-do and Schedules pages (inbox.js place() fills the visible viewport): no card, slides
+   in from the right, a Back button and a centred title in the same 84px bar, the tabs on the strip under it. */
 @media (max-width: 640px) {
-  .inbox-dialog { border-radius: 20px 20px 0 0; padding: 16px calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 16px); }
+  .inbox-dialog {
+    border-radius: 0; box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35);
+    padding: 0 calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 16px);
+    transform: translateX(100%);
+  }
+  .inbox-dialog.open { transform: none; }
+  /* The page covers the header, so the photo and name stay under it rather than above it as they do over the card. */
+  body.inbox-open .topbar { z-index: var(--z-header); }
+  .inbox-head {
+    grid-template-columns: 46px minmax(0, 1fr) 46px; gap: 2px; min-height: 84px; margin-top: 0;
+    padding-top: env(safe-area-inset-top); padding-bottom: 0;
+  }
+  .inbox-head .inbox-back {
+    display: flex; align-items: center; justify-content: center; grid-column: 1; grid-row: 1;
+    width: 46px; height: 46px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+    background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--fg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+  }
+  .inbox-back svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .inbox-head .inbox-back:active { transform: scale(0.96); }
+  .inbox-head .inbox-close { display: none; }
   .inbox-tools { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); }
   .inbox-list { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); --inbox-gutter: calc(16px + max(env(safe-area-inset-left), env(safe-area-inset-right))); }
-  .inbox-head { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+  .inbox-head { margin-left: calc(-16px - env(safe-area-inset-left)); margin-right: calc(-16px - env(safe-area-inset-right)); padding-left: calc(22px + env(safe-area-inset-left)); padding-right: calc(22px + env(safe-area-inset-right)); }
 }
 @media (max-width: 420px) {
   .inbox-title { font-size: 15px; }
@@ -2120,14 +2143,14 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 @keyframes badge-pop { from { opacity: 0; transform: scale(0.5); } }
 .viewer { animation: viewer-in 180ms ease-out backwards; }
 @keyframes viewer-in { from { opacity: 0; } }
-/* Phones: the to-do list is a full page that slides, so it gets the drawer's timing, not the small card's. */
+/* Phones: the to-do list and the Inbox are full pages that slide, so they get the drawer's timing, not the small card's. */
 @media (max-width: 640px) {
-  .todo-dialog { transition: transform 220ms var(--ease-exit), opacity 220ms ease-in, visibility 0s linear 220ms; }
-  .todo-dialog.open { transition: transform 340ms var(--ease-out), opacity 120ms ease-out, visibility 0s; }
+  .todo-dialog, .inbox-dialog { transition: transform 220ms var(--ease-exit), opacity 220ms ease-in, visibility 0s linear 220ms; }
+  .todo-dialog.open, .inbox-dialog.open { transition: transform 340ms var(--ease-out), opacity 120ms ease-out, visibility 0s; }
 }
 @media (prefers-reduced-motion: reduce) {
   .msg.msg-in, .edit-bar, .tray, .fab-count, .viewer, .attach-menu { animation: none; }
-  .todo-dialog, .todo-dialog.open { transition: none; }
+  .todo-dialog, .todo-dialog.open, .inbox-dialog, .inbox-dialog.open { transition: none; }
   .fab, .icon-btn, .send, .btn, .ghost, .rename-submit, .confirm-submit, .rename-cancel, .confirm-cancel, .todo-head .todo-back, .todo-check { transition: none; }
   .fab:active, .icon-btn:active, .send:active:not(:disabled), .btn:active, .rename-cancel:active, .confirm-cancel:active,
   .rename-submit:active:not(:disabled), .confirm-submit:active:not(:disabled), .todo-check:active:not(:disabled) { transform: none; }

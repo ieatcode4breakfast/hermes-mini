@@ -466,7 +466,9 @@ export function createSchedules({ api, mention = null }) {
     dialog.classList.remove("open");
     document.body.classList.remove("sched-open");
     btn.setAttribute("aria-expanded", "false");
-    btn.focus({ preventScroll: true });
+    // Back to the Schedules row when it is on screen (a docked panel); with the panel closed, to the panel's button.
+    const back = btn.offsetParent ? btn : document.getElementById("menuBtn");
+    if (back && back.offsetParent) back.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniSched === true) {
       backPending = new Promise((resolve) => {
         resolveBack = resolve;

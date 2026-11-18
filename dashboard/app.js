@@ -6600,10 +6600,6 @@ const schedules = createSchedules({
 els.todoBtn.addEventListener("click", () => {
   void inbox.close().then(() => schedules.close()).then(() => todo.open());
 });
-document.getElementById("schedBtn").addEventListener("click", () => {
-  if (schedules.isOpen()) void schedules.close();
-  else void inbox.close().then(() => todo.close()).then(() => schedules.open());
-});
 // The Inbox row in the chats panel opens the Inbox, and a second tap closes it. On a phone the panel is an overlay,
 // so it steps aside first; a docked panel stays.
 const toggleInbox = () => {
@@ -6615,6 +6611,15 @@ const toggleInbox = () => {
   void Promise.resolve(panel).then(() => todo.close()).then(() => schedules.close()).then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
+// The Schedules row, under the Inbox row, works the same way.
+document.getElementById("schedBtn").addEventListener("click", () => {
+  if (schedules.isOpen()) {
+    void schedules.close();
+    return;
+  }
+  const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
+  void Promise.resolve(panel).then(() => todo.close()).then(() => inbox.close()).then(() => schedules.open());
+});
 // The agent's picture and name open the name and picture editor (identity-edit.js).
 createIdentityEditor({ rpc, identityApi, api, showToast });
 void todo.refresh();

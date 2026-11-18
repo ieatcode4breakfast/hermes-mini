@@ -197,18 +197,18 @@ there is no reply to show.
   order), delete, reset of the main chat, and a read-only view of a chat that belongs to another
   source.
 - **Inbox**: every agent message across the app's chats, newest first, with unread tracking. It is
-  the row under the main chat in the chats panel, with the unread count at its right end. A swipe
-  on a phone or an envelope button on hover marks a message read or unread without opening it; a
-  reply's action row in the chat (and its long-press menu) offers Mark unread, which becomes Mark
+  the row under the main chat in the chats panel, with the unread count at its right end; on a phone
+  it opens as a full page. A swipe on a phone or an envelope button on hover marks a message read or
+  unread without opening it; a reply's action row in the chat (and its long-press menu) offers Mark unread, which becomes Mark
   read while the reply is held unread. The main chat's messages carry the same home icon as the chat
   list.
 - **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
-- **Schedules**: the agent's scheduled jobs (Hermes cron), each with what it is, when it runs in plain
-  words and when it runs next; a job running now says so. Each row's ⋮ menu pauses, resumes or deletes
-  the job through Hermes' own routes, or adds it to the message being written as an inline pill, which
-  reaches the agent as `[Schedule: <name> · job <id>]`.
-- **Tools tray**: the hammer-and-screwdriver button folds the Schedules, Computer and To-do buttons
-  away under it and brings them back; folded is the default, remembered per device. On a computer, while
+- **Schedules**: the row under the Inbox in the chats panel. It lists the agent's scheduled jobs
+  (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
+  running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
+  routes, or adds it to the message being written as an inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.
+- **Tools tray**: the hammer-and-screwdriver button folds the Computer and To-do buttons away under
+  it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
 - **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning
   level. The sheet lists Hermes's connected providers and their models (search, prices where Hermes
