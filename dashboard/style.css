@@ -311,16 +311,13 @@ input, textarea, select { font-family: inherit; }
   right: auto;
   left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
 }
-/* Right column, top to bottom: Tools (level with the photo), then its tray - Edit profile, Computer, To-do, Artifacts -
-   one slot (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), the two
-   below it move up. */
+/* Right column, top to bottom: Tools (level with the photo), then its tray - Edit profile, Computer, To-do - one slot
+   (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), To-do moves up. */
 .fab.fab-tray { top: calc(env(safe-area-inset-top) + 19px + var(--slot) * 56px); }
 #profileBtn { --slot: 1; }
 #screenBtn { --slot: 2; }
 #todoBtn { --slot: 3; }
-#artBtn { --slot: 4; }
 #screenBtn[hidden] + #todoBtn { --slot: 2; }
-#screenBtn[hidden] ~ #artBtn { --slot: 3; }
 /* Number of open to-dos on the button's top-right corner; hidden when there are none (todo.js sets both). */
 .fab-count {
   position: absolute; top: -2px; right: -2px; box-sizing: border-box; min-width: 18px; height: 18px;
@@ -1095,7 +1092,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-new-icon { display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
 .drawer-new:hover .drawer-new-icon { color: var(--fg); }
 .drawer-new-icon svg { width: 14px; height: 14px; }
-/* Panel rows (Schedules), directly under the main chat: icon and word sized like New chat. */
+/* Panel rows (Schedules, Artifacts), directly under the main chat: icon and word sized like New chat. */
 /* .chat-row (below) sets the session rows' 56px and 8px padding; the doubled class keeps these sizes ahead of it. */
 .chat-row.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
 .drawer-inbox .chat-title { flex: 1; font-size: 14px; }
@@ -1104,8 +1101,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-inbox-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .drawer-inbox.has-unread .chat-title { font-weight: 650; }
 .drawer-inbox[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-/* Schedules, directly under the Inbox row and drawn the same way (no count), the two rows close together. */
-.chat-row.drawer-sched { margin-top: 0; }
+/* Artifacts, directly under Schedules and drawn the same way, the two rows close together. */
+.chat-row.drawer-art { margin-top: 0; }
 .drawer-note { min-height: 0; margin: var(--drawer-gap) 20px 0; font-size: 12px; color: var(--danger); }
 .drawer-note:empty { display: none; }
 .drawer-list {
@@ -1643,7 +1640,6 @@ body.bot-screen-open #screenBtn {
 /* The to-do button looks pressed the same way while its panel is open. */
 body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 /* ...and the Artifacts button while its panel is open. */
-body.art-open #artBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 #profileBtn[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 
 /* Schedules panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
@@ -2207,8 +2203,8 @@ body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color
 body:not(.tools-open) .fab.fab-tray {
   translate: 0 calc(var(--slot) * -56px); scale: 0.5; opacity: 0; visibility: hidden; pointer-events: none;
   transition: transform 160ms var(--ease-spring), background-color 160ms ease, box-shadow 180ms ease,
-    translate 300ms var(--ease-exit) calc((4 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((4 - var(--slot)) * 30ms),
-    opacity 200ms ease-in calc((4 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
+    translate 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms),
+    opacity 200ms ease-in calc((3 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
 }
 /* On a computer with the computer view open, the Computer button stays out while the tray is folded: it sits in the
    first slot under Tools (one slot up from its own), so the open view always has its button (the person, 15 Nov 2026). */

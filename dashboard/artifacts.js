@@ -535,8 +535,8 @@ export function createArtifacts({ api, openViewer, fetchMedia, openFile, openMes
     dialog.classList.remove("open");
     document.body.classList.remove("art-open");
     btn.setAttribute("aria-expanded", "false");
-    // Back to the Artifacts button when it is on screen (the tray open); with the tray folded, to the Tools button.
-    const back = document.body.classList.contains("tools-open") ? btn : document.getElementById("toolsBtn");
+    // Back to the Artifacts row when it is on screen (a docked chats panel); otherwise to the chats button.
+    const back = btn.offsetParent ? btn : document.getElementById("menuBtn");
     if (back && back.offsetParent) back.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniArt === true) {
       backPending = new Promise((resolve) => {

@@ -107,16 +107,17 @@ class SchedulesPanelTest(unittest.TestCase):
         browse = drawer_js.split("function renderBrowse(", 1)[1].split("\n  function ", 1)[0]
         slot = browse.index("list.append(slot);")
         self.assertLess(browse.index("if (schedRow) list.append(schedRow);", slot), browse.index("list.append(newBtn);", slot))
+        self.assertIn('.chat-row.drawer-inbox { min-height: 32px; margin-top: 6px;', (DASHBOARD / "style.css").read_text(encoding="utf-8"))
         self.assertIn('id="schedDialog"', html)
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('import { createSchedules, mentionText } from "./schedules.js";', app)
 
     def test_tools_button_folds_the_tray_buttons(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "todoBtn", "artBtn")]
+        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "todoBtn")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(html.count("fab fab-tray"), 4)
-        self.assertIn('aria-controls="profileBtn screenBtn todoBtn artBtn"', html)
+        self.assertEqual(html.count("fab fab-tray"), 3)
+        self.assertIn('aria-controls="profileBtn screenBtn todoBtn"', html)
         css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
         self.assertIn("body:not(.tools-open) .fab.fab-tray", css)
         self.assertIn("body.tools-open #toolsBtn", css)

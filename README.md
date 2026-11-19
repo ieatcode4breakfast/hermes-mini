@@ -208,11 +208,11 @@ there is no reply to show.
   running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
   routes, or adds it to the message being written as an inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.
 - **Artifacts**: the pictures, files and links the agent produced in the app's chats, newest first,
-  under the Tools tray. Tabs for All, Images, Files and Links, a search box, a picture grid that opens the
+  in the row under Schedules in the chats panel. Tabs for All, Images, Files and Links, a search box, a picture grid that opens the
   full-screen viewer, file downloads, and an ⋮ menu to open the chat it came from or copy its path or link.
   It reads the chat history read-only on each open (so it covers earlier chats too); a local file that no
   longer exists is left out, and each path or link is listed once.
-- **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer, To-do and Artifacts buttons away under
+- **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer and To-do buttons away under
   it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
 - **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning

@@ -15,18 +15,20 @@ class ArtifactsPanelTest(unittest.TestCase):
         self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
 
-    def test_the_tray_holds_artifacts_last(self):
-        order = [self.html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "todoBtn", "artBtn")]
-        self.assertEqual(order, sorted(order))
-        self.assertEqual(self.html.count("fab fab-tray"), 4)
-        self.assertIn('aria-controls="profileBtn screenBtn todoBtn artBtn"', self.html)
-        self.assertIn('id="artBtn" class="fab fab-tray fab-art"', self.html)
-        # A slot each, Edit profile first; with the Computer button hidden the two below it move up.
-        self.assertIn("#profileBtn { --slot: 1; }", self.css)
-        self.assertIn("#artBtn { --slot: 4; }", self.css)
-        self.assertIn("#screenBtn[hidden] ~ #artBtn { --slot: 3; }", self.css)
-        # It looks pressed while its panel is open, like the To-do button.
-        self.assertIn("body.art-open #artBtn", self.css)
+    def test_artifacts_is_a_chats_panel_row_under_schedules(self):
+        drawer = self.html.split('<aside id="drawer"', 1)[1].split("</aside>", 1)[0]
+        self.assertLess(drawer.index('id="schedBtn"'), drawer.index('id="artBtn"'))
+        self.assertIn('id="artBtn" class="chat-row drawer-inbox drawer-art"', drawer)
+        head = self.html.split('<header class="topbar">', 1)[1].split("</header>", 1)[0]
+        self.assertNotIn("artBtn", head)
+        self.assertEqual(self.html.count("fab fab-tray"), 3)
+        self.assertNotIn("#artBtn", self.css)
+        drawer_js = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
+        self.assertEqual(drawer_js.count("if (schedRow) list.append(schedRow);\n      if (artRow) list.append(artRow);")
+                         + drawer_js.count("if (schedRow) list.append(schedRow);\n    if (artRow) list.append(artRow);"), 2)
+        # On a phone the chats panel steps aside before the panel opens.
+        handler = self.app.split('els.artBtn.addEventListener("click", () => {', 1)[1].split("\n});", 1)[0]
+        self.assertIn("drawerApi.isOpen() && !isDocked() ? drawerApi.close()", handler)
 
     def test_the_panel_is_a_dialog_with_search_and_four_tabs(self):
         self.assertIn('id="artScrim" class="scrim todo-scrim"', self.html)

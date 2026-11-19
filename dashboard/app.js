@@ -6567,7 +6567,7 @@ if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
   }, { capture: true, passive: true });
 }
 
-// Tools: folds the Edit profile, Computer, To-do and Artifacts buttons into the Tools button and brings them back. Folded by default;
+// Tools: folds the Edit profile, Computer and To-do buttons into the Tools button and brings them back. Folded by default;
 // the choice is remembered on this device. While folded, Tools repeats the open to-do count so it is not lost.
 const TOOLS_KEY = "hermes-mini-tools-open";
 const toolsBtn = document.getElementById("toolsBtn");
@@ -6618,13 +6618,16 @@ const schedules = createSchedules({
 els.todoBtn.addEventListener("click", () => {
   void artifacts.close().then(() => inbox.close()).then(() => schedules.close()).then(() => todo.open());
 });
-// The Artifacts button, under To-do: a second tap closes the panel.
+// The Artifacts row in the chats panel, under Schedules: a second tap closes the panel. On a phone the chats panel is
+// an overlay, so it steps aside first; a docked panel stays.
 els.artBtn.addEventListener("click", () => {
   if (artifacts.isOpen()) {
     void artifacts.close();
     return;
   }
-  void inbox.close().then(() => todo.close()).then(() => schedules.close()).then(() => artifacts.open());
+  const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
+  void Promise.resolve(panel).then(() => inbox.close()).then(() => todo.close()).then(() => schedules.close())
+    .then(() => artifacts.open());
 });
 // The agent's picture and name are the Inbox's button: a tap opens it, a second tap closes it.
 const toggleInbox = () => {
