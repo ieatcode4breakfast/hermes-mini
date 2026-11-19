@@ -21,6 +21,12 @@ All notable changes to this project are documented here. The format follows
   agent wrote them in a reply; command output adds pictures and documents but not links, tool state or logs. A local
   file that no longer exists is left out, and each path or link is listed once, from the chat where it first
   appeared. The extraction rules follow Hermes's desktop app, made stricter. Needs a dashboard restart to load.
+- Bookmarks: every agent reply's action row (and long-press menu) has a Bookmark button right after Mark unread; on a
+  kept reply it becomes Remove bookmark with a filled icon. A new Bookmarks tool directly above To-do in the Tools tray
+  opens a panel of the kept replies, newest bookmark first, each opening its chat at that reply or removed with one
+  tap. New `GET/POST /bookmarks`, `GET /bookmarks/ids` and `DELETE /bookmarks/{id}` routes, stored in
+  `data/hermes-mini/bookmarks.json`; a reply whose chat or message is gone drops out. Needs a dashboard restart to
+  load.
 - Schedules is a row directly under the main chat in the chats panel; its clock button left the Tools tray, which
   now holds Edit profile, Computer and To-do.
 - Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read

@@ -21,7 +21,7 @@ class ArtifactsPanelTest(unittest.TestCase):
         self.assertIn('id="artBtn" class="chat-row drawer-inbox drawer-art"', drawer)
         head = self.html.split('<header class="topbar">', 1)[1].split("</header>", 1)[0]
         self.assertNotIn("artBtn", head)
-        self.assertEqual(self.html.count("fab fab-tray"), 3)
+        self.assertEqual(self.html.count("fab fab-tray"), 4)
         self.assertNotIn("#artBtn", self.css)
         drawer_js = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
         self.assertEqual(drawer_js.count("if (schedRow) list.append(schedRow);\n      if (artRow) list.append(artRow);")

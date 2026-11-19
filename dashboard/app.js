@@ -16,6 +16,7 @@ import { createTodo } from "./todo.js";
 import { createSchedules, mentionText } from "./schedules.js";
 import { createInbox } from "./inbox.js";
 import { createArtifacts } from "./artifacts.js";
+import { createBookmarks } from "./bookmarks.js";
 import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js";
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
@@ -80,6 +81,7 @@ const els = {
   file: $("file"),
   tray: $("tray"),
   screenBtn: $("screenBtn"),
+  bookmarkBtn: $("bookmarkBtn"),
   todoBtn: $("todoBtn"),
   artBtn: $("artBtn"),
   inboxBtn: $("inboxBtn"),
@@ -1798,6 +1800,7 @@ async function loadHistory(messageCount = null) {
   if (!pendingTarget) void fillOlder(); // a page that is mostly tool rows may not fill the screen: keep loading until it scrolls
   // The rows are in, so their Mark unread / Mark read labels can be read from the Inbox tracker (its own route).
   void refreshInboxMarks();
+  void bookmarks.refreshIds().then(refreshBookmarkMarks);
 }
 
 // Loads the next older page and puts its bubbles above the current ones, keeping what is on screen where it is.
@@ -2264,6 +2267,7 @@ async function syncJobDeliveries() {
     if (added) {
       scrollToBottom(false);
       void refreshInboxMarks(); // a job result appended just now also offers Mark unread / Mark read
+      void bookmarks.refreshIds().then(refreshBookmarkMarks);
     }
   } catch {
     /* the next trigger tries again */
@@ -2300,6 +2304,8 @@ const ICON_EDIT = `<svg ${ICON_ATTRS}><path d="M12 20h9"/><path d="M16.5 3.5a2.1
 const ICON_BRANCH = `<svg ${ICON_ATTRS}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`;
 const ICON_UNREAD = `<svg ${ICON_ATTRS}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>`;
 const ICON_READ = `<svg ${ICON_ATTRS}><path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-5.2a2 2 0 0 1 2.4 0l8 5.2z"/><path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"/></svg>`;
+const ICON_BOOKMARK = `<svg ${ICON_ATTRS}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const ICON_BOOKMARKED = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
 const nowSec = () => Date.now() / 1000;
 let shownBusy = false; // the streaming state the action buttons were last synced to
 
@@ -2311,6 +2317,7 @@ function messageRecord(role, text, meta, hasAttachments) {
     ts: meta.ts !== undefined ? meta.ts : nowSec(),
     attached: Boolean(hasAttachments || meta.attached),
     markedUnread: false,
+    bookmarked: false,
   };
 }
 
@@ -2360,6 +2367,7 @@ function addMessageActions(row) {
     if (time) bar.append(time);
     bar.append(copy, actionButton("branch", "Branch from this reply", ICON_BRANCH, () => branchFrom(row)));
     bar.append(actionButton("unread", "Mark unread", ICON_UNREAD, () => toggleReplyUnread(row)));
+    bar.append(actionButton("bookmark", "Bookmark", ICON_BOOKMARK, () => toggleReplyBookmark(row)));
   }
   row.append(bar);
   syncActionAvailability(bar);
@@ -2378,6 +2386,18 @@ function syncUnreadButton(button, meta) {
   }
 }
 
+// The bookmark button follows the reply's flag the same way: kept replies offer Remove bookmark with a filled icon.
+function syncBookmarkButton(button, meta) {
+  const marked = Boolean(meta && meta.bookmarked);
+  const label = marked ? "Remove bookmark" : "Bookmark";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  if (button.dataset.state !== (marked ? "bookmarked" : "bookmark")) {
+    button.dataset.state = marked ? "bookmarked" : "bookmark";
+    button.innerHTML = marked ? ICON_BOOKMARKED : ICON_BOOKMARK;
+  }
+}
+
 // Edit is offered for a typed user message only. A message that carried an image or a file is not resent by an edit.
 function editable(meta) {
   return meta.role === "user" && !meta.attached && Boolean(meta.text);
@@ -2393,9 +2413,12 @@ function syncActionAvailability(root = els.log) {
       button.disabled = busy || state.readOnly || !editable(meta);
       button.title = meta.attached ? "Messages with attachments can't be edited" : "Edit message";
     } else {
-      button.disabled = busy || state.readOnly
-        || (button.dataset.action === "unread" && unreadBusy.has(button.closest(".msg")));
+      const row = button.closest(".msg");
+      const pending = button.dataset.action === "unread" ? unreadBusy.has(row)
+        : button.dataset.action === "bookmark" ? bookmarkBusy.has(row) : false;
+      button.disabled = busy || state.readOnly || pending;
       if (button.dataset.action === "unread") syncUnreadButton(button, meta);
+      if (button.dataset.action === "bookmark") syncBookmarkButton(button, meta);
     }
   }
 }
@@ -2457,6 +2480,9 @@ function openMsgMenu(row, x, y) {
     items.push(meta.markedUnread
       ? msgMenuItem("Mark read", ICON_READ, () => toggleReplyUnread(row))
       : msgMenuItem("Mark unread", ICON_UNREAD, () => toggleReplyUnread(row)));
+    items.push(meta.bookmarked
+      ? msgMenuItem("Remove bookmark", ICON_BOOKMARKED, () => toggleReplyBookmark(row))
+      : msgMenuItem("Bookmark", ICON_BOOKMARK, () => toggleReplyBookmark(row)));
   }
   items.push(msgMenuItem("Select text", ICON_SELECT, () => enterSelectMode(row, caret)));
   els.msgMenu.append(...items);
@@ -3112,6 +3138,48 @@ async function toggleReplyUnread(row) {
     unreadBusy.delete(row);
     syncActionAvailability();
   }
+}
+
+// Bookmark / Remove bookmark: one button that follows the reply's stored flag. The reply's durable id is the
+// bookmark, so it reads the same from every device; bookmarkBusy keeps a double press to one request.
+const bookmarkBusy = new Set();
+async function toggleReplyBookmark(row) {
+  const meta = row.hermesMiniMsg;
+  if (!meta || bookmarkBusy.has(row)) return;
+  if (state.streaming || state.sending || state.switching || state.editing || state.readOnly) return;
+  const removing = Boolean(meta.bookmarked);
+  bookmarkBusy.add(row);
+  syncActionAvailability();
+  try {
+    const rowId = await resolveRowId(row);
+    if (!rowId) throw new Error("this reply is not saved yet. Try again in a moment.");
+    if (removing) {
+      await bookmarks.remove(rowId);
+      showToast("Bookmark removed");
+    } else {
+      await bookmarks.add(rowId);
+      showToast("Bookmarked");
+    }
+    meta.bookmarked = !removing;
+  } catch (error) {
+    if (!(error instanceof AuthRedirect)) {
+      sysLine(`Could not ${removing ? "remove bookmark" : "bookmark"}: ${errorText(error)}`);
+      showToast(removing ? "Could not remove bookmark" : "Could not bookmark", "error");
+    }
+  } finally {
+    bookmarkBusy.delete(row);
+    syncActionAvailability();
+  }
+}
+
+// The action row's bookmark button follows the stored set: every reply on screen learns whether it is kept.
+function refreshBookmarkMarks() {
+  for (const row of chatRows()) {
+    const meta = row.hermesMiniMsg;
+    if (!meta || meta.role !== "assistant") continue;
+    meta.bookmarked = Number.isInteger(meta.rowId) && meta.rowId > 0 ? bookmarks.has(meta.rowId) : false;
+  }
+  syncActionAvailability();
 }
 
 // Inline images: the TUI channel has no attachment path, so any absolute image path in a finished reply
@@ -6535,10 +6603,19 @@ const artifacts = createArtifacts({
   formatTime: messageTimeLabel, // unix seconds, like the Inbox
   showToast,
 });
+// The Bookmarks panel: the agent replies the person kept, read from /bookmarks on every open. The same module keeps the
+// ids the action rows ask about, and a change made in the panel updates the chat on screen (bookmarks.js).
+const bookmarks = createBookmarks({
+  api,
+  openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
+  formatTime: messageTimeLabel,
+  showToast,
+  onChange: refreshBookmarkMarks,
+});
 // Desktop scrollbars show only while the mouse is over their area, touch ones only while scrolling (style.css .sb-on). Every scrolling area under the
 // pointer gets .sb-on - a code block in the chat lights both - and loses it when the pointer leaves it or the window.
 // A class, not :hover: Chrome does not reliably repaint a styled scrollbar when only the hover state changes.
-const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list, .art-body";
+const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .bm-list, .todo-list, .inbox-list, .sched-list, .art-body";
 let scrollbarsLit = [];
 function lightScrollbars(target) {
   const next = [];
@@ -6567,8 +6644,9 @@ if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
   }, { capture: true, passive: true });
 }
 
-// Tools: folds the Edit profile, Computer and To-do buttons into the Tools button and brings them back. Folded by default;
-// the choice is remembered on this device. While folded, Tools repeats the open to-do count so it is not lost.
+// Tools: folds the Edit profile, Computer, Bookmarks and To-do buttons into the Tools button and brings them back.
+// Folded by default; the choice is remembered on this device. While folded, Tools repeats the open to-do count so it is
+// not lost.
 const TOOLS_KEY = "hermes-mini-tools-open";
 const toolsBtn = document.getElementById("toolsBtn");
 const toolsCount = document.getElementById("toolsCount");
@@ -6616,7 +6694,17 @@ const schedules = createSchedules({
 });
 // The panels close each other, waiting for each one's history entry so they never race.
 els.todoBtn.addEventListener("click", () => {
-  void artifacts.close().then(() => inbox.close()).then(() => schedules.close()).then(() => todo.open());
+  void artifacts.close().then(() => inbox.close()).then(() => schedules.close()).then(() => bookmarks.close())
+    .then(() => todo.open());
+});
+// The Bookmarks tool, directly above To-do: a second tap closes the panel.
+els.bookmarkBtn.addEventListener("click", () => {
+  if (bookmarks.isOpen()) {
+    void bookmarks.close();
+    return;
+  }
+  void artifacts.close().then(() => inbox.close()).then(() => todo.close()).then(() => schedules.close())
+    .then(() => bookmarks.open());
 });
 // The Artifacts row in the chats panel, under Schedules: a second tap closes the panel. On a phone the chats panel is
 // an overlay, so it steps aside first; a docked panel stays.
@@ -6627,7 +6715,7 @@ els.artBtn.addEventListener("click", () => {
   }
   const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
   void Promise.resolve(panel).then(() => inbox.close()).then(() => todo.close()).then(() => schedules.close())
-    .then(() => artifacts.open());
+    .then(() => bookmarks.close()).then(() => artifacts.open());
 });
 // The agent's picture and name are the Inbox's button: a tap opens it, a second tap closes it.
 const toggleInbox = () => {
@@ -6635,7 +6723,8 @@ const toggleInbox = () => {
     void inbox.close();
     return;
   }
-  void artifacts.close().then(() => todo.close()).then(() => schedules.close()).then(() => inbox.open());
+  void artifacts.close().then(() => todo.close()).then(() => schedules.close()).then(() => bookmarks.close())
+    .then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
 els.inboxBtn.addEventListener("keydown", (event) => {
@@ -6652,12 +6741,14 @@ document.getElementById("schedBtn").addEventListener("click", () => {
   }
   const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
   void Promise.resolve(panel).then(() => artifacts.close()).then(() => todo.close()).then(() => inbox.close())
-    .then(() => schedules.open());
+    .then(() => bookmarks.close()).then(() => schedules.open());
 });
 // Edit profile, the first button in the Tools tray, opens the name and picture editor (identity-edit.js).
 createIdentityEditor({ rpc, identityApi, api, showToast });
 void todo.refresh();
 void inbox.refreshBadge();
+// The action rows' bookmark buttons learn the stored set before the first chat is drawn, and again as chats load.
+void bookmarks.refreshIds().then(refreshBookmarkMarks);
 
 // The chats panel is a column whenever the window is docked: always with the computer closed, and with it open only
 // while app.js has decided all three panes still fit. Otherwise it tucks away and the hamburger brings it back as an

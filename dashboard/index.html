@@ -63,9 +63,9 @@
         <p id="caption" class="caption" hidden></p>
         <span id="status" class="status" aria-live="polite">Connecting…</span>
       </div>
-      <!-- Tools: folds the Edit profile, Computer and To-do buttons away under it, and brings them back (app.js). The
-           badge repeats the open to-do count while they are folded away. -->
-      <button id="toolsBtn" class="fab fab-tools" type="button" aria-label="Tools" title="Tools" aria-expanded="false" aria-controls="profileBtn screenBtn todoBtn">
+      <!-- Tools: folds the Edit profile, Computer, Bookmarks and To-do buttons away under it, and brings them back
+           (app.js). The badge repeats the open to-do count while they are folded away. -->
+      <button id="toolsBtn" class="fab fab-tools" type="button" aria-label="Tools" title="Tools" aria-expanded="false" aria-controls="profileBtn screenBtn bookmarkBtn todoBtn">
         <svg class="tools-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M21.67 18.17l-5.3-5.3h-.99l-2.54 2.54v.99l5.3 5.3c.39.39 1.02.39 1.41 0l2.12-2.12c.39-.38.39-1.02 0-1.41zM17.34 10.19l1.41-1.41 2.12 2.12c1.17-1.17 1.17-3.07 0-4.24l-3.54-3.54-1.41 1.41V1.71l-.7-.71-3.54 3.54.71.71h2.83l-1.41 1.41 1.06 1.06-2.89 2.89-4.13-4.13V5.06L4.83 2.04 2 4.87 5.03 7.9h1.41l4.13 4.13-.85.85H7.6l-5.3 5.3c-.39.39-.39 1.02 0 1.41l2.12 2.12c.39.39 1.02.39 1.41 0l5.3-5.3v-2.12l5.15-5.15 1.06 1.05z"/></svg>
         <span id="toolsCount" class="fab-count" hidden></span>
       </button>
@@ -77,7 +77,11 @@
       <button id="screenBtn" class="fab fab-tray" type="button" aria-label="Computer" title="Computer">
         <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       </button>
-      <!-- To-do list, directly under the Computer button. The badge counts the open items. -->
+      <!-- Bookmarks, directly under the Computer button: the agent replies the person kept (bookmarks.js). -->
+      <button id="bookmarkBtn" class="fab fab-tray fab-bookmark" type="button" aria-label="Bookmarks" title="Bookmarks" aria-haspopup="dialog" aria-controls="bmDialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <!-- To-do list, directly under the Bookmarks button. The badge counts the open items. -->
       <button id="todoBtn" class="fab fab-tray fab-todo" type="button" aria-label="To-do list" title="To-do list" aria-haspopup="dialog" aria-controls="todoDialog" aria-expanded="false">
         <svg viewBox="0 0 24 24"><path d="M3 5l2 2 3-3"/><path d="M3 12l2 2 3-3"/><path d="M3 19l2 2 3-3"/><path d="M13 6h8"/><path d="M13 13h8"/><path d="M13 20h8"/></svg>
         <span id="todoCount" class="fab-count" hidden></span>
@@ -337,6 +341,27 @@
       </div>
     </div>
     <div id="artBody" class="art-body" role="tabpanel" aria-labelledby="artTabAll"></div>
+  </div>
+
+  <!-- Bookmarks panel, opened from the button under the Computer button. It lists the agent replies the person kept,
+       newest bookmark first; every open reads plugin_api.py /bookmarks and a tap opens the chat at that reply. Shares
+       the to-do panel's card (todo-* classes) so the two look the same. -->
+  <div id="bmScrim" class="scrim todo-scrim" aria-hidden="true"></div>
+  <div id="bmDialog" class="todo-dialog bm-dialog" role="dialog" aria-modal="true" aria-labelledby="bmTitle">
+    <div class="todo-head">
+      <button id="bmBack" class="todo-back" type="button" aria-label="Back to chat" title="Back to chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <h2 id="bmTitle" class="todo-title"><span>Bookmarks</span></h2>
+      <button id="bmClose" class="todo-close" type="button" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="bmList" class="bm-list"></div>
+    <p id="bmEmpty" class="bm-empty" hidden>
+      <span class="bm-empty-title">No bookmarks yet</span>
+      <span class="bm-empty-hint">Bookmark a reply from the row under it, or press and hold it.</span>
+    </p>
   </div>
 
   <!-- Inbox: every agent message across the app's chats, newest first. It stores nothing: each open reads

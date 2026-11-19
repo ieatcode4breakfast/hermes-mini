@@ -114,10 +114,10 @@ class SchedulesPanelTest(unittest.TestCase):
 
     def test_tools_button_folds_the_tray_buttons(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "todoBtn")]
+        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "bookmarkBtn", "todoBtn")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(html.count("fab fab-tray"), 3)
-        self.assertIn('aria-controls="profileBtn screenBtn todoBtn"', html)
+        self.assertEqual(html.count("fab fab-tray"), 4)
+        self.assertIn('aria-controls="profileBtn screenBtn bookmarkBtn todoBtn"', html)
         css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
         self.assertIn("body:not(.tools-open) .fab.fab-tray", css)
         self.assertIn("body.tools-open #toolsBtn", css)

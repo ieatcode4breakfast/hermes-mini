@@ -311,13 +311,16 @@ input, textarea, select { font-family: inherit; }
   right: auto;
   left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
 }
-/* Right column, top to bottom: Tools (level with the photo), then its tray - Edit profile, Computer, To-do - one slot
-   (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), To-do moves up. */
+/* Right column, top to bottom: Tools (level with the photo), then its tray - Edit profile, Computer, Bookmarks, To-do -
+   one slot (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), the
+   others move up. */
 .fab.fab-tray { top: calc(env(safe-area-inset-top) + 19px + var(--slot) * 56px); }
 #profileBtn { --slot: 1; }
 #screenBtn { --slot: 2; }
-#todoBtn { --slot: 3; }
-#screenBtn[hidden] + #todoBtn { --slot: 2; }
+#bookmarkBtn { --slot: 3; }
+#todoBtn { --slot: 4; }
+#screenBtn[hidden] + #bookmarkBtn { --slot: 2; }
+#screenBtn[hidden] ~ #todoBtn { --slot: 3; }
 /* Number of open to-dos on the button's top-right corner; hidden when there are none (todo.js sets both). */
 .fab-count {
   position: absolute; top: -2px; right: -2px; box-sizing: border-box; min-width: 18px; height: 18px;
@@ -493,6 +496,8 @@ input, textarea, select { font-family: inherit; }
 .msg-act:active { background: color-mix(in srgb, var(--fg) 14%, transparent); transform: scale(0.9); }
 .msg-act:disabled { opacity: 0.35; cursor: default; background: none; color: var(--muted); }
 .msg-act svg, .code-copy svg { width: 16px; height: 16px; }
+/* A bookmarked reply's bookmark button stays accent-coloured, so the kept state reads at a glance. */
+.msg-act[data-action="bookmark"][data-state="bookmarked"] { color: var(--accent); }
 .msg-time { margin: 0 6px; font-size: 12px; line-height: 1; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* was @media (hover: hover): follows the last input (data-input, index.html) */
   /* Hidden icons keep their slots (opacity, not display), so the time does not move when they fade in. An invisible
@@ -1639,7 +1644,9 @@ body.bot-screen-open #screenBtn {
 }
 /* The to-do button looks pressed the same way while its panel is open. */
 body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
-/* ...and the Artifacts button while its panel is open. */
+/* ...and so does the Bookmarks button. */
+body.bm-open #bookmarkBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+/* ...and Edit profile while its card is open. */
 #profileBtn[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 
 /* Schedules panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
@@ -1808,6 +1815,57 @@ body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(
 :where(:root[data-input="mouse"]) .art-retry:hover { background: color-mix(in srgb, var(--accent) 26%, var(--surface)); }
 .art-note { margin: 12px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 @media (prefers-reduced-motion: reduce) { .art-tile img { transition: none; } }
+
+/* ---------- Bookmarks panel ---------- */
+/* The to-do card (todo-dialog), a little wider on a computer; on a phone the to-do card's own full-page rules take over.
+   Each row is the reply's chat and time, then a three-line preview, with the filled bookmark at the right to remove it. */
+.bm-dialog { width: min(calc(100vw - 32px), 560px); height: min(80vh, 680px); max-height: min(80vh, 680px); }
+.bm-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.bm-list:empty { flex: 0 0 auto; } /* the empty state keeps the card's height, not half of it */
+@media (hover: hover) and (pointer: fine) and (min-width: 641px) {
+  .bm-list { scrollbar-gutter: stable; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
+}
+.bm-row { display: flex; align-items: center; gap: 4px; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.bm-row:first-child { border-top: 0; }
+.bm-row-main {
+  flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 10px 0;
+  border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+.bm-row-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bm-row-title { font-size: 14px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bm-row-time { flex: none; margin-left: auto; font-size: 12px; line-height: 1.35; color: var(--muted); white-space: nowrap; }
+.bm-row-preview {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  font-size: 14px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere;
+}
+:where(:root[data-input="mouse"]) .bm-row-main:hover .bm-row-title { color: var(--accent); }
+.bm-remove {
+  flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: 0 -4px 0 0;
+  padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--accent); cursor: pointer;
+}
+.bm-remove svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.bm-remove:hover, .bm-remove:focus-visible { outline: none; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.bm-remove:disabled { opacity: 0.45; cursor: default; }
+/* Nothing kept yet: the same quiet centre as the Schedules and Artifacts empty states. */
+.bm-empty {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  margin: 24px 0; text-align: center; color: var(--muted); font-size: 14px;
+}
+.bm-empty[hidden] { display: none; }
+.bm-empty-title { font-weight: 600; color: var(--fg); }
+.bm-empty-hint { max-width: 34ch; }
+/* Loading and error, the Artifacts panel's shape. */
+.bm-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  min-height: 180px; margin: 24px 0; text-align: center; color: var(--muted); font-size: 14px;
+}
+.bm-state-text { margin: 0; max-width: 34ch; }
+.bm-retry {
+  height: 34px; padding: 0 16px; border: 0; border-radius: 999px; color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface)); font: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+:where(:root[data-input="mouse"]) .bm-retry:hover { background: color-mix(in srgb, var(--accent) 26%, var(--surface)); }
 
 /* Appearance switch at the bottom of the chats panel: System / Light / Dark as one small segmented pill. */
 .drawer-foot {
@@ -2203,8 +2261,8 @@ body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color
 body:not(.tools-open) .fab.fab-tray {
   translate: 0 calc(var(--slot) * -56px); scale: 0.5; opacity: 0; visibility: hidden; pointer-events: none;
   transition: transform 160ms var(--ease-spring), background-color 160ms ease, box-shadow 180ms ease,
-    translate 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms),
-    opacity 200ms ease-in calc((3 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
+    translate 300ms var(--ease-exit) calc((4 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((4 - var(--slot)) * 30ms),
+    opacity 200ms ease-in calc((4 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
 }
 /* On a computer with the computer view open, the Computer button stays out while the tray is folded: it sits in the
    first slot under Tools (one slot up from its own), so the open view always has its button (the person, 15 Nov 2026). */

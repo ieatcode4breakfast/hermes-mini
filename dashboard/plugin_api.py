@@ -1820,6 +1820,165 @@ async def delete_todo(item_id: str):
     return _todos_response(kept)
 
 
+# ---------- bookmarks ----------
+# Agent replies the person kept, across the app's chats. The store is one small JSON file of ids; every read resolves
+# the id against state.db with the Inbox's own rules, so a bookmark whose chat or message is gone is simply left out.
+# A missing or corrupt file reads as an empty list, never an error, and every write is atomic.
+
+MAX_BOOKMARKS = 500
+BOOKMARK_LOOKUP_CHUNK = 200
+_BOOKMARKS_LOCK = threading.Lock()
+
+
+def _bookmarks_path() -> Path:
+    return core.data_file("bookmarks.json")
+
+
+def _read_bookmarks() -> list[dict[str, Any]]:
+    try:
+        data = json.loads(_bookmarks_path().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except Exception as exc:  # noqa: BLE001 - a bad file means "no bookmarks", never a broken app
+        log.warning("bookmark store unreadable: %s", exc)
+        return []
+    raw_items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(raw_items, list):
+        return []
+    items: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        item_id = raw.get("id")
+        if isinstance(item_id, bool) or not isinstance(item_id, int) or item_id <= 0 or item_id in seen:
+            continue
+        seen.add(item_id)
+        session_id = raw.get("session_id")
+        added = raw.get("added")
+        items.append({
+            "id": item_id,
+            "session_id": session_id[:200] if isinstance(session_id, str) else "",
+            "added": int(added) if isinstance(added, (int, float)) and not isinstance(added, bool) else 0,
+        })
+    return items[:MAX_BOOKMARKS]
+
+
+def _write_bookmarks(items: list[dict[str, Any]]) -> None:
+    path = _bookmarks_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"items": items}), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _bookmark_items(conn: sqlite3.Connection, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Inbox item for each stored id that still resolves, in the records' order, plus when it was bookmarked."""
+    titles = _scope_titles(conn)
+    if not titles or not records:
+        return []
+    ids = [record["id"] for record in records]
+    by_id: dict[int, dict[str, Any]] = {}
+    for start in range(0, len(ids), BOOKMARK_LOOKUP_CHUNK):
+        chunk = ids[start:start + BOOKMARK_LOOKUP_CHUNK]
+        rows = _candidate_rows(conn, list(titles), only_ids=chunk, limit=len(chunk), by_id=True)
+        for row in rows:
+            item = _inbox_item(row, titles)
+            if item is not None:
+                by_id[item["id"]] = item
+    items: list[dict[str, Any]] = []
+    for record in records:
+        item = by_id.get(record["id"])
+        if item is None:
+            continue
+        item["bookmarked_at"] = record["added"]
+        items.append(item)
+    return items
+
+
+@router.get("/bookmarks")
+async def get_bookmarks():
+    """The bookmarked replies, newest bookmark first. A pure read: the store is never rewritten here."""
+    with _BOOKMARKS_LOCK:
+        records = _read_bookmarks()
+    if not records:
+        return JSONResponse({"items": []})
+    ordered = sorted(records, key=lambda record: (record["added"], record["id"]), reverse=True)
+    try:
+        conn = _inbox_conn()
+        try:
+            items = _bookmark_items(conn, ordered)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        log.warning("bookmarks read failed: %s", exc)
+        return JSONResponse({"detail": "bookmarks unavailable"}, status_code=503)
+    return JSONResponse({"items": items})
+
+
+@router.get("/bookmarks/ids")
+async def get_bookmark_ids():
+    """Every bookmarked id. File only, for the action row's button state."""
+    with _BOOKMARKS_LOCK:
+        records = _read_bookmarks()
+    return JSONResponse({"ids": [record["id"] for record in records]})
+
+
+@router.post("/bookmarks")
+async def add_bookmark(request: Request):
+    body, error = await _json_body(request)
+    if error is not None:
+        return error
+    assert body is not None
+    item_id = body.get("id")
+    if isinstance(item_id, bool) or not isinstance(item_id, int) or item_id <= 0:
+        return JSONResponse({"detail": "id must be a positive whole message id"}, status_code=400)
+    with _BOOKMARKS_LOCK:
+        if any(record["id"] == item_id for record in _read_bookmarks()):
+            return JSONResponse({"ok": True, "id": item_id})
+    try:
+        conn = _inbox_conn()
+        try:
+            titles = _scope_titles(conn)
+            rows = _candidate_rows(conn, list(titles), only_ids=[item_id], limit=1, by_id=True)
+            item = next((found for found in (_inbox_item(row, titles) for row in rows) if found is not None), None)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        log.warning("bookmark lookup failed: %s", exc)
+        return JSONResponse({"detail": "bookmarks unavailable"}, status_code=503)
+    if item is None or item["id"] != item_id:
+        return JSONResponse({"detail": "no such reply"}, status_code=404)
+    try:
+        with _BOOKMARKS_LOCK:
+            records = _read_bookmarks()
+            if any(record["id"] == item_id for record in records):
+                return JSONResponse({"ok": True, "id": item_id})
+            if len(records) >= MAX_BOOKMARKS:
+                return JSONResponse({"detail": "the bookmark list is full"}, status_code=409)
+            records.append({"id": item_id, "session_id": item["session_id"], "added": int(time.time())})
+            _write_bookmarks(records)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("bookmark save failed: %s", exc)
+        return JSONResponse({"detail": "could not save the bookmark"}, status_code=500)
+    return JSONResponse({"ok": True, "id": item_id})
+
+
+@router.delete("/bookmarks/{item_id}")
+async def delete_bookmark(item_id: int):
+    """Removes a bookmark. Unknown ids are a no-op: a tap on one already gone is still what the person wanted."""
+    try:
+        with _BOOKMARKS_LOCK:
+            records = _read_bookmarks()
+            kept = [record for record in records if record["id"] != item_id]
+            if len(kept) != len(records):
+                _write_bookmarks(kept)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("bookmark delete failed: %s", exc)
+        return JSONResponse({"detail": "could not delete the bookmark"}, status_code=500)
+    return JSONResponse({"ok": True})
+
+
 # ---------- gateway stops and starts (the main chat's restart lines) ----------
 # Written by the gateway half (bridge.py) into this profile's data folder; the app draws them in the main chat only.
 GATEWAY_EVENTS_PAGE = 50

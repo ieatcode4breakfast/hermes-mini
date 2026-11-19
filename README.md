@@ -200,9 +200,14 @@ there is no reply to show.
   from the agent's picture or name, with the unread count on the picture; on a phone it opens as a
   full page. A swipe on a phone or an envelope button on hover marks a message read or
   unread without opening it; a reply's action row in the chat (and its long-press menu) offers Mark unread, which becomes Mark
-  read while the reply is held unread. The main chat's messages carry the same home icon as the chat
+  read while the reply is held unread, and Bookmark, which becomes Remove bookmark once the reply is kept. The main
+  chat's messages carry the same home icon as the chat
   list.
 - **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
+- **Bookmarks**: the agent replies you kept, in the tool directly above To-do in the Tools tray. A reply is bookmarked
+  from its action row or its long-press menu; the panel lists them newest bookmark first, each with its chat, time and
+  a short preview. Tapping one opens the chat at that reply, and the filled bookmark at the right removes it. Bookmarks
+  follow the message: a deleted chat or message simply drops out.
 - **Schedules**: the row under the main chat in the chats panel. It lists the agent's scheduled jobs
   (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
   running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
@@ -212,7 +217,7 @@ there is no reply to show.
   full-screen viewer, file downloads, and an ⋮ menu to open the chat it came from or copy its path or link.
   It reads the chat history read-only on each open (so it covers earlier chats too); a local file that no
   longer exists is left out, and each path or link is listed once.
-- **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer and To-do buttons away under
+- **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer, Bookmarks and To-do buttons away under
   it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
 - **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning
