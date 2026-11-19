@@ -121,8 +121,38 @@ class BookmarksRouteTest(DisposableHome):
         conn.execute("DELETE FROM messages WHERE id = 1")
         conn.commit()
         self.assertEqual([item["id"] for item in self.items()], [2])
-        # A read never rewrites the store, so the id stays for the day its row comes back.
-        self.assertEqual(sorted(item["id"] for item in self.store()["items"]), [1, 2])
+        # Its row is gone for good (ids are never reused), so opening the list also drops it from the store.
+        self.assertEqual(sorted(item["id"] for item in self.store()["items"]), [2])
+        self.assertEqual(self.ids(), [2])
+
+    def test_a_deleted_chat_drops_its_bookmarks_from_the_store(self):
+        conn = self._db()
+        conn.execute("INSERT INTO sessions VALUES ('other', 'Errands', 0)")
+        conn.commit()
+        self.client.post(self.CHATS, json={"id": "other"})
+        self._add(conn, 1, "Keep me.")
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, display_kind, display_metadata, timestamp,"
+            " finish_reason, tool_calls, active, compacted) VALUES (2,'other','assistant','Gone soon.',NULL,NULL,"
+            "1800000001,'stop',NULL,1,0)")
+        conn.commit()
+        self.add(1)
+        self.add(2)
+        conn.execute("DELETE FROM messages WHERE session_id = 'other'")
+        conn.execute("DELETE FROM sessions WHERE id = 'other'")
+        conn.commit()
+        self.assertEqual([item["id"] for item in self.items()], [1])
+        self.assertEqual(self.ids(), [1])
+
+    def test_a_reply_that_exists_but_does_not_resolve_is_hidden_not_removed(self):
+        conn = self._db()
+        self._add(conn, 1, "Kept while hidden.")
+        self.add(1)
+        # The row stays; it just stops being an agent bubble the list can show.
+        conn.execute("UPDATE messages SET display_kind = 'hidden' WHERE id = 1")
+        conn.commit()
+        self.assertEqual(self.items(), [])
+        self.assertEqual(self.ids(), [1])
 
     def test_a_user_message_is_not_an_agent_reply(self):
         conn = self._db()

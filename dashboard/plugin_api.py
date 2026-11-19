@@ -1896,9 +1896,38 @@ def _bookmark_items(conn: sqlite3.Connection, records: list[dict[str, Any]]) -> 
     return items
 
 
+def _existing_message_ids(conn: sqlite3.Connection, ids: list[int]) -> set[int]:
+    """The ids that still have a row in state.db's messages table (deleting a chat deletes its rows)."""
+    found: set[int] = set()
+    for start in range(0, len(ids), BOOKMARK_LOOKUP_CHUNK):
+        chunk = ids[start:start + BOOKMARK_LOOKUP_CHUNK]
+        marks = ",".join("?" for _ in chunk)
+        found.update(int(row[0]) for row in conn.execute(f"SELECT id FROM messages WHERE id IN ({marks})", chunk))
+    return found
+
+
+def _prune_bookmarks(dead: set[int]) -> None:
+    """Drops bookmarks whose message row is gone for good. Message ids are never reused (AUTOINCREMENT), so a gone row
+    cannot come back. Re-read under the lock so a bookmark added meanwhile is kept; a failure only logs."""
+    try:
+        with _BOOKMARKS_LOCK:
+            records = _read_bookmarks()
+            kept = [record for record in records if record["id"] not in dead]
+            if len(kept) != len(records):
+                _write_bookmarks(kept)
+    except Exception as exc:  # noqa: BLE001 - tidying the store must never break the list
+        log.warning("bookmark prune failed: %s", exc)
+
+
 @router.get("/bookmarks")
 async def get_bookmarks():
-    """The bookmarked replies, newest bookmark first. A pure read: the store is never rewritten here."""
+    """The bookmarked replies, newest bookmark first.
+
+    A bookmark is shown only while its reply still resolves with the Inbox's rules. One whose message row no longer
+    exists at all (its chat or message was deleted) is also removed from the store here, like the Inbox, which keeps
+    nothing for a deleted chat. A row that exists but does not resolve (for example a chat outside the app's scope for
+    now) is only hidden, never removed, so a passing state can never wipe the list.
+    """
     with _BOOKMARKS_LOCK:
         records = _read_bookmarks()
     if not records:
@@ -1908,11 +1937,15 @@ async def get_bookmarks():
         conn = _inbox_conn()
         try:
             items = _bookmark_items(conn, ordered)
+            existing = _existing_message_ids(conn, [record["id"] for record in ordered])
         finally:
             conn.close()
     except sqlite3.Error as exc:
         log.warning("bookmarks read failed: %s", exc)
         return JSONResponse({"detail": "bookmarks unavailable"}, status_code=503)
+    dead = {record["id"] for record in ordered} - existing
+    if dead:
+        _prune_bookmarks(dead)
     return JSONResponse({"items": items})
 
 

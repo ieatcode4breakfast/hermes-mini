@@ -25,7 +25,7 @@ All notable changes to this project are documented here. The format follows
   kept reply it becomes Remove bookmark with a filled icon. A new Bookmarks tool directly above To-do in the Tools tray
   opens a panel of the kept replies, newest bookmark first, each opening its chat at that reply or removed with one
   tap. New `GET/POST /bookmarks`, `GET /bookmarks/ids` and `DELETE /bookmarks/{id}` routes, stored in
-  `data/hermes-mini/bookmarks.json`; a reply whose chat or message is gone drops out. Needs a dashboard restart to
+  `data/hermes-mini/bookmarks.json`; a reply whose chat or message is gone drops out, and is removed from the file the next time the list opens. Needs a dashboard restart to
   load.
 - Schedules is a row directly under the main chat in the chats panel; its clock button left the Tools tray, which
   now holds Edit profile, Computer and To-do.
