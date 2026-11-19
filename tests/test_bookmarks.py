@@ -240,7 +240,7 @@ class BookmarksFrontEndTest(unittest.TestCase):
             self.assertIn(f'id="{part}"', self.html)
         self.assertIn("<span>Bookmarks</span>", self.html)
         self.assertIn("No bookmarks yet", self.html)
-        self.assertIn("Bookmark a reply from the row under it, or press and hold it.", self.html)
+        self.assertIn("Replies you bookmark show up here.", self.html)
         self.assertIn("M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z", self.html.split('id="bmBack"', 1)[1])
         self.assertIn(".bm-dialog { width:", self.css)
 
