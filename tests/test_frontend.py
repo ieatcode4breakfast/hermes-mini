@@ -868,5 +868,19 @@ class ZIndexLadderTest(unittest.TestCase):
                 self.assertNotIn("z-index", body, selector)
 
 
+
+class ComputerStartButtonTest(unittest.TestCase):
+    """Start Screen sits in the stopped-screen card, centred under its message, not in the floating control row."""
+
+    def test_start_is_under_the_message(self):
+        markup = (DASHBOARD / "computer" / "markup.js").read_text(encoding="utf-8")
+        card = markup.split('<div class="bs-card">', 1)[1].split("</div>", 1)[0]
+        self.assertLess(card.index('id="bsOverlayBody"'), card.index('id="bsStart"'))
+        controls = markup.split('class="bs-controls"', 1)[1].split("</div>", 1)[0]
+        self.assertNotIn("bsStart", controls)
+        css = (DASHBOARD / "computer" / "screen.css").read_text(encoding="utf-8")
+        self.assertIn(".bs-overlay .bs-btn[hidden] { display: none; }", css)
+
+
 if __name__ == "__main__":
     unittest.main()

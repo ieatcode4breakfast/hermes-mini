@@ -18,6 +18,8 @@ export const botScreenHtml = (NAME) => `
       <div class="bs-card">
         <h3 id="bsOverlayTitle">Checking the screen…</h3>
         <p id="bsOverlayBody">This only reads the bot's desktop status.</p>
+        <!-- Shown only while the desktop is stopped: centred under the message that says to start it. -->
+        <button id="bsStart" class="bs-btn" type="button" hidden>Start Screen</button>
       </div>
     </div>
     <!-- Phones: a visible trackpad surface under the picture. trackpad.js listens on it too, so
@@ -28,7 +30,7 @@ export const botScreenHtml = (NAME) => `
     <button id="bsHelp" class="bs-help-btn" type="button" aria-label="How to use the trackpad" title="How to use the trackpad" hidden>?</button>
     <!-- Floating over the desktop itself, never in the flow: ownership on the left, actions on the right.
          The wrapper and the label are click-through so the remote desktop keeps the pixels around them;
-         only the action buttons take taps. z-index above .bs-overlay so refresh/start stay usable. -->
+         only the action buttons take taps. z-index above .bs-overlay so reconnect stays usable. -->
     <div id="bsFloat" class="bs-float">
       <!-- Hand Back sits right next to "You're in control". No Take Over button: any input while
            watching takes control, so Hand Back is the only lease action left, and its ring counts down the last 5 s
@@ -38,7 +40,6 @@ export const botScreenHtml = (NAME) => `
         <button id="bsHandback" class="bs-btn" type="button" hidden>Hand Back</button>
       </div>
       <div class="bs-controls" role="toolbar" aria-label="${NAME}'s Computer controls">
-        <button id="bsStart" class="bs-btn" type="button" hidden>Start Screen</button>
         <button id="bsReconnect" class="bs-btn bs-icon-btn" type="button" aria-label="Reconnect" title="Reconnect">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
         </button>
