@@ -166,7 +166,7 @@ you to sign in, Hermes' login page brings you back to the app afterwards.
 There is none. Open the app and it is ready to use: the header and composer take the name Hermes
 already has for the bot — the default profile's bot title, then the serving profile's, then its
 display name or a named profile id, and finally **Hermes**. Nothing asks for a name or picture
-first. To change them, tap the agent's picture or name: **Edit profile** saves the new name and picture
+first. To change them, open **Edit profile**, the first button in the Tools tray: it saves the new name and picture
 in Hermes itself (through its profile methods), so every Hermes client sees them. Hermes's desktop app
 keeps its own copy of a picture it has already shown; pick the picture there too to update it.
 
@@ -196,14 +196,14 @@ there is no reply to show.
 - **Chats**: multiple conversations, a main chat, new chat, rename, pin (with a shared manual
   order), delete, reset of the main chat, and a read-only view of a chat that belongs to another
   source.
-- **Inbox**: every agent message across the app's chats, newest first, with unread tracking. It is
-  the row under the main chat in the chats panel, with the unread count at its right end; on a phone
-  it opens as a full page. A swipe on a phone or an envelope button on hover marks a message read or
+- **Inbox**: every agent message across the app's chats, newest first, with unread tracking. It opens
+  from the agent's picture or name, with the unread count on the picture; on a phone it opens as a
+  full page. A swipe on a phone or an envelope button on hover marks a message read or
   unread without opening it; a reply's action row in the chat (and its long-press menu) offers Mark unread, which becomes Mark
   read while the reply is held unread. The main chat's messages carry the same home icon as the chat
   list.
 - **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
-- **Schedules**: the row under the Inbox in the chats panel. It lists the agent's scheduled jobs
+- **Schedules**: the row under the main chat in the chats panel. It lists the agent's scheduled jobs
   (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
   running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
   routes, or adds it to the message being written as an inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.
@@ -212,7 +212,7 @@ there is no reply to show.
   full-screen viewer, file downloads, and an ⋮ menu to open the chat it came from or copy its path or link.
   It reads the chat history read-only on each open (so it covers earlier chats too); a local file that no
   longer exists is left out, and each path or link is listed once.
-- **Tools tray**: the hammer-and-screwdriver button folds the Computer, To-do and Artifacts buttons away under
+- **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer, To-do and Artifacts buttons away under
   it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
 - **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning

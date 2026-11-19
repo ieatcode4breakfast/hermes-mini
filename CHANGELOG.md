@@ -8,13 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Edit profile: tapping the agent's picture or name opens a card to change her name and picture. It saves through
+- Edit profile: the first button in the Tools tray opens a card to change her name and picture. It saves through
   Hermes's own profile methods (`profiles.set_asset`, and `profiles.configure` as a compare-and-swap that keeps the
   profile's other display fields), so Hermes and every client that asks it see the change. A picture uploaded
   through the app's old setup is dropped once a new one is saved. Hermes's desktop app keeps its own copy of a
   picture it has already shown, so it shows the old one until the picture is picked there too.
-- The Inbox is a row directly under the main chat in the chats panel, with its unread count at the right end;
-  the chats button shows a dot while anything is unread. It used to open from the agent's picture. On a phone it
+- The Inbox still opens from the agent's picture or name, with the unread count on the picture. On a phone it
   opens as a full page, like the To-do and Schedules pages, with a Back button.
 - Artifacts: a new button under To-do in the Tools tray lists the pictures, files and links the agent produced
   in the app's chats (new `artifacts.js`, `artifact_index.py`, and a read-only `GET /artifacts` route). Tabs, search,
@@ -22,8 +21,8 @@ All notable changes to this project are documented here. The format follows
   agent wrote them in a reply; command output adds pictures and documents but not links, tool state or logs. A local
   file that no longer exists is left out, and each path or link is listed once, from the chat where it first
   appeared. The extraction rules follow Hermes's desktop app, made stricter. Needs a dashboard restart to load.
-- Schedules is a row directly under the Inbox in the chats panel; its clock button left the Tools tray, which now
-  holds Computer and To-do.
+- Schedules is a row directly under the main chat in the chats panel; its clock button left the Tools tray, which
+  now holds Edit profile, Computer, To-do and Artifacts.
 - Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read
   "DeepSeek v4.1 Flash" instead of `deepseek-v4.1-flash` (new `model-name.js`, following Hermes's desktop app).
   The picker search matches the name or the id, and the id is still what is sent.

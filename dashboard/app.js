@@ -6567,7 +6567,7 @@ if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
   }, { capture: true, passive: true });
 }
 
-// Tools: folds the Schedules, Computer and To-do buttons into the Tools button and brings them back. Folded by default;
+// Tools: folds the Edit profile, Computer, To-do and Artifacts buttons into the Tools button and brings them back. Folded by default;
 // the choice is remembered on this device. While folded, Tools repeats the open to-do count so it is not lost.
 const TOOLS_KEY = "hermes-mini-tools-open";
 const toolsBtn = document.getElementById("toolsBtn");
@@ -6626,19 +6626,22 @@ els.artBtn.addEventListener("click", () => {
   }
   void inbox.close().then(() => todo.close()).then(() => schedules.close()).then(() => artifacts.open());
 });
-// The Inbox row in the chats panel opens the Inbox, and a second tap closes it. On a phone the panel is an overlay,
-// so it steps aside first; a docked panel stays.
+// The agent's picture and name are the Inbox's button: a tap opens it, a second tap closes it.
 const toggleInbox = () => {
   if (inbox.isOpen()) {
     void inbox.close();
     return;
   }
-  const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
-  void Promise.resolve(panel).then(() => artifacts.close()).then(() => todo.close()).then(() => schedules.close())
-    .then(() => inbox.open());
+  void artifacts.close().then(() => todo.close()).then(() => schedules.close()).then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
-// The Schedules row, under the Inbox row, works the same way.
+els.inboxBtn.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  toggleInbox();
+});
+// The Schedules row in the chats panel opens Schedules, and a second tap closes it. On a phone the panel is an
+// overlay, so it steps aside first; a docked panel stays.
 document.getElementById("schedBtn").addEventListener("click", () => {
   if (schedules.isOpen()) {
     void schedules.close();
@@ -6648,7 +6651,7 @@ document.getElementById("schedBtn").addEventListener("click", () => {
   void Promise.resolve(panel).then(() => artifacts.close()).then(() => todo.close()).then(() => inbox.close())
     .then(() => schedules.open());
 });
-// The agent's picture and name open the name and picture editor (identity-edit.js).
+// Edit profile, the first button in the Tools tray, opens the name and picture editor (identity-edit.js).
 createIdentityEditor({ rpc, identityApi, api, showToast });
 void todo.refresh();
 void inbox.refreshBadge();

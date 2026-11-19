@@ -15,15 +15,16 @@ class ArtifactsPanelTest(unittest.TestCase):
         self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
 
-    def test_the_tray_holds_a_third_button(self):
-        order = [self.html.index(f'id="{name}"') for name in ("toolsBtn", "screenBtn", "todoBtn", "artBtn")]
+    def test_the_tray_holds_artifacts_last(self):
+        order = [self.html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "todoBtn", "artBtn")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(self.html.count("fab fab-tray"), 3)
-        self.assertIn('aria-controls="screenBtn todoBtn artBtn"', self.html)
+        self.assertEqual(self.html.count("fab fab-tray"), 4)
+        self.assertIn('aria-controls="profileBtn screenBtn todoBtn artBtn"', self.html)
         self.assertIn('id="artBtn" class="fab fab-tray fab-art"', self.html)
-        # A slot each; with the Computer button hidden the two below it move up.
-        self.assertIn("#artBtn { --slot: 3; }", self.css)
-        self.assertIn("#screenBtn[hidden] ~ #artBtn { --slot: 2; }", self.css)
+        # A slot each, Edit profile first; with the Computer button hidden the two below it move up.
+        self.assertIn("#profileBtn { --slot: 1; }", self.css)
+        self.assertIn("#artBtn { --slot: 4; }", self.css)
+        self.assertIn("#screenBtn[hidden] ~ #artBtn { --slot: 3; }", self.css)
         # It looks pressed while its panel is open, like the To-do button.
         self.assertIn("body.art-open #artBtn", self.css)
 

@@ -90,21 +90,26 @@ class IdentityEditFrontendTest(unittest.TestCase):
         self.assertIn('<label class="identity-label" for="identityName">Name</label>', dialog)
         self.assertNotIn("bot", dialog.lower())
 
-    def test_picture_opens_the_editor_and_the_inbox_is_a_panel_row(self):
+    def test_picture_opens_the_inbox_and_edit_profile_is_the_first_tool(self):
         head = self.html.split('<header class="topbar">', 1)[1].split("</header>", 1)[0]
-        self.assertIn('id="identityBtn"', head)
-        self.assertNotIn('id="inboxCount"', head)
-        self.assertIn('id="menuDot"', head)
+        picture = head.split('id="inboxBtn"', 1)[1].split("</div>", 1)[0]
+        self.assertIn('aria-controls="inboxDialog"', picture)
+        self.assertIn('id="inboxCount" class="fab-count avatar-count"', picture)
+        self.assertNotIn("menuDot", self.html)
+        self.assertNotIn('id="identityBtn"', self.html)
         drawer = self.html.split('<aside id="drawer"', 1)[1].split("</aside>", 1)[0]
-        row = drawer.split('id="inboxBtn"', 1)[1].split("</button>", 1)[0]
-        self.assertIn('id="inboxCount" class="row-count"', row)
-        self.assertLess(row.index(">Inbox<"), row.index('id="inboxCount"'))  # the count at the right end
-        browse = self.drawer.split("function renderBrowse(", 1)[1].split("\n  function ", 1)[0]
-        slot = browse.index("list.append(slot);")
-        inbox = browse.index("if (inboxRow) list.append(inboxRow);", slot)
-        self.assertLess(inbox, browse.index("list.append(newBtn);", slot))
+        self.assertNotIn('id="inboxBtn"', drawer)
+        self.assertNotIn("inboxRow", self.drawer)
+        # Edit profile is the first button in the Tools tray and opens the editor.
+        tray = [head.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn")]
+        self.assertEqual(tray, sorted(tray))
+        profile = head.split('id="profileBtn"', 1)[1].split("</button>", 1)[0]
+        self.assertIn('class="fab fab-tray fab-profile"', profile)
+        self.assertIn('aria-controls="identityDialog"', profile)
+        self.assertIn('const trigger = $("profileBtn");', self.edit)
         self.assertIn("createIdentityEditor({ rpc, identityApi, api, showToast });", self.app)
         self.assertIn('els.inboxBtn.addEventListener("click", toggleInbox);', self.app)
+        self.assertIn('els.inboxBtn.addEventListener("keydown", (event) => {', self.app)
 
     def test_service_worker_precaches_the_module(self):
         sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")

@@ -311,15 +311,16 @@ input, textarea, select { font-family: inherit; }
   right: auto;
   left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
 }
-/* Right column, top to bottom: Tools (level with the photo), then its tray - Computer, To-do, Artifacts - one slot
-   (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), the two below it
-   move up. */
+/* Right column, top to bottom: Tools (level with the photo), then its tray - Edit profile, Computer, To-do, Artifacts -
+   one slot (46px button + 10px gap) each, same right edge. With the computer unavailable (its button hidden), the two
+   below it move up. */
 .fab.fab-tray { top: calc(env(safe-area-inset-top) + 19px + var(--slot) * 56px); }
-#screenBtn { --slot: 1; }
-#todoBtn { --slot: 2; }
-#artBtn { --slot: 3; }
-#screenBtn[hidden] + #todoBtn { --slot: 1; }
-#screenBtn[hidden] ~ #artBtn { --slot: 2; }
+#profileBtn { --slot: 1; }
+#screenBtn { --slot: 2; }
+#todoBtn { --slot: 3; }
+#artBtn { --slot: 4; }
+#screenBtn[hidden] + #todoBtn { --slot: 2; }
+#screenBtn[hidden] ~ #artBtn { --slot: 3; }
 /* Number of open to-dos on the button's top-right corner; hidden when there are none (todo.js sets both). */
 .fab-count {
   position: absolute; top: -2px; right: -2px; box-sizing: border-box; min-width: 18px; height: 18px;
@@ -330,12 +331,6 @@ input, textarea, select { font-family: inherit; }
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
 }
 .fab-count[hidden] { display: none; }
-/* Unread Inbox messages, on the chats button: a small dot, since the count lives on the Inbox row in the panel. */
-.menu-dot {
-  position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%;
-  background: var(--user-gradient); box-shadow: 0 0 0 2px var(--surface); pointer-events: none;
-}
-.menu-dot[hidden] { display: none; }
 /* Names the chat on screen when it is not the home thread: one muted, truncated line under the name pill. */
 /* A soft pill like the name pill, so messages scrolling underneath never show through the caption. */
 .caption {
@@ -1100,7 +1095,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-new-icon { display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
 .drawer-new:hover .drawer-new-icon { color: var(--fg); }
 .drawer-new-icon svg { width: 14px; height: 14px; }
-/* Inbox row, directly under the main chat: icon and word sized like New chat, the unread count at its right end. */
+/* Panel rows (Schedules), directly under the main chat: icon and word sized like New chat. */
 /* .chat-row (below) sets the session rows' 56px and 8px padding; the doubled class keeps these sizes ahead of it. */
 .chat-row.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
 .drawer-inbox .chat-title { flex: 1; font-size: 14px; }
@@ -1108,12 +1103,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-inbox-icon { display: flex; flex: none; color: var(--fg); }
 .drawer-inbox-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .drawer-inbox.has-unread .chat-title { font-weight: 650; }
-.row-count {
-  flex: none; box-sizing: border-box; min-width: 22px; height: 20px; margin-right: 1px; padding: 0 7px; border-radius: 999px;
-  background: var(--user-gradient); color: #fff; box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 32%, transparent);
-  font-size: 12px; font-weight: 600; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums;
-}
-.row-count[hidden] { display: none; }
 .drawer-inbox[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 /* Schedules, directly under the Inbox row and drawn the same way (no count), the two rows close together. */
 .chat-row.drawer-sched { margin-top: 0; }
@@ -1655,6 +1644,7 @@ body.bot-screen-open #screenBtn {
 body.todo-open #todoBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 /* ...and the Artifacts button while its panel is open. */
 body.art-open #artBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+#profileBtn[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 
 /* Schedules panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
    when it runs and when it runs next (or "Running now" and "Paused"), a failure note when the last run failed, and the
@@ -1996,12 +1986,16 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
 .identity[role="button"]:focus-visible .avatar { outline: 2px solid var(--accent); outline-offset: 3px; }
 .identity[role="button"]:active .avatar { transform: scale(0.92); }
 .identity.centred[role="button"]:active .avatar { transform: scale(1.38); }
+.avatar-count { top: -2px; right: auto; left: calc(50% + 17px); }
 /* Centred over an empty chat the photo is scaled 1.5x (64px to 96px around its centre): the count follows it there.
    It still opens the Inbox; only the moves themselves (flying, lowering) are untappable. */
 .identity.centred[role="button"]:not(.flying):not(.lowering) { pointer-events: auto; }
+.identity.centred .avatar-count { top: -18px; left: calc(50% + 26px); }
+.identity.flying .avatar-count, .identity.lowering .avatar-count { display: none; }
 /* While the Inbox is open, only the photo and name stay above the dimmed page; the other round buttons step back. */
 body.inbox-open .topbar { z-index: var(--z-header-over-panel); transition: z-index 0s; }
 body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
+body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 16px rgba(0, 0, 0, 0.28); }
 
 /* The Inbox card (a side panel): its surface, radius and shadow, one step above the To-do card; above the rename
    dialog's old layer, below the confirm dialog. */
@@ -2016,8 +2010,6 @@ body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
   transform: translateY(-8px) scale(0.96); transform-origin: var(--caret-x, 50%) 0; opacity: 0; visibility: hidden;
   transition: transform 150ms var(--ease-exit), opacity 150ms ease-in, visibility 0s linear 150ms;
 }
-/* Opened from the chats panel now, so no pointer at the agent's picture. */
-.inbox-dialog::before { display: none; }
 .inbox-dialog::before {
   content: ""; position: absolute; top: -7px; left: calc(var(--caret-x, 50%) - 8px); width: 16px; height: 16px;
   background: var(--tab-strip); /* the frame's colour, like the title row it sits on */ border-radius: 3px; transform: rotate(45deg); pointer-events: none;
@@ -2215,8 +2207,8 @@ body.inbox-open .topbar > .fab { opacity: 0; pointer-events: none; }
 body:not(.tools-open) .fab.fab-tray {
   translate: 0 calc(var(--slot) * -56px); scale: 0.5; opacity: 0; visibility: hidden; pointer-events: none;
   transition: transform 160ms var(--ease-spring), background-color 160ms ease, box-shadow 180ms ease,
-    translate 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((3 - var(--slot)) * 30ms),
-    opacity 200ms ease-in calc((3 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
+    translate 300ms var(--ease-exit) calc((4 - var(--slot)) * 30ms), scale 300ms var(--ease-exit) calc((4 - var(--slot)) * 30ms),
+    opacity 200ms ease-in calc((4 - var(--slot)) * 30ms + 80ms), visibility 0s linear 400ms;
 }
 /* On a computer with the computer view open, the Computer button stays out while the tray is folded: it sits in the
    first slot under Tools (one slot up from its own), so the open view always has its button (the person, 15 Nov 2026). */

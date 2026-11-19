@@ -1,4 +1,4 @@
-// Name and picture editor: tapping the agent's picture or name in the header opens it. The name and picture are
+// Name and picture editor: Edit profile, the first button in the Tools tray, opens it. The name and picture are
 // Hermes's own (the profile's hermes-bots title and assets/avatar), so they are saved through Hermes's profile
 // methods over the gateway, the way Hermes's desktop app saves them; the app never writes Hermes's files.
 //   profiles.list {include_sessions:false}  -> each profile's ui_meta and ui_meta_revisions (to keep the other fields)
@@ -55,7 +55,8 @@ async function loadImage(file) {
 }
 
 export function createIdentityEditor({ rpc, identityApi, api, showToast }) {
-  const trigger = $("identityBtn");
+  const trigger = $("profileBtn");
+  const header = document.querySelector(".topbar .identity"); // the header picture gives a small pop after a save
   const scrim = $("identityScrim");
   const dialog = $("identityDialog");
   const pick = $("identityPick");
@@ -184,9 +185,11 @@ export function createIdentityEditor({ rpc, identityApi, api, showToast }) {
       await identityApi.loadStatus();
       busy = false;
       closeEditor();
-      trigger.classList.remove("just-saved");
-      void trigger.offsetWidth; // restart the pop
-      trigger.classList.add("just-saved");
+      if (header) {
+        header.classList.remove("just-saved");
+        void header.offsetWidth; // restart the pop
+        header.classList.add("just-saved");
+      }
       showToast("Saved", "success");
     } catch (error) {
       busy = false;
@@ -234,12 +237,7 @@ export function createIdentityEditor({ rpc, identityApi, api, showToast }) {
     if (!busy) closeEditor();
   });
   trigger.addEventListener("click", () => (open ? closeEditor() : openEditor()));
-  trigger.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    openEditor();
-  });
-  trigger.addEventListener("animationend", () => trigger.classList.remove("just-saved"));
+  header?.addEventListener("animationend", () => header.classList.remove("just-saved"));
 
   window.addEventListener("popstate", (event) => {
     if (resolveBack) {

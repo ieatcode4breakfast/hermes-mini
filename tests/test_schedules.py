@@ -99,23 +99,24 @@ class SchedulesPanelTest(unittest.TestCase):
         self.assertIn("SCHEDULE_REF", app)
         self.assertNotIn('method: "PUT"', source)
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        # Opened from a row in the chats panel, directly under the Inbox row.
+        # Opened from a row in the chats panel, directly under the main chat.
         drawer = html.split('id="drawer"', 1)[1].split("</aside>", 1)[0]
-        self.assertLess(drawer.index('id="inboxBtn"'), drawer.index('id="schedBtn"'))
         self.assertIn('class="chat-row drawer-inbox drawer-sched"', drawer)
         drawer_js = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
-        self.assertEqual(drawer_js.count("if (inboxRow) list.append(inboxRow);\n      if (schedRow) list.append(schedRow);")
-                         + drawer_js.count("if (inboxRow) list.append(inboxRow);\n    if (schedRow) list.append(schedRow);"), 2)
+        self.assertEqual(drawer_js.count("if (schedRow) list.append(schedRow);"), 2)
+        browse = drawer_js.split("function renderBrowse(", 1)[1].split("\n  function ", 1)[0]
+        slot = browse.index("list.append(slot);")
+        self.assertLess(browse.index("if (schedRow) list.append(schedRow);", slot), browse.index("list.append(newBtn);", slot))
         self.assertIn('id="schedDialog"', html)
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('import { createSchedules, mentionText } from "./schedules.js";', app)
 
     def test_tools_button_folds_the_tray_buttons(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
-        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "screenBtn", "todoBtn", "artBtn")]
+        order = [html.index(f'id="{name}"') for name in ("toolsBtn", "profileBtn", "screenBtn", "todoBtn", "artBtn")]
         self.assertEqual(order, sorted(order))
-        self.assertEqual(html.count("fab fab-tray"), 3)
-        self.assertIn('aria-controls="screenBtn todoBtn artBtn"', html)
+        self.assertEqual(html.count("fab fab-tray"), 4)
+        self.assertIn('aria-controls="profileBtn screenBtn todoBtn artBtn"', html)
         css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
         self.assertIn("body:not(.tools-open) .fab.fab-tray", css)
         self.assertIn("body.tools-open #toolsBtn", css)
