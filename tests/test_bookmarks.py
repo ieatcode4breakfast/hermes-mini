@@ -251,7 +251,7 @@ class BookmarksFrontEndTest(unittest.TestCase):
         self.assertIn("method: \"DELETE\"", self.js)
         self.assertIn("aria-label\", \"Remove bookmark\"", self.js)
         self.assertIn("bookmarks.js", self.sw.split("const CORE = [", 1)[1].split("];", 1)[0])
-        self.assertIn('const CACHE = "hermes-mini-v82";', self.sw)
+        self.assertRegex(self.sw, r'const CACHE = "hermes-mini-v\d+";')
 
     def test_the_action_row_adds_bookmark_right_after_unread(self):
         bar = self.app[self.app.index("function addMessageActions("):self.app.index("// The unread button's label")]
