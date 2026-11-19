@@ -660,18 +660,28 @@ input, textarea, select { font-family: inherit; }
   background: color-mix(in srgb, var(--danger) 16%, var(--surface));
 }
 .answer-row { display: flex; gap: 8px; margin-top: 10px; }
-.answer-row input {
-  flex: 1; min-width: 0; font: inherit; color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
-  border: 0; border-radius: 12px; padding: 8px 12px;
+/* The answer box is one field (app.js clarifyAnswerField): the text box, and when dictation is available the mic inside
+   at its right end. While it records, the text steps aside for the composer's recording strip (bars, countdown, x). */
+.answer-field {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; min-height: 40px; padding-right: 4px;
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg)); border-radius: 12px;
   transition: background-color 160ms ease;
 }
-/* The question card's mic (app.js clarifyMicButton): a round button between the box and Send, red and pulsing while
-   it records, dimmed while Hermes transcribes. */
-.answer-row .clarify-mic {
-  flex: none; width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center; align-self: center;
+.answer-field:focus-within { background: color-mix(in srgb, var(--fg) 9%, var(--bg)); }
+.answer-row .answer-field input {
+  flex: 1; min-width: 0; font: inherit; color: var(--fg);
+  background: transparent; border: 0; border-radius: 12px; padding: 8px 12px;
 }
+.answer-row .answer-field input:focus { outline: none; box-shadow: none; }
+.answer-field.dictating input { display: none; }
+.answer-field .clarify-hud { height: 36px; padding: 0 0 0 10px; }
+.clarify-mic {
+  flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--fg); cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+:where(:root[data-input="mouse"]) .clarify-mic:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 .clarify-mic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .clarify-mic .clarify-mic-stop { display: none; fill: currentColor; stroke: none; }
 .clarify-mic.recording .clarify-mic-icon { display: none; }
@@ -681,14 +691,8 @@ input, textarea, select { font-family: inherit; }
   background: color-mix(in srgb, var(--danger, #ef4444) 16%, transparent);
   animation: pulse-mic 1.2s ease-in-out infinite;
 }
-.clarify-mic.transcribing { opacity: 0.55; animation: pulse-transcribing 0.8s ease-in-out infinite; }
-.answer-row input:read-only { opacity: 0.6; }
+.clarify-mic.transcribing { opacity: 0.55; pointer-events: none; animation: pulse-transcribing 0.8s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .clarify-mic.recording, .clarify-mic.transcribing { animation: none; } }
-.answer-row input:focus {
-  outline: none;
-  background: color-mix(in srgb, var(--fg) 9%, var(--bg));
-  box-shadow: none;
-}
 /* An answered card stays as a compact record: muted surface, no controls, no hover. */
 .card.resolved {
   background: color-mix(in srgb, var(--surface) 55%, var(--bg));

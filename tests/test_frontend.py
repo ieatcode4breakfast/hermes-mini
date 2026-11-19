@@ -884,34 +884,39 @@ class ComputerStartButtonTest(unittest.TestCase):
 
 
 class ClarifyDictationTest(unittest.TestCase):
-    """A question card's answer box has its own mic, between the box and Send, on the composer mic's terms."""
+    """A question card's answer box is one field with the mic inside, and records with the composer's strip."""
 
     def setUp(self):
         self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
 
-    def test_both_answer_rows_put_the_mic_between_the_box_and_send(self):
+    def test_both_answer_rows_use_the_field_with_send_outside(self):
         for fn in ("function renderClarify(", "function renderMultiSelect("):
             body = self.app.split(fn, 1)[1].split("\nfunction ", 1)[0]
-            self.assertIn("const mic = clarifyMicButton(input);", body)
-            order = [body.index("row.append(input);"), body.index("if (mic) row.append(mic);"), body.index("row.append(send);")]
-            self.assertEqual(order, sorted(order))
+            self.assertIn("row.append(clarifyAnswerField(input, send), send);", body)
 
-    def test_shown_on_the_composer_mics_terms_and_uses_the_same_route(self):
-        mic = self.app.split("function clarifyMicButton(", 1)[1].split("\nfunction ", 1)[0]
-        self.assertIn("if (!isDictationSupported()) return null;", mic)
-        self.assertIn("features.dictation === false) return null;", mic)
+    def test_the_mic_sits_inside_the_field_with_the_composers_strip(self):
+        field = self.app.split("function clarifyAnswerField(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("if (!isDictationSupported()) return field;", field)
+        self.assertIn("features.dictation === false) return field;", field)
+        for part in ('"dictate-hud clarify-hud"', '"dictate-viz"', '"vbar"', '"dictate-timer", "1:00"', '"dictate-cancel"'):
+            self.assertIn(part, field)
+        self.assertIn("field.append(hud, mic);", field)
+        self.assertIn("stopCardDictation({ discard: true })", field)  # the x cancels
+        self.assertIn("stopCardDictation({ send: true })", field)  # Send while recording sends after
+        self.assertIn(".answer-field.dictating input { display: none; }", self.css)
+
+    def test_countdown_route_and_one_recording_at_a_time(self):
+        start = self.app.split("async function startCardDictation(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("if (cardDictation || state.dictating || state.transcribing)", start)
+        self.assertIn("formatCountdown(remaining)", start)
+        self.assertIn('classList.toggle("warn", secLeft <= 15 && secLeft > 5)', start)
+        self.assertIn("stopCardDictation({ discard: true })", start)  # a card that moves on drops it
+        composer = self.app.split("async function startDictation(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("if (cardDictation) return;", composer)
         finish = self.app.split("async function finishCardDictation(", 1)[1].split("\n}\n", 1)[0]
         self.assertIn('api("/api/plugins/hermes-mini/dictate"', finish)
         self.assertIn("dictationInsert(before, text, after)", finish)
-        self.assertNotIn("send()", finish)  # the text is left to edit; nothing is sent by itself
-
-    def test_one_recording_at_a_time_and_a_moved_on_card_drops_it(self):
-        start = self.app.split("async function startDictation(", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("if (cardDictation) return;", start)
-        card = self.app.split("async function startCardDictation(", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("if (cardDictation || state.dictating || state.transcribing)", card)
-        self.assertIn("setTimeout(() => stopCardDictation(), DICTATE_MAX_MS)", card)
-        self.assertIn("stopCardDictation({ discard: true })", card)
 
 
 if __name__ == "__main__":
