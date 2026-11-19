@@ -29,6 +29,11 @@ class ArtifactsPanelTest(unittest.TestCase):
         # On a phone the chats panel steps aside before the panel opens.
         handler = self.app.split('els.artBtn.addEventListener("click", () => {', 1)[1].split("\n});", 1)[0]
         self.assertIn("drawerApi.isOpen() && !isDocked() ? drawerApi.close()", handler)
+        # One icon, stacked layers, on the row and on the panel's own Back button.
+        layers = '<path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/>'
+        self.assertIn(layers, drawer.split('id="artBtn"', 1)[1].split("</button>", 1)[0])
+        self.assertIn(layers, self.html.split('id="artBack"', 1)[1].split("</button>", 1)[0])
+        self.assertNotIn('<circle cx="7" cy="7" r="3.5"/>', self.html)
 
     def test_the_panel_is_a_dialog_with_search_and_four_tabs(self):
         self.assertIn('id="artScrim" class="scrim todo-scrim"', self.html)
