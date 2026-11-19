@@ -4984,7 +4984,10 @@ function renderClarify(id, entry) {
   input.enterKeyHint = "send";
   if (previousText && !matched) input.value = previousText;
   const send = el("button", "btn primary", "Send");
-  row.append(input, send);
+  row.append(input);
+  const mic = clarifyMicButton(input);
+  if (mic) row.append(mic);
+  row.append(send);
   card.append(row);
 
   card.append(clarifyNavRow(id, entry));
@@ -5073,7 +5076,10 @@ function renderMultiSelect(id, entry, question, choices, previous) {
   input.placeholder = choices.length ? "Add your own (optional)" : "Type an answer";
   input.enterKeyHint = "send";
   input.value = typedBefore;
-  row.append(input, send);
+  row.append(input);
+  const mic = clarifyMicButton(input);
+  if (mic) row.append(mic);
+  row.append(send);
   card.append(row);
   card.append(clarifyNavRow(id, entry));
   const submit = () => {
@@ -6015,6 +6021,7 @@ async function startDictation() {
     return;
   }
   if (state.dictating || state.transcribing || state.resettingMain || state.composerLocked) return;
+  if (cardDictation) return; // a question card's mic is recording or transcribing
   captureDictationCaret();
   dictationDiscarded = false;
   dictationSendAfter = false;
@@ -6185,6 +6192,179 @@ function cancelDictation(silent = false) {
     } catch {}
   }
 }
+
+// ---------- Dictation in a question card ----------
+// The card's answer box gets its own mic, between the box and Send: a tap records, a second tap stops, and the text
+// from Hermes' speech-to-text (the same /dictate route) goes in at the box's caret, ready to edit or send. Shown on the
+// same terms as the composer mic (the browser can record and the server has not said no); one recording at a time
+// across the card and the composer; stops by itself after DICTATE_MAX_MS. A card redrawn mid-recording drops it.
+let cardDictation = null; // { recorder, stream, chunks, input, button, timer, watch, discarded, transcribing }
+
+function clarifyMicButton(input) {
+  if (!isDictationSupported()) return null;
+  const features = typeof identityApi.features === "function" ? identityApi.features() : null;
+  if (features && features.dictation === false) return null;
+  const button = el("button", "btn clarify-mic");
+  button.type = "button";
+  button.innerHTML = '<svg class="clarify-mic-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4M8 23h8"/></svg>'
+    + '<svg class="clarify-mic-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+  const label = (text) => {
+    button.setAttribute("aria-label", text);
+    button.title = text;
+  };
+  label("Dictate");
+  // Keep the box's caret: the press must not move focus off the input before the caret is read.
+  button.addEventListener("pointerdown", (event) => event.preventDefault());
+  button.addEventListener("click", () => {
+    if (cardDictation && cardDictation.button === button) {
+      if (!cardDictation.transcribing) stopCardDictation();
+      return;
+    }
+    void startCardDictation(input, button, label);
+  });
+  return button;
+}
+
+function syncCardMic(button, label, mode) {
+  button.classList.toggle("recording", mode === "recording");
+  button.classList.toggle("transcribing", mode === "transcribing");
+  button.disabled = mode === "transcribing";
+  label(mode === "recording" ? "Stop dictation" : mode === "transcribing" ? "Transcribing…" : "Dictate");
+}
+
+async function startCardDictation(input, button, label) {
+  if (cardDictation || state.dictating || state.transcribing) {
+    showToast("Finish the other dictation first.", "error");
+    return;
+  }
+  const len = input.value.length;
+  const caret = document.activeElement === input && typeof input.selectionStart === "number"
+    ? { start: Math.min(input.selectionStart, len), end: Math.min(input.selectionEnd ?? input.selectionStart, len) }
+    : { start: len, end: len };
+  const session = { recorder: null, stream: null, chunks: [], input, button, label, caret, timer: 0, watch: 0, discarded: false, transcribing: false };
+  cardDictation = session;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    cardDictation = null;
+    showToast("Microphone access denied or unavailable.", "error");
+    return;
+  }
+  session.stream = stream;
+  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/wav"];
+  const mimeType = types.find((t) => {
+    try { return MediaRecorder.isTypeSupported(t); } catch { return false; }
+  }) || "";
+  try {
+    session.recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  } catch {
+    releaseCardDictation(session);
+    showToast("Could not start audio recorder.", "error");
+    return;
+  }
+  session.recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size > 0) session.chunks.push(event.data);
+  });
+  session.recorder.addEventListener("stop", () => void finishCardDictation(session, mimeType));
+  input.readOnly = true;
+  syncCardMic(button, label, "recording");
+  session.recorder.start();
+  session.timer = setTimeout(() => stopCardDictation(), DICTATE_MAX_MS);
+  // The card was redrawn (Back, Skip, a choice, answered elsewhere): its box is gone, so the recording is dropped now
+  // rather than running on with no button to stop it.
+  session.watch = setInterval(() => {
+    if (!session.input.isConnected && cardDictation === session && !session.transcribing) stopCardDictation({ discard: true });
+  }, 400);
+}
+
+function stopCardDictation({ discard = false } = {}) {
+  const session = cardDictation;
+  if (!session || !session.recorder || session.transcribing) return;
+  session.discarded = discard;
+  try {
+    if (session.recorder.state !== "inactive") session.recorder.stop();
+  } catch {
+    releaseCardDictation(session);
+  }
+}
+
+function releaseCardDictation(session) {
+  if (session.timer) clearTimeout(session.timer);
+  session.timer = 0;
+  if (session.watch) clearInterval(session.watch);
+  session.watch = 0;
+  if (session.stream) {
+    for (const track of session.stream.getTracks()) {
+      try { track.stop(); } catch {}
+    }
+    session.stream = null;
+  }
+  session.input.readOnly = false;
+  if (session.button.isConnected) syncCardMic(session.button, session.label, "idle");
+  if (cardDictation === session) cardDictation = null;
+}
+
+async function finishCardDictation(session, mimeType) {
+  const type = (session.recorder && session.recorder.mimeType) || mimeType || "audio/webm";
+  if (session.timer) clearTimeout(session.timer);
+  session.timer = 0;
+  if (session.watch) clearInterval(session.watch);
+  session.watch = 0;
+  if (session.stream) {
+    for (const track of session.stream.getTracks()) {
+      try { track.stop(); } catch {}
+    }
+    session.stream = null;
+  }
+  const blob = new Blob(session.chunks, { type });
+  session.chunks = [];
+  // Cancelled, too short, or the card was redrawn (answered, skipped, moved on): nothing to transcribe.
+  if (session.discarded || blob.size < 100 || !session.input.isConnected) {
+    releaseCardDictation(session);
+    return;
+  }
+  session.transcribing = true;
+  syncCardMic(session.button, session.label, "transcribing");
+  try {
+    const res = await api("/api/plugins/hermes-mini/dictate", {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "audio/webm" },
+      body: blob,
+    });
+    if (!res || res.ok === false) {
+      showToast((res && res.error) || "Dictation failed.", "error");
+    } else {
+      const text = String(res.text || "").trim();
+      if (text && session.input.isConnected) {
+        const val = session.input.value;
+        const start = Math.max(0, Math.min(session.caret.start, val.length));
+        const end = Math.max(start, Math.min(session.caret.end, val.length));
+        const before = val.slice(0, start);
+        const after = val.slice(end);
+        const { text: inserted, caret } = dictationInsert(before, text, after);
+        session.input.value = before + inserted + after;
+        session.input.readOnly = false;
+        session.input.dispatchEvent(new Event("input", { bubbles: true })); // multi-select re-enables its button
+        session.input.focus();
+        try { session.input.setSelectionRange(start + caret, start + caret); } catch {}
+      }
+    }
+  } catch (err) {
+    if (!(err instanceof AuthRedirect)) showToast(`Dictation failed: ${errorText(err)}`, "error");
+  } finally {
+    releaseCardDictation(session);
+  }
+}
+
+// Escape while a card records drops the recording, like the composer's.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && cardDictation && !cardDictation.transcribing) {
+    event.preventDefault();
+    event.stopPropagation();
+    stopCardDictation({ discard: true });
+  }
+}, true);
 
 // ---------- wiring ----------
 

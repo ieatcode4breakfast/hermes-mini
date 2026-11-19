@@ -666,6 +666,24 @@ input, textarea, select { font-family: inherit; }
   border: 0; border-radius: 12px; padding: 8px 12px;
   transition: background-color 160ms ease;
 }
+/* The question card's mic (app.js clarifyMicButton): a round button between the box and Send, red and pulsing while
+   it records, dimmed while Hermes transcribes. */
+.answer-row .clarify-mic {
+  flex: none; width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; align-self: center;
+}
+.clarify-mic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.clarify-mic .clarify-mic-stop { display: none; fill: currentColor; stroke: none; }
+.clarify-mic.recording .clarify-mic-icon { display: none; }
+.clarify-mic.recording .clarify-mic-stop { display: block; }
+.clarify-mic.recording {
+  color: var(--danger, #ef4444);
+  background: color-mix(in srgb, var(--danger, #ef4444) 16%, transparent);
+  animation: pulse-mic 1.2s ease-in-out infinite;
+}
+.clarify-mic.transcribing { opacity: 0.55; animation: pulse-transcribing 0.8s ease-in-out infinite; }
+.answer-row input:read-only { opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) { .clarify-mic.recording, .clarify-mic.transcribing { animation: none; } }
 .answer-row input:focus {
   outline: none;
   background: color-mix(in srgb, var(--fg) 9%, var(--bg));

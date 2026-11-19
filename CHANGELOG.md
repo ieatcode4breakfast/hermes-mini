@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Dictation in question cards: the answer box of a question (single or "pick any that apply") has a mic
+  between the box and Send. A tap records, a second tap stops, and the text from Hermes' speech-to-text (the same
+  `/dictate` route as the input box) goes in at the caret, ready to edit or send. Hidden on the same terms as the
+  input box's mic; one recording at a time; stops by itself after a minute; a card that moves on drops it.
 - Edit profile: the first button in the Tools tray opens a card to change her name and picture. It saves through
   Hermes's own profile methods (`profiles.set_asset`, and `profiles.configure` as a compare-and-swap that keeps the
   profile's other display fields), so Hermes and every client that asks it see the change. A picture uploaded

@@ -882,5 +882,37 @@ class ComputerStartButtonTest(unittest.TestCase):
         self.assertIn(".bs-overlay .bs-btn[hidden] { display: none; }", css)
 
 
+
+class ClarifyDictationTest(unittest.TestCase):
+    """A question card's answer box has its own mic, between the box and Send, on the composer mic's terms."""
+
+    def setUp(self):
+        self.app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+
+    def test_both_answer_rows_put_the_mic_between_the_box_and_send(self):
+        for fn in ("function renderClarify(", "function renderMultiSelect("):
+            body = self.app.split(fn, 1)[1].split("\nfunction ", 1)[0]
+            self.assertIn("const mic = clarifyMicButton(input);", body)
+            order = [body.index("row.append(input);"), body.index("if (mic) row.append(mic);"), body.index("row.append(send);")]
+            self.assertEqual(order, sorted(order))
+
+    def test_shown_on_the_composer_mics_terms_and_uses_the_same_route(self):
+        mic = self.app.split("function clarifyMicButton(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("if (!isDictationSupported()) return null;", mic)
+        self.assertIn("features.dictation === false) return null;", mic)
+        finish = self.app.split("async function finishCardDictation(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('api("/api/plugins/hermes-mini/dictate"', finish)
+        self.assertIn("dictationInsert(before, text, after)", finish)
+        self.assertNotIn("send()", finish)  # the text is left to edit; nothing is sent by itself
+
+    def test_one_recording_at_a_time_and_a_moved_on_card_drops_it(self):
+        start = self.app.split("async function startDictation(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("if (cardDictation) return;", start)
+        card = self.app.split("async function startCardDictation(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("if (cardDictation || state.dictating || state.transcribing)", card)
+        self.assertIn("setTimeout(() => stopCardDictation(), DICTATE_MAX_MS)", card)
+        self.assertIn("stopCardDictation({ discard: true })", card)
+
+
 if __name__ == "__main__":
     unittest.main()
