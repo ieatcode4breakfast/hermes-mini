@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Skills and schedules with "/": typing `/` at the start of a word in the message box opens a list of the agent's
+  skills (bolt icon) and schedules (clock icon) above it, narrowed as you type (name first, then description; most
+  used skills first). A pick goes in as the same inline pill a schedule's "Add to message" makes. A message with
+  skills goes through Hermes's skill command (`command.dispatch`, up to five skills, the way Hermes stacks them):
+  pills at the start are the skills, one further on also stays in the sentence as its name. The chat shows the
+  skill pills and your words, also after a reload (new `slash.js` mirrors Hermes's `describe_skill_invocation`),
+  and a skill message is not offered for Edit. A steer keeps skills for the next message, and now sends a
+  schedule pill as its tag. Arrow keys, Enter or Tab and Escape work in the list with a keyboard. Tested on the
+  test box suite and in a browser against a mock; untested on a phone.
 - Dictation in question cards: the answer box of a question (single or "pick any that apply") has a mic
   between the box and Send. A tap records, a second tap stops, and the text from Hermes' speech-to-text (the same
   `/dictate` route as the input box) goes in at the caret, ready to edit or send. Hidden on the same terms as the

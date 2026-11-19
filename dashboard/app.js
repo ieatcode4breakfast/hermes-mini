@@ -26,6 +26,7 @@ import { dictationInsert } from "./dictation-text.js";
 import * as conn from "./connections.js";
 import * as promptCards from "./prompts.js";
 import { createIdentityEditor } from "./identity-edit.js";
+import { createSlashPicker, describeSkillInvocation, skillLabel, skillSlug, SKILL_ICON } from "./slash.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -578,6 +579,14 @@ function appendWithSchedules(parent, text) {
   if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
 }
 const CLOCK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+// A skill a message was sent with (slash.js describeSkillInvocation): the same inline pill, with a bolt.
+function skillPill(name) {
+  const pill = el("span", "sched-pill skill-pill");
+  pill.insertAdjacentHTML("beforeend", SKILL_ICON);
+  pill.append(el("span", "", name));
+  pill.title = `Skill: ${name}`;
+  return pill;
+}
 // Gateway shutdown/restart notices delivered as job results before bridge.py dropped them.
 const LIFECYCLE_NOTICE = /^\W{0,4}(?:Hermes is (?:shutting down|restarting)\b|Restarting gateway\b)/; // bridge.py _LIFECYCLE_NOTICE
 
@@ -717,7 +726,10 @@ function chatEntries(messages, { notices = false } = {}) {
       raw.trimStart().startsWith("[System:"))) continue;
     const images = [];
     const files = [];
-    let text = message.role === "assistant" ? displayText(raw) : raw;
+    // A message sent with skills is stored as the expanded skill text (Hermes describe_skill_invocation): only the
+    // skills and the person's own words are shown.
+    const skill = message.role === "user" ? describeSkillInvocation(messageText(message)) : null;
+    let text = message.role === "assistant" ? displayText(raw) : skill ? skill.text : raw;
     if (message.role === "user") {
       text = text.replace(ATTACHED_CONTEXT_TAIL, "").replace(CONTEXT_WARNINGS_TAIL, "").replace(DISCORD_TRIGGERING_NOTE, "$1");
       // The server appends an internal @image: reference to a prompt that carried an image (rendered as a thumbnail) and
@@ -729,6 +741,11 @@ function chatEntries(messages, { notices = false } = {}) {
       text = text.replace(STEER_WRAP, "$1");
     }
     text = text.trim();
+    if (skill) {
+      const info = { names: skill.names, text };
+      entries.push({ message, text: skillLabel(info), images, files, skill: info });
+      continue;
+    }
     if (!text && !images.length && !files.length) continue; // empty assistant tool-call stubs and similar
     if (message.role === "assistant" && isSilenceMarker(text)) continue;
     // Hermes concatenates multiple mid-turn steers during one tool batch with newlines into a single steer row;
@@ -748,7 +765,8 @@ function chatEntries(messages, { notices = false } = {}) {
 function carriesAttachments(message) {
   const content = message.content;
   if (Array.isArray(content) && content.some((part) => part && typeof part === "object" && part.type !== "text")) return true;
-  return /@(image|file):|\[Schedule: [^\]\n]+ · job /.test(messageText(message));
+  // A skill message too: Edit would resend its words without the skills.
+  return /@(image|file):|\[Schedule: [^\]\n]+ · job /.test(messageText(message)) || Boolean(describeSkillInvocation(messageText(message)));
 }
 
 // Text equality for matching a message against the server's copy: whitespace runs count as one space.
@@ -1675,7 +1693,7 @@ function renderHistoryEntries(messages, gatewayEvents = []) {
   const flushEvents = (upTo) => {
     while (pendingEvents.length && pendingEvents[0].ts <= upTo) addGatewayLine(pendingEvents.shift());
   };
-  for (const { message, text, images, files, kind, clarify } of chatEntries(messages, { notices: true })) {
+  for (const { message, text, images, files, kind, clarify, skill } of chatEntries(messages, { notices: true })) {
     const at = Number(message.timestamp) || 0;
     if (at) flushEvents(at);
     if (kind === "clarify") {
@@ -1694,6 +1712,7 @@ function renderHistoryEntries(messages, gatewayEvents = []) {
       attached: carriesAttachments(message),
       images,
       files,
+      skill,
     };
     if (message.role === "user") addUserBubble(text, [], false, meta);
     else if (kind === "job") addJobBubble(text, meta);
@@ -2128,7 +2147,19 @@ function addUserBubble(text, attachments, animateIn = false, meta = {}) {
   if (text) {
     const bubble = el("div", "bubble");
     const body = el("span", "bubble-text");
-    appendWithSchedules(body, text);
+    if (meta.skill) {
+      // The skills as pills, then the words (which may still hold schedule pills).
+      meta.skill.names.forEach((name, i) => {
+        if (i) body.append(" ");
+        body.append(skillPill(name));
+      });
+      if (meta.skill.text) {
+        body.append(" ");
+        appendWithSchedules(body, meta.skill.text);
+      }
+    } else {
+      appendWithSchedules(body, text);
+    }
     bubble.append(body);
     row.append(bubble);
   }
@@ -2902,6 +2933,7 @@ async function showRemoteUserMessage(attempt = 0) {
     attached: carriesAttachments(latest.message),
     images: latest.images,
     files: latest.files,
+    skill: latest.skill,
   };
   addUserBubble(latest.text, [], false, meta);
   // The reply that started streaming belongs under the message that prompted it.
@@ -5365,6 +5397,8 @@ async function imageToJpegBase64(file) {
   return blobToBase64(blob);
 }
 
+let slashPicker = null; // the "/" picker (slash.js), set up with the draft pills below
+
 function clearComposer() {
   // Object URLs stay alive here: a failed send restores these attachments and their thumbnails.
   els.input.value = "";
@@ -5374,6 +5408,7 @@ function clearComposer() {
   state.mentions = [];
   renderTray();
   syncMentions();
+  slashPicker?.close();
 }
 
 // ---------- composer: paste and drop ----------
@@ -5429,11 +5464,12 @@ function insertIntoComposer(text) {
   autosize();
 }
 
-// ---------- schedule mentions in the draft ----------
-// "Add to message" puts an em space and the name at the caret. A layer laid exactly over the textarea (same box, font and
+// ---------- schedule and skill pills in the draft ----------
+// "Add to message", or a pick from the "/" picker (slash.js), puts an em space and the name at the caret. A layer laid exactly over the textarea (same box, font and
 // wrapping, text invisible, pointer-events off) paints a pill under each mention and the clock icon over its em space,
-// so it looks the way the sent bubble draws it (appendWithSchedules).
-// Backspace right after a mention removes all of it. On send each mention becomes its full tag (expandMentions).
+// so it looks the way the sent bubble draws it (appendWithSchedules). A skill's pill has a bolt instead (kind "skill").
+// Backspace right after a mention removes all of it. On send each schedule becomes its full tag (expandMentions) and
+// the skills are sent through Hermes's skill command (skillSend).
 const mentionLayer = el("div", "mention-layer");
 mentionLayer.setAttribute("aria-hidden", "true");
 els.input.closest(".row")?.append(mentionLayer);
@@ -5476,7 +5512,8 @@ function syncMentions() {
     plain = "";
     const mark = el("mark", "mention");
     const iconSpace = el("span", "mention-icon-space", MENTION_ICON_SPACE);
-    iconSpace.insertAdjacentHTML("beforeend", `<span class="mention-icon">${CLOCK_ICON}</span>`);
+    const kind = state.mentions.find((m) => m.token === hit)?.kind;
+    iconSpace.insertAdjacentHTML("beforeend", `<span class="mention-icon">${kind === "skill" ? SKILL_ICON : CLOCK_ICON}</span>`);
     mark.append(document.createTextNode(MENTION_LEAD), iconSpace, document.createTextNode(hit.slice(MENTION_LEAD.length + 1)));
     mentionLayer.append(mark);
     i += hit.length;
@@ -5495,10 +5532,18 @@ const MENTION_MARK = `${MENTION_LEAD}${MENTION_ICON_SPACE}\u2009`;
 const MENTION_TRAIL = "\u2009\u200a";
 
 function addMention(job) {
-  const title = String(job.title || "Schedule");
+  addPill({ kind: "schedule", title: String(job.title || "Schedule"), tag: mentionText(job), id: job.id });
+}
+
+// A skill from the "/" picker: the same pill with a bolt. Its tag is the "/name" Hermes knows it by.
+function addSkillMention(name) {
+  addPill({ kind: "skill", title: name, tag: `/${skillSlug(name)}`, id: "skill" });
+}
+
+function addPill({ kind, title, tag, id }) {
   let token = `${MENTION_MARK}${title}${MENTION_TRAIL}`;
-  if (state.mentions.some((m) => m.token === token && m.tag !== mentionText(job))) token = `${MENTION_MARK}${title} (${job.id})${MENTION_TRAIL}`;
-  if (!state.mentions.some((m) => m.token === token)) state.mentions.push({ token, tag: mentionText(job), title });
+  if (state.mentions.some((m) => m.token === token && m.tag !== tag)) token = `${MENTION_MARK}${title} (${id})${MENTION_TRAIL}`;
+  if (!state.mentions.some((m) => m.token === token)) state.mentions.push({ token, tag, title, kind });
   // Plain spaces around it where it would touch a word, and always one after it at the end of the text, so the caret
   // lands outside the pill (the padding spaces count as whitespace for insertIntoComposer, so they are added here).
   const input = els.input;
@@ -5533,6 +5578,45 @@ els.input.addEventListener("scroll", () => {
   mentionLayer.scrollTop = els.input.scrollTop;
 }, { passive: true });
 window.addEventListener("resize", () => syncMentions());
+
+// "/" in the message box: skills and schedules to pick from (slash.js), put in as pills. Not while a message is being
+// edited (an edit resends plain text) or in a chat that cannot be written to.
+slashPicker = createSlashPicker({
+  input: els.input,
+  anchor: els.input.closest(".row") || els.input,
+  api,
+  enabled: () => !state.readOnly && !els.input.disabled && !state.editing && !state.composerLocked,
+  onPick: (item) => {
+    if (item.kind === "skill") addSkillMention(item.name);
+    else addMention(item.job);
+    els.input.focus();
+  },
+});
+
+// The skills in the draft, in the order they appear: [{ token, name, title }] (name: the command Hermes knows).
+function draftSkills(value = els.input.value) {
+  return state.mentions
+    .filter((m) => m.kind === "skill" && value.includes(m.token))
+    .sort((a, b) => value.indexOf(a.token) - value.indexOf(b.token))
+    .map((m) => ({ token: m.token, name: m.tag.slice(1), title: m.title }));
+}
+
+// A draft with skills, as Hermes's skill command takes it: the skills (at most five, Hermes's limit) and the words.
+// Pills at the start are only the skills; one further on stays in the sentence as the skill's name ("use humanizer on
+// this"), and is loaded all the same.
+function skillDraft(value) {
+  const skills = draftSkills(value);
+  let rest = value;
+  for (;;) {
+    const trimmed = rest.replace(/^[ \t\r\n]+/, ""); // not \s: that would eat the pill's own thin spaces
+    const lead = skills.find((skill) => trimmed.startsWith(skill.token));
+    if (!lead) break;
+    rest = trimmed.slice(lead.token.length);
+  }
+  for (const skill of skills) rest = rest.split(skill.token).join(skill.title);
+  const names = [...new Set(skills.map((skill) => skill.name))].slice(0, 5);
+  return { names, text: expandMentions(rest).trim() };
+}
 
 // Every File in a clipboard or drop transfer. The browser can expose one gesture's files twice: as kind:"file"
 // items and as data.files. Their metadata (name, lastModified) is not guaranteed to agree between the two views,
@@ -5624,7 +5708,10 @@ async function send() {
   if (state.streaming) return els.input.value.trim() ? steer() : stop();
   if (state.sending) return;
   if (state.editing) return submitEdit();
-  const text = expandMentions(expandPastes(els.input.value)).trim();
+  const drafted = expandPastes(els.input.value);
+  // Skills in the draft: Hermes's skill command builds the message (each skill's instructions and the person's words).
+  const skill = draftSkills(drafted).length ? skillDraft(drafted) : null;
+  const text = skill ? skillLabel(skill) : expandMentions(drafted).trim();
   const attachments = state.attachments.slice();
   const saved = { text: els.input.value, attachments, pastes: state.pastes.slice(), mentions: state.mentions.slice() };
   if (!text && !attachments.length) return;
@@ -5652,10 +5739,32 @@ async function send() {
   // as an ordinary message.
   if (openCards().length) closeOpenCards();
 
+  // The skill message is built before anything is shown, so a skill that will not load leaves the draft as it was.
+  let outgoing = text;
+  let skillInfo = null;
+  if (skill) {
+    state.sending = true;
+    updateComposer();
+    try {
+      const [first, ...more] = skill.names;
+      const arg = [...more.map((name) => `/${name}`), skill.text].filter(Boolean).join(" ");
+      const result = await rpc("command.dispatch", { session_id: state.liveSid, name: first, arg });
+      const message = result && typeof result.message === "string" ? result.message : "";
+      if (!message || (result.type !== "skill" && result.type !== "send")) throw new Error("Hermes did not load it");
+      outgoing = message;
+      skillInfo = describeSkillInvocation(message) || { names: skill.names, text: skill.text };
+    } catch (error) {
+      state.sending = false;
+      updateComposer();
+      sysLine(`Could not load the skill: ${errorText(error)}`);
+      return;
+    }
+  }
+
   state.sending = true;
   state.narration.request = text;
   clearComposer();
-  addUserBubble(text, attachments, true);
+  addUserBubble(skillInfo ? skillLabel(skillInfo) : text, attachments, true, skillInfo ? { skill: skillInfo, attached: true } : {});
   const userRow = els.log.lastElementChild; // the optimistic bubble, removed if the send fails
   state.streaming = true;
   scheduleTurnPaint(ensureTurn());
@@ -5683,7 +5792,7 @@ async function send() {
         if (attached && attached.ref_text) refs.push(attached.ref_text);
       }
     }
-    const full = [text, ...refs].filter(Boolean).join("\n");
+    const full = [outgoing, ...refs].filter(Boolean).join("\n");
     state.localStartAt = Date.now(); // the message.start that follows is ours, not another device's
     await rpc("prompt.submit", { session_id: state.liveSid, text: full });
     registerAppChat(state.viewedId);
@@ -5723,12 +5832,17 @@ const LOST_SESSION_TEXT = "Not sent: Hermes had closed this chat. It's reopening
 // "rejected" and the text is sent as an ordinary message instead.
 async function steer() {
   if (state.sending || !state.liveSid) return;
-  const text = expandPastes(els.input.value).trim();
+  if (draftSkills().length) {
+    sysLine("Skills go with a new message. Send it once this reply is done.");
+    return;
+  }
+  const text = expandMentions(expandPastes(els.input.value)).trim();
   if (!text) return;
-  const saved = { text: els.input.value, pastes: state.pastes.slice() };
+  const saved = { text: els.input.value, pastes: state.pastes.slice(), mentions: state.mentions.slice() };
   state.sending = true;
   els.input.value = "";
   state.pastes = [];
+  state.mentions = [];
   autosize();
   updateComposer();
   let result;
@@ -5738,6 +5852,7 @@ async function steer() {
     sysLine(`Could not send: ${errorText(error)}`);
     els.input.value = saved.text;
     state.pastes = saved.pastes;
+    state.mentions = saved.mentions;
     autosize();
     state.sending = false;
     updateComposer();
@@ -5748,6 +5863,7 @@ async function steer() {
     // The task finished in the meantime: send it as a normal message once the turn has closed.
     els.input.value = saved.text;
     state.pastes = saved.pastes;
+    state.mentions = saved.mentions;
     autosize();
     updateComposer();
     if (!state.streaming) void send();

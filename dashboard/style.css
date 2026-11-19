@@ -2594,6 +2594,33 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
   width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px;
   fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
 }
+/* A skill in the draft or a sent bubble is the same pill (app.js skillPill); only the icon differs, a bolt. */
+
+/* The "/" picker (slash.js): skills and schedules above the message box. A top-layer popover like the "+" menu, so it
+   carries no z-index; slash.js places it from the input row's box (its width, 10px above it). */
+.slash-menu {
+  position: fixed; inset: auto; left: 0; top: 0; margin: 0; box-sizing: border-box; overflow-y: auto;
+  overscroll-behavior: contain; display: flex; flex-direction: column; padding: 6px; gap: 2px; color: var(--fg);
+  background: color-mix(in srgb, var(--raised) 88%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
+  border: 0; border-radius: 18px; box-shadow: var(--elev-shadow-hover);
+  transform-origin: bottom left; animation: menu-in 0.24s var(--ease-spring); scrollbar-width: none;
+}
+.slash-menu::-webkit-scrollbar { display: none; }
+.slash-menu[hidden] { display: none; }
+.slash-group { padding: 8px 10px 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.slash-group:first-child { padding-top: 4px; }
+.slash-item { gap: 10px; padding: 6px 8px; flex: 0 0 auto; }
+/* The row Enter would pick: shown with a mouse or keyboard only; on touch it would read as pressed. */
+:where(:root:not([data-input="touch"])) .slash-item.active { background: var(--code-bg); }
+.slash-item .menu-icon { width: 30px; height: 30px; }
+.slash-item .menu-icon svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.slash-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.slash-name, .slash-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slash-name { font-size: 15px; line-height: 20px; }
+.slash-desc { font-size: 12.5px; line-height: 17px; color: var(--muted); }
+.slash-desc:empty { display: none; }
+.slash-empty { padding: 10px 12px; font-size: 14px; color: var(--muted); }
 
 /* ---------- name and picture (identity-edit.js) ----------
    The rename card, with the picture large and centred above the name. */

@@ -212,6 +212,11 @@ there is no reply to show.
   (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
   running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
   routes, or adds it to the message being written as an inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.
+- **Skills and schedules with "/"**: typing `/` at the start of a word in the message box lists the agent's skills
+  (bolt icon) and schedules (clock icon) above it; typing on narrows the list. A pick goes into the message as the same
+  inline pill. A message with skills is sent through Hermes's own skill command (`command.dispatch`), so each skill's
+  instructions load with your words, up to five at once; the chat shows the skill pills and your words, never the
+  expanded skill text. Skills go with a new message, not a steer.
 - **Artifacts**: the pictures, files and links the agent produced in the app's chats, newest first,
   in the row under Schedules in the chats panel. Tabs for All, Images, Files and Links, a search box, a picture grid that opens the
   full-screen viewer, file downloads, and an ⋮ menu to open the chat it came from or copy its path or link.
@@ -292,7 +297,7 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
 **Reads**
 - Hermes' chat history and session list (`state.db`, through `SessionDB`; the Inbox query opens it read-only),
   the scheduled-job list
-  (Hermes' cron routes), the model/provider list, and its own data folder.
+  (Hermes' cron routes), the skill list (Hermes' `/api/skills` route), the model/provider list, and its own data folder.
 
 **Writes**
 - Its own settings in `$HERMES_HOME/hermes-mini/` and state in `$HERMES_HOME/data/hermes-mini/`.
