@@ -129,7 +129,6 @@ export function createDrawer(deps) {
   const scrim = $("scrim");
   const newBtn = $("drawerNew");
   const schedRow = $("schedBtn"); // Schedules, placed directly under the main chat
-  const artRow = $("artBtn"); // Artifacts, directly under Schedules
   const list = $("drawerList");
   const noteEl = $("drawerNote");
   const rowMenuScrim = $("rowMenuScrim");
@@ -444,9 +443,8 @@ export function createDrawer(deps) {
   function renderBrowse(now) {
     const home = homeId();
     if (st.loading && !st.rows.length && !st.home && !home) {
-      // Same rows as a loaded list, so Schedules, Artifacts and New chat stay reachable during the first fetch.
+      // Same rows as a loaded list, so Schedules and New chat stay reachable during the first fetch.
       if (schedRow) list.append(schedRow);
-      if (artRow) list.append(artRow);
       list.append(newBtn);
       list.append(skeleton(7));
       return;
@@ -459,10 +457,9 @@ export function createDrawer(deps) {
       slot.append(rowEl(homeItem));
       list.append(slot);
     }
-    // Schedules sits directly under the main chat, then Artifacts, then New chat. Like New chat each is one element
-    // re-appended on every render (app.js opens Schedules and Artifacts from them).
+    // Schedules sits directly under the main chat, then New chat. Like New chat it is one element re-appended on
+    // every render (app.js opens Schedules from it).
     if (schedRow) list.append(schedRow);
-    if (artRow) list.append(artRow);
     // New chat sits directly under the home row, above the first group, so it scrolls with the home row rather than
     // staying pinned above the list. The same singleton element (and its click handler) is re-appended on every
     // render; with no home row it heads the list.

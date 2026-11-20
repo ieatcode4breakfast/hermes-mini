@@ -174,14 +174,6 @@
       </span>
       <span class="chat-title">Schedules</span>
     </button>
-    <!-- Artifacts (artifacts.js): the pictures, files and links the agent made across the chats, placed by drawer.js
-         directly under Schedules. -->
-    <button id="artBtn" class="chat-row drawer-inbox drawer-art" type="button" aria-haspopup="dialog" aria-controls="artDialog" aria-expanded="false">
-      <span class="drawer-inbox-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/><path d="M2.5 12 12 16.75 21.5 12"/><path d="M2.5 16.75 12 21.5l9.5-4.75"/></svg>
-      </span>
-      <span class="chat-title">Artifacts</span>
-    </button>
     <p id="drawerNote" class="drawer-note" aria-live="polite"></p>
     <div id="drawerList" class="drawer-list"></div>
     <div class="drawer-foot">
@@ -314,33 +306,6 @@
     </div>
     <div id="schedList" class="sched-list"></div>
     <p id="schedEmpty" class="sched-empty" hidden></p>
-  </div>
-
-  <!-- Artifacts panel, opened from the button under the To-do button. It lists the pictures, files and links the agent
-       produced across the app's chats, newest first; every open reads plugin_api.py /artifacts and the panel stores
-       nothing. Search narrows the list, and the tabs switch between all of them and one kind. Shares the to-do panel's
-       card (todo-* classes) so the two look the same, a little wider on a computer. -->
-  <div id="artScrim" class="scrim todo-scrim" aria-hidden="true"></div>
-  <div id="artDialog" class="todo-dialog art-dialog" role="dialog" aria-modal="true" aria-labelledby="artTitle">
-    <div class="todo-head">
-      <button id="artBack" class="todo-back" type="button" aria-label="Back to chat" title="Back to chat">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/><path d="M2.5 12 12 16.75 21.5 12"/><path d="M2.5 16.75 12 21.5l9.5-4.75"/></svg>
-      </button>
-      <h2 id="artTitle" class="todo-title"><span>Artifacts</span></h2>
-      <button id="artClose" class="todo-close" type="button" aria-label="Close" title="Close">
-        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </div>
-    <div class="art-tools">
-      <input id="artSearch" class="art-search" type="search" placeholder="Search" aria-label="Search artifacts">
-      <div id="artTabs" class="art-tabs" role="tablist" aria-label="Artifact kinds">
-        <button id="artTabAll" class="art-tab" type="button" role="tab" data-tab="all" aria-selected="true" aria-controls="artBody">All <span class="art-tab-count"></span></button>
-        <button id="artTabImages" class="art-tab" type="button" role="tab" data-tab="image" aria-selected="false" aria-controls="artBody">Images <span class="art-tab-count"></span></button>
-        <button id="artTabFiles" class="art-tab" type="button" role="tab" data-tab="file" aria-selected="false" aria-controls="artBody">Files <span class="art-tab-count"></span></button>
-        <button id="artTabLinks" class="art-tab" type="button" role="tab" data-tab="link" aria-selected="false" aria-controls="artBody">Links <span class="art-tab-count"></span></button>
-      </div>
-    </div>
-    <div id="artBody" class="art-body" role="tabpanel" aria-labelledby="artTabAll"></div>
   </div>
 
   <!-- Bookmarks panel, opened from the button under the Computer button. It lists the agent replies the person kept,

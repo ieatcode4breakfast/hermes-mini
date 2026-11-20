@@ -1,8 +1,8 @@
 // Bookmarks: the agent replies the person kept across the app's chats, newest bookmark first. The store is
 // plugin_api.py's /bookmarks (one small file of message ids); every open reads the route, which resolves each id
 // against the chat history and leaves out a reply whose chat or message is gone. The panel also owns the ids the
-// chat's action rows ask for. It mirrors Artifacts: one history entry per open, the same centred card on a computer
-// and the same full-screen presentation, with the Back arrow on the left, on a phone.
+// chat's action rows ask for. Like the To-do and Schedules panels: one history entry per open, a centred card on a
+// computer and a full-screen page, with the Back arrow on the left, on a phone.
 
 const BOOKMARKS_API = "/api/plugins/hermes-mini/bookmarks";
 const $ = (id) => document.getElementById(id);

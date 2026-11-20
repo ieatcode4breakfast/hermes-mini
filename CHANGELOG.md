@@ -29,12 +29,6 @@ All notable changes to this project are documented here. The format follows
   picture it has already shown, so it shows the old one until the picture is picked there too.
 - The Inbox still opens from the agent's picture or name, with the unread count on the picture. On a phone it
   opens as a full page, like the To-do and Schedules pages, with a Back button.
-- Artifacts: a new row under Schedules in the chats panel lists the pictures, files and links the agent produced
-  in the app's chats (new `artifacts.js`, `artifact_index.py`, and a read-only `GET /artifacts` route). Tabs, search,
-  a picture grid with the full-screen viewer, file downloads, Open chat and Copy path/link. Links count only when the
-  agent wrote them in a reply; command output adds pictures and documents but not links, tool state or logs. A local
-  file that no longer exists is left out, and each path or link is listed once, from the chat where it first
-  appeared. The extraction rules follow Hermes's desktop app, made stricter. Needs a dashboard restart to load.
 - Bookmarks: every agent reply's action row (and long-press menu) has a Bookmark button right after Mark unread; on a
   kept reply it becomes Remove bookmark with a filled icon. A new Bookmarks tool directly above To-do in the Tools tray
   opens a panel of the kept replies, newest bookmark first, each opening its chat at that reply or removed with one

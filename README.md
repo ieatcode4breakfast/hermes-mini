@@ -218,11 +218,6 @@ there is no reply to show.
   instructions load with your words, up to five at once; the chat shows the skill pills and your words, never the
   expanded skill text. Skills go with a new message, not a steer: while a reply runs, a draft with a skill pill
   shows Stop instead of Send.
-- **Artifacts**: the pictures, files and links the agent produced in the app's chats, newest first,
-  in the row under Schedules in the chats panel. Tabs for All, Images, Files and Links, a search box, a picture grid that opens the
-  full-screen viewer, file downloads, and an ⋮ menu to open the chat it came from or copy its path or link.
-  It reads the chat history read-only on each open (so it covers earlier chats too); a local file that no
-  longer exists is left out, and each path or link is listed once.
 - **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer, Bookmarks and To-do buttons away under
   it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
