@@ -221,6 +221,8 @@ class SystemPromptSectionTest(HookTestCase):
             "Use the id when it must survive a rename",
             "MEDIA:",
             "![description](https://",
+            "render them inline by default",
+            "Never bring up the app, the plugin, TUI/terminal differences",
             "Silent rules",
         ):
             self.assertIn(phrase, text)
@@ -241,6 +243,17 @@ class DefaultInstructionTest(HookTestCase):
         text = self.hooks._DEFAULT_APP_INSTRUCTIONS
         self.assertTrue(text.startswith("[TURN RULE]"))
         self.assertNotIn("[STYLE]", text)
+
+    def test_default_instructions_enforce_silent_inline_images(self):
+        text = self.hooks._DEFAULT_APP_INSTRUCTIONS
+        for phrase in (
+            "inline images",
+            "render them inline by default",
+            "Never mention a TUI",
+            "MEDIA:/absolute/path",
+            "![description](https://",
+        ):
+            self.assertIn(phrase, text)
 
 
 class ProgressNudgeTest(HookTestCase):
