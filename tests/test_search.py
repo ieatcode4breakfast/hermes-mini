@@ -231,5 +231,11 @@ class SearchFrontEndTest(unittest.TestCase):
         self.assertIn(".search-results", self.app)  # a scrolling area, so custom scrollbars work
 
 
+    def test_home_icon_shown_on_both_chat_and_message_results(self):
+        self.assertIn("function homeIcon()", self.js)
+        chat_fn = self.js[self.js.index("function chatRow("):self.js.index("function messageRow(")]
+        msg_fn = self.js[self.js.index("function messageRow("):self.js.index("function group(")]
+        self.assertIn("if (item.home) head.append(homeIcon());", chat_fn)
+        self.assertIn("if (item.home) head.append(homeIcon());", msg_fn)
 if __name__ == "__main__":
     unittest.main()

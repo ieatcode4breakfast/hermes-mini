@@ -124,23 +124,25 @@ export function createSearch({ api, openSession, openMessage, formatTime }) {
     return el("h3", "search-group-head", label);
   }
 
+  function homeIcon() {
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.classList.add("search-home");
+    for (const d of ["M3 11l9-7 9 7", "M5 10v10h14V10"]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      icon.append(path);
+    }
+    return icon;
+  }
+
   function chatRow(item, query) {
     const row = el("button", "search-row search-chat");
     row.type = "button";
     row.setAttribute("aria-label", `Open chat: ${item.title}`);
     const head = el("span", "search-row-head");
-    if (item.home) {
-      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      icon.setAttribute("viewBox", "0 0 24 24");
-      icon.setAttribute("aria-hidden", "true");
-      icon.classList.add("search-home");
-      for (const d of ["M3 11l9-7 9 7", "M5 10v10h14V10"]) {
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", d);
-        icon.append(path);
-      }
-      head.append(icon);
-    }
+    if (item.home) head.append(homeIcon());
     const title = el("span", "search-row-title");
     title.append(highlight(item.title, query));
     head.append(title);
@@ -158,6 +160,7 @@ export function createSearch({ api, openSession, openMessage, formatTime }) {
     row.type = "button";
     row.setAttribute("aria-label", `Open message in ${item.thread}`);
     const head = el("span", "search-row-head");
+    if (item.home) head.append(homeIcon());
     head.append(el("span", "search-row-title", item.thread));
     const when = typeof formatTime === "function" ? formatTime(item.ts) : "";
     if (when) head.append(el("span", "search-row-time", when));

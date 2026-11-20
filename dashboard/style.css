@@ -1828,7 +1828,7 @@ input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; }
 .search-group-head + .search-row { border-top: 0; }
 .search-row-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .search-row-title { min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search-home { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.search-home { flex: none; width: 16px; height: 16px; align-self: center; margin-right: -2px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .search-row-time { flex: none; margin-left: auto; font-size: 12px; line-height: 1.35; color: var(--muted); white-space: nowrap; }
 .search-row-preview {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
