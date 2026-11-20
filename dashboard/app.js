@@ -4536,8 +4536,9 @@ function updateComposer() {
   const busy = state.streaming;
   const dictating = Boolean(state.dictating || state.transcribing);
   // While the agent works, typed text steers her: the button stays Send. It turns into Stop only when
-  // the box is empty and dictation is not active, so a running task can still be stopped.
-  const stopMode = busy && !els.input.value.trim() && !dictating;
+  // the box is empty and dictation is not active, so a running task can still be stopped. A draft with a skill pill
+  // cannot steer (skills go with a new message), so it keeps Stop until the reply is done.
+  const stopMode = busy && (!els.input.value.trim() || draftSkills().length > 0) && !dictating;
   // A main-chat reset replaces the live runtime: lock the composer until the reset either attaches the new main or
   // fails. A failed reset after the delete leaves composerLocked set, so a null runtime can never be sent to.
   const locked = state.resettingMain || state.composerLocked;
@@ -5590,6 +5591,7 @@ slashPicker = createSlashPicker({
     if (item.kind === "skill") addSkillMention(item.name);
     else addMention(item.job);
     els.input.focus();
+    updateComposer(); // a skill pill turns a steering Send back into Stop
   },
 });
 
@@ -5705,7 +5707,7 @@ document.addEventListener("drop", (event) => {
 
 async function send() {
   if (state.resettingMain || state.composerLocked) return; // the runtime is being replaced; never send to the old one
-  if (state.streaming) return els.input.value.trim() ? steer() : stop();
+  if (state.streaming) return els.input.value.trim() && !draftSkills().length ? steer() : stop();
   if (state.sending) return;
   if (state.editing) return submitEdit();
   const drafted = expandPastes(els.input.value);
@@ -5832,10 +5834,7 @@ const LOST_SESSION_TEXT = "Not sent: Hermes had closed this chat. It's reopening
 // "rejected" and the text is sent as an ordinary message instead.
 async function steer() {
   if (state.sending || !state.liveSid) return;
-  if (draftSkills().length) {
-    sysLine("Skills go with a new message. Send it once this reply is done.");
-    return;
-  }
+  if (draftSkills().length) return; // skills go with a new message: the button shows Stop until the reply is done
   const text = expandMentions(expandPastes(els.input.value)).trim();
   if (!text) return;
   const saved = { text: els.input.value, pastes: state.pastes.slice(), mentions: state.mentions.slice() };
@@ -6668,7 +6667,7 @@ els.input.addEventListener("keydown", (event) => {
   // A reply is streaming: Enter steers it with the typed text, and never adds a stray newline.
   if (state.streaming || state.sending) {
     event.preventDefault();
-    if (state.streaming && !state.sending && els.input.value.trim()) void steer();
+    if (state.streaming && !state.sending && els.input.value.trim() && !draftSkills().length) void steer();
     return;
   }
   if (!canSendNow()) return; // nothing to send yet: the default newline

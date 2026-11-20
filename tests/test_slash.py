@@ -193,8 +193,14 @@ class SlashWiringTest(unittest.TestCase):
 
     def test_a_steer_never_carries_skills(self):
         steer = self.app.split("async function steer() {", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("if (draftSkills().length) {", steer)
+        self.assertIn("if (draftSkills().length) return;", steer)
         self.assertIn("expandMentions(expandPastes(els.input.value))", steer)
+        # While a reply runs, a draft with a skill shows Stop, and Send and Enter never steer it.
+        self.assertIn("const stopMode = busy && (!els.input.value.trim() || draftSkills().length > 0) && !dictating;",
+                      self.app)
+        self.assertIn("if (state.streaming) return els.input.value.trim() && !draftSkills().length ? steer() : stop();",
+                      self.app)
+        self.assertIn("els.input.value.trim() && !draftSkills().length) void steer();", self.app)
 
 
 if __name__ == "__main__":

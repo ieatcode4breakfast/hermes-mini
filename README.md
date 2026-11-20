@@ -216,7 +216,8 @@ there is no reply to show.
   (bolt icon) and schedules (clock icon) above it; typing on narrows the list. A pick goes into the message as the same
   inline pill. A message with skills is sent through Hermes's own skill command (`command.dispatch`), so each skill's
   instructions load with your words, up to five at once; the chat shows the skill pills and your words, never the
-  expanded skill text. Skills go with a new message, not a steer.
+  expanded skill text. Skills go with a new message, not a steer: while a reply runs, a draft with a skill pill
+  shows Stop instead of Send.
 - **Artifacts**: the pictures, files and links the agent produced in the app's chats, newest first,
   in the row under Schedules in the chats panel. Tabs for All, Images, Files and Links, a search box, a picture grid that opens the
   full-screen viewer, file downloads, and an ⋮ menu to open the chat it came from or copy its path or link.
