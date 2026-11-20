@@ -151,7 +151,7 @@
   position: fixed; inset: auto; width: auto; height: auto; overflow: visible;
 }
 [hidden] { display: none !important; }
-html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); touch-action: pan-x pan-y; }
 body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
 button { font: inherit; cursor: pointer; }
 input, textarea, select { font-family: inherit; }

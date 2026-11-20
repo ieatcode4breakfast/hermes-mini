@@ -929,5 +929,16 @@ class ClarifyDictationTest(unittest.TestCase):
         self.assertIn("dictationInsert(before, text, after)", finish)
 
 
+class MobileZoomLockTest(unittest.TestCase):
+    """The PWA shell locks mobile pinch/double-tap zoom while keeping single-finger scrolling and viewer zoom."""
+
+    def test_viewport_and_root_disallow_page_zoom(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn("maximum-scale=1", html)
+        self.assertIn("user-scalable=no", html)
+        self.assertIn("touch-action: pan-x pan-y;", css)
+
+
 if __name__ == "__main__":
     unittest.main()
