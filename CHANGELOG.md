@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Share from Android: the installed app shows in Android's share sheet (`share_target` in `pwa.json`). Text, links,
+  pictures and files shared to it land in the message box and its tray (up to 10 files) in the chat on screen; the
+  service worker keeps the share on the phone until the app takes it (new `share-target.js`), and nothing is sent
+  until Send. An app installed earlier picks up the new manifest within about a day, or at once when reinstalled.
+  Tested in desktop Chromium against a mock (a multipart post to the share target); untested on a phone.
+
 - Skills and schedules with "/": typing `/` at the start of a word in the message box opens a list of the agent's
   skills (bolt icon) and schedules (clock icon) above it, narrowed as you type (name first, then description; most
   used skills first). A pick goes in as the same inline pill a schedule's "Add to message" makes. A message with

@@ -243,6 +243,12 @@ there is no reply to show.
   waveform to tap or drag, download; the waveform needs ffmpeg, on PATH or in Hermes' tools
   directory); other files arrive as cards that download only when tapped. A picture that cannot be
   loaded (a missing file, a dead web link) shows its alt text instead.
+- **Share from Android**: the installed app is listed in Android's share sheet. Sharing text, a link, pictures or
+  files to it opens the app with the words in the message box and the pictures and files attached (up to 10), in the
+  chat on screen, ready to add a word and send. The share stays on the phone (the service worker keeps it until the app
+  takes it, at most an hour) and nothing is sent until you press Send. An app installed before this needs Chrome to
+  pick up the new manifest, which it does on its own within about a day; uninstalling and adding it to the home screen
+  again does it at once. Tested in desktop Chromium against a mock; untested on a phone.
 - **Picture viewer**: full screen, with a back button and a download button; swipe, the arrows or
   the arrow keys slide between a message's pictures; pinch or double-tap to zoom.
 - **Markdown**: GitHub-flavoured markdown with sanitised HTML and syntax highlighting.

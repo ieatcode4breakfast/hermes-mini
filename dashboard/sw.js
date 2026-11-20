@@ -5,7 +5,7 @@
 // correct because those files are the app. The computer viewer and its noVNC runtime are OPTIONAL_CORE:
 // each is precached on its own, and a failure there is ignored, so a desktop module that is absent can
 // never fail the app install. They are fetched on demand the first time the viewer opens anyway.
-const CACHE = "hermes-mini-v90";
+const CACHE = "hermes-mini-v91";
 const SCOPE_PATH = new URL("./", self.location.href).pathname;
 // The app is served at /dashboard-plugins/hermes-mini/ but its API lives at /api/plugins/hermes-mini/
 // (any reverse-proxy prefix in front of both is preserved). Same split app.js makes for PREFIX.
@@ -37,6 +37,7 @@ const CORE = [
   "model.js",
   "model-name.js",
   "identity-edit.js",
+  "share-target.js",
   "slash.js",
   "pwa.json",
   "favicon-64.png",
@@ -157,12 +158,46 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Android's share sheet (pwa.json share_target) posts here. The share is kept in its own cache (share-target.js reads
+// it: SHARE_CACHE, the "__share/" keys and the meta fields must match) and the app opens with ?shared=1 to take it.
+// A new share replaces one never picked up. At most 10 files, the composer's own limit. Nothing goes to the server.
+const SHARE_PATH = `${SCOPE_PATH}share-target`;
+const SHARE_CACHE = "hermes-mini-share";
+const SHARE_MAX_FILES = 10;
+
+async function receiveShare(request) {
+  try {
+    const form = await request.formData();
+    const cache = await caches.open(SHARE_CACHE);
+    await Promise.all((await cache.keys()).map((key) => cache.delete(key)));
+    const keyFor = (name) => new URL(`${SCOPE_PATH}__share/${name}`, self.location.origin).href;
+    const field = (name) => {
+      const value = form.get(name);
+      return typeof value === "string" ? value : "";
+    };
+    const meta = { at: Date.now(), title: field("title"), text: field("text"), url: field("url"), files: [] };
+    const files = form.getAll("files").filter((file) => file && typeof file === "object" && typeof file.size === "number");
+    for (const [i, file] of files.slice(0, SHARE_MAX_FILES).entries()) {
+      const key = keyFor(i);
+      await cache.put(key, new Response(file, { headers: { "content-type": file.type || "application/octet-stream" } }));
+      meta.files.push({ key, name: file.name || `shared-${i + 1}`, type: file.type || "", lastModified: file.lastModified || meta.at });
+    }
+    await cache.put(keyFor("meta"), new Response(JSON.stringify(meta), { headers: { "content-type": "application/json" } }));
+  } catch {
+    // An unreadable share still opens the app; there is just nothing to take.
+  }
+  return Response.redirect(new URL(`${SCOPE_PATH}index.html?shared=1`, self.location.origin).href, 303);
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  if (request.method !== "GET") return;
-
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (request.method === "POST" && url.pathname === SHARE_PATH) {
+    event.respondWith(receiveShare(request));
+    return;
+  }
+  if (request.method !== "GET") return;
   let name;
   if (url.pathname.startsWith(SCOPE_PATH)) name = url.pathname.slice(SCOPE_PATH.length) || "index.html";
   else return;

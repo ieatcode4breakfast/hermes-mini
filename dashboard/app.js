@@ -26,6 +26,7 @@ import * as conn from "./connections.js";
 import * as promptCards from "./prompts.js";
 import { createIdentityEditor } from "./identity-edit.js";
 import { createSlashPicker, describeSkillInvocation, skillLabel, skillSlug, SKILL_ICON } from "./slash.js";
+import { takeShared, SHARE_PARAM } from "./share-target.js";
 
 // The agent name is the user's own: identity.js reads it from the plugin's authenticated /status route,
 // where the server has already applied "bot title, then display name, then named profile, then
@@ -2102,6 +2103,7 @@ async function reconnect() {
     await connect();
     await attachThread();
     await openSessionFromHash(); // a push opened this window while we were offline
+    await receiveShared(); // Android's share sheet opened this window with something to send
     state.backoffIdx = 0;
     noteOnline();
     setStatus("");
@@ -7202,6 +7204,35 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+// Android's share sheet opened the app with ?shared=1 (sw.js receiveShare kept the share): its text and link go into the
+// message box and its pictures and files into the tray, in the chat on screen, ready to add a word and send. A chat that
+// cannot be written to gives way to the main chat. The flag is dropped first, so a reload never takes it twice.
+async function receiveShared() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has(SHARE_PARAM)) return;
+  params.delete(SHARE_PARAM);
+  const query = params.toString();
+  history.replaceState(null, "", location.pathname + (query ? `?${query}` : "") + location.hash);
+  let shared = null;
+  try {
+    shared = await takeShared();
+  } catch (error) {
+    sysLine(`Could not open what was shared: ${errorText(error)}`);
+    return;
+  }
+  if (!shared) return;
+  if ((state.readOnly || els.input.disabled) && state.homeId && state.viewedId !== state.homeId) {
+    await switchSession(state.homeId);
+  }
+  if (shared.files.length) addFiles(shared.files);
+  if (shared.text) {
+    const input = els.input;
+    input.setSelectionRange(input.value.length, input.value.length);
+    insertIntoComposer(input.value.trim() ? `\n${shared.text}` : shared.text);
+  }
+  updateComposer();
+}
+
 // A notification opened a fresh window with #session=<id> (and #msg/#match/#ts when the push knew its message): open
 // that chat once the socket and home thread are attached, then drop the hash so a reload goes back to the remembered view.
 async function openSessionFromHash() {
@@ -7656,6 +7687,7 @@ autosize();
   try {
     await attachThread();
     await openSessionFromHash(); // a notification may have opened this window on a specific chat
+    await receiveShared(); // Android's share sheet opened this window with something to send
     state.backoffIdx = 0;
     noteOnline();
     setStatus("");
