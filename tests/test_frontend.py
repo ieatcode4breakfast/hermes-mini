@@ -754,6 +754,16 @@ class PopupTopLayerTest(unittest.TestCase):
         self.assertIn('node.setAttribute("popover", "manual");', toast)
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         self.assertIn('restartToast.setAttribute("popover", "manual");', app)
+        self.assertIn('jumpToast.setAttribute("popover", "manual");', app)
+
+    def test_open_target_shows_loading_toast_until_flash(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn('document.createTextNode("Loading message")', app)
+        self.assertIn('jumpToast.querySelector(".restart-dots")', app)
+        fn = app[app.index("async function openTarget("):app.index("async function reconnect(")]
+        self.assertIn("showJumpNotice();", fn)
+        self.assertIn("hideJumpNotice();\n    await revealRow(row);", fn)
+        self.assertNotIn("success", fn)
 
     def test_the_helpers_show_and_hide_in_the_top_layer(self):
         toast = (DASHBOARD / "toast.js").read_text(encoding="utf-8")

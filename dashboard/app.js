@@ -2037,6 +2037,33 @@ async function waitForSwitch(ms = 5000) {
 
 // Opens the chat a notification named, then its message. A chat that is gone falls back to what the app shows anyway
 // (the main chat) and still says the message was not found, because it was in the chat that is missing.
+// Persistent pill while a deep link (notification, Inbox, Bookmark) is switching chats and paging history to find
+// its target message. Reuses .restart-dots for the blinking "...". Dismissed as soon as the row flashes (no success
+// toast: the flash is the confirmation), or before the error toast if the message cannot be found.
+let jumpToast = null;
+function showJumpNotice() {
+  if (!jumpToast) {
+    jumpToast = el("div", "toast jump-toast");
+    jumpToast.setAttribute("popover", "manual");
+    jumpToast.setAttribute("role", "status");
+    jumpToast.setAttribute("aria-live", "polite");
+    document.body.append(jumpToast);
+  }
+  if (!jumpToast.querySelector(".restart-dots")) {
+    const dots = el("span", "restart-dots");
+    dots.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 3; i++) dots.append(el("span", "", "."));
+    jumpToast.replaceChildren(document.createTextNode("Loading message"), dots);
+  }
+  reopenPopover(jumpToast);
+  jumpToast.classList.add("show");
+}
+function hideJumpNotice() {
+  if (!jumpToast) return;
+  jumpToast.classList.remove("show");
+  closePopover(jumpToast, 300);
+}
+
 async function openTarget(id, target) {
   // An approval or a question carries no message: its card is at the bottom, where the chat opens.
   if (!target) {
@@ -2050,6 +2077,7 @@ async function openTarget(id, target) {
   }
   const run = ++deeplinkRun;
   pendingTarget = target;
+  showJumpNotice();
   try {
     await ensureLiveSocket();
     if (run !== deeplinkRun) return false;
@@ -2079,16 +2107,24 @@ async function openTarget(id, target) {
       if (run !== deeplinkRun) return false;
     }
     if (!row) {
+      hideJumpNotice();
       showToast("Message not found", "error");
       return false;
     }
+    hideJumpNotice();
     await revealRow(row);
     return true;
   } catch {
-    if (run === deeplinkRun) showToast("Message not found", "error");
+    if (run === deeplinkRun) {
+      hideJumpNotice();
+      showToast("Message not found", "error");
+    }
     return false;
   } finally {
-    if (run === deeplinkRun) pendingTarget = null;
+    if (run === deeplinkRun) {
+      pendingTarget = null;
+      hideJumpNotice();
+    }
   }
 }
 
