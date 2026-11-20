@@ -2466,7 +2466,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .model-meter-bar {
   flex: 0 0 auto; width: 6px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 15%, transparent);
   transform-origin: bottom;
-  transition: background-color 160ms ease, transform 180ms var(--ease-spring), box-shadow 180ms ease;
+  transition: background-color 160ms ease, transform 180ms var(--ease-spring);
 }
 .model-meter-bar:nth-child(1) { height: 8px; }
 .model-meter-bar:nth-child(2) { height: 12px; }
@@ -2475,7 +2475,6 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .model-meter-bar:nth-child(5) { height: 24px; }
 .model-meter-bar.on {
   background: var(--accent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 42%, transparent);
   transform: scaleY(1.06);
 }
 @media (prefers-reduced-motion: reduce) { .model-meter-bar { transition: none; } }
