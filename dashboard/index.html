@@ -167,6 +167,11 @@
       <span>New chat</span>
       <span class="drawer-new-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.85.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.85z"/></svg></span>
     </button>
+    <!-- Search (search.js): searches chat titles and messages, placed by drawer.js directly under New chat. -->
+    <button id="searchBtn" class="drawer-new drawer-search" type="button" aria-haspopup="dialog" aria-controls="searchDialog" aria-expanded="false">
+      <span>Search</span>
+      <span class="drawer-new-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
+    </button>
     <!-- Schedules (schedules.js): the agent's scheduled jobs, placed by drawer.js directly under the main chat. -->
     <button id="schedBtn" class="chat-row drawer-inbox drawer-sched" type="button" aria-haspopup="dialog" aria-controls="schedDialog" aria-expanded="false">
       <span class="drawer-inbox-icon" aria-hidden="true">
@@ -327,6 +332,31 @@
       <span class="bm-empty-title">No bookmarks yet</span>
       <span class="bm-empty-hint">Replies you bookmark show up here.</span>
     </p>
+  </div>
+
+  <!-- Search panel, opened from the Search row under New chat. It searches chat titles and message text across the
+       app's chats through plugin_api.py /search; a hit opens the chat at that chat or message. Shares the to-do
+       panel's card (todo-* classes) so they look the same. -->
+  <div id="searchScrim" class="scrim todo-scrim" aria-hidden="true"></div>
+  <div id="searchDialog" class="todo-dialog search-dialog" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+    <div class="todo-head">
+      <button id="searchBack" class="todo-back" type="button" aria-label="Back to chat" title="Back to chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+      </button>
+      <h2 id="searchTitle" class="todo-title"><span>Search</span></h2>
+      <button id="searchClose" class="todo-close" type="button" aria-label="Close" title="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="search-bar">
+      <svg class="search-bar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input id="searchInput" class="search-input" type="search" placeholder="Search chats and messages" aria-label="Search chats and messages" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      <button id="searchClear" class="search-clear" type="button" aria-label="Clear search" title="Clear search" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="searchResults" class="search-results"></div>
+    <p id="searchEmpty" class="bm-empty search-empty">Search chat titles and messages.</p>
   </div>
 
   <!-- Inbox: every agent message across the app's chats, newest first. It stores nothing: each open reads

@@ -165,11 +165,11 @@ input, textarea, select { font-family: inherit; }
    textarea keeps its scrollbar hidden (it is an auto-growing pill). The thumb is hidden until the pointer is over its area. Mouse devices only; touch screens get the scroll-only bar below. */
 @media (hover: hover) and (pointer: fine) {
 .log::-webkit-scrollbar, .drawer-list::-webkit-scrollbar, .bubble pre::-webkit-scrollbar, .card pre::-webkit-scrollbar,
-.bubble .table-wrap::-webkit-scrollbar, .tray::-webkit-scrollbar, .todo-list::-webkit-scrollbar, .inbox-list::-webkit-scrollbar, .sched-list::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+.bubble .table-wrap::-webkit-scrollbar, .tray::-webkit-scrollbar, .todo-list::-webkit-scrollbar, .inbox-list::-webkit-scrollbar, .sched-list::-webkit-scrollbar, .search-results::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
 .log::-webkit-scrollbar-track, .drawer-list::-webkit-scrollbar-track, .bubble pre::-webkit-scrollbar-track,
-.card pre::-webkit-scrollbar-track, .bubble .table-wrap::-webkit-scrollbar-track, .tray::-webkit-scrollbar-track, .todo-list::-webkit-scrollbar-track, .inbox-list::-webkit-scrollbar-track, .sched-list::-webkit-scrollbar-track { background: transparent; }
+.card pre::-webkit-scrollbar-track, .bubble .table-wrap::-webkit-scrollbar-track, .tray::-webkit-scrollbar-track, .todo-list::-webkit-scrollbar-track, .inbox-list::-webkit-scrollbar-track, .sched-list::-webkit-scrollbar-track, .search-results::-webkit-scrollbar-track { background: transparent; }
 .log::-webkit-scrollbar-thumb, .drawer-list::-webkit-scrollbar-thumb, .bubble pre::-webkit-scrollbar-thumb,
-.card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb, .sched-list::-webkit-scrollbar-thumb {
+.card pre::-webkit-scrollbar-thumb, .bubble .table-wrap::-webkit-scrollbar-thumb, .tray::-webkit-scrollbar-thumb, .todo-list::-webkit-scrollbar-thumb, .inbox-list::-webkit-scrollbar-thumb, .sched-list::-webkit-scrollbar-thumb, .search-results::-webkit-scrollbar-thumb {
   background: transparent; background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
 }
 /* Hidden until the pointer is over that scrolling area. app.js sets .sb-on on the areas under the mouse: Chrome does
@@ -182,25 +182,26 @@ input, textarea, select { font-family: inherit; }
 .tray.sb-on::-webkit-scrollbar-thumb,
 .todo-list.sb-on::-webkit-scrollbar-thumb,
 .inbox-list.sb-on::-webkit-scrollbar-thumb,
-.sched-list.sb-on::-webkit-scrollbar-thumb {
+.sched-list.sb-on::-webkit-scrollbar-thumb,
+.search-results.sb-on::-webkit-scrollbar-thumb {
   background: var(--sb-thumb); background-clip: padding-box;
 }
 
 .log::-webkit-scrollbar-thumb:hover, .drawer-list::-webkit-scrollbar-thumb:hover, .bubble pre::-webkit-scrollbar-thumb:hover,
-.card pre::-webkit-scrollbar-thumb:hover, .bubble .table-wrap::-webkit-scrollbar-thumb:hover, .tray::-webkit-scrollbar-thumb:hover, .todo-list::-webkit-scrollbar-thumb:hover, .inbox-list::-webkit-scrollbar-thumb:hover, .sched-list::-webkit-scrollbar-thumb:hover {
+.card pre::-webkit-scrollbar-thumb:hover, .bubble .table-wrap::-webkit-scrollbar-thumb:hover, .tray::-webkit-scrollbar-thumb:hover, .todo-list::-webkit-scrollbar-thumb:hover, .inbox-list::-webkit-scrollbar-thumb:hover, .sched-list::-webkit-scrollbar-thumb:hover, .search-results::-webkit-scrollbar-thumb:hover {
   background: var(--sb-thumb-hover); background-clip: padding-box;
 }
 .log::-webkit-scrollbar-corner, .drawer-list::-webkit-scrollbar-corner, .bubble pre::-webkit-scrollbar-corner,
-.card pre::-webkit-scrollbar-corner, .bubble .table-wrap::-webkit-scrollbar-corner, .tray::-webkit-scrollbar-corner, .todo-list::-webkit-scrollbar-corner, .inbox-list::-webkit-scrollbar-corner, .sched-list::-webkit-scrollbar-corner { background: transparent; }
+.card pre::-webkit-scrollbar-corner, .bubble .table-wrap::-webkit-scrollbar-corner, .tray::-webkit-scrollbar-corner, .todo-list::-webkit-scrollbar-corner, .inbox-list::-webkit-scrollbar-corner, .sched-list::-webkit-scrollbar-corner, .search-results::-webkit-scrollbar-corner { background: transparent; }
 .log::-webkit-scrollbar-button, .drawer-list::-webkit-scrollbar-button, .bubble pre::-webkit-scrollbar-button,
-.card pre::-webkit-scrollbar-button, .bubble .table-wrap::-webkit-scrollbar-button, .tray::-webkit-scrollbar-button, .todo-list::-webkit-scrollbar-button, .inbox-list::-webkit-scrollbar-button, .sched-list::-webkit-scrollbar-button { display: none; }
+.card pre::-webkit-scrollbar-button, .bubble .table-wrap::-webkit-scrollbar-button, .tray::-webkit-scrollbar-button, .todo-list::-webkit-scrollbar-button, .inbox-list::-webkit-scrollbar-button, .sched-list::-webkit-scrollbar-button, .search-results::-webkit-scrollbar-button { display: none; }
 }
 /* Touch screens: Chrome's own overlay bar appears with a scrolling area and only starts fading after the first scroll,
    and it ignores ::-webkit-scrollbar styling. So it is switched off, and back on only while app.js marks the area
    .sb-on (while it scrolls, and 900 ms after): the usual "only while scrolling" phone behaviour. */
 @media not ((hover: hover) and (pointer: fine)) {
-  .log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list { scrollbar-width: none; }
-  .log.sb-on, .drawer-list.sb-on, .bubble pre.sb-on, .card pre.sb-on, .bubble .table-wrap.sb-on, .tray.sb-on, .todo-list.sb-on, .inbox-list.sb-on, .sched-list.sb-on { scrollbar-width: auto; }
+  .log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .todo-list, .inbox-list, .sched-list, .search-results { scrollbar-width: none; }
+  .log.sb-on, .drawer-list.sb-on, .bubble pre.sb-on, .card pre.sb-on, .bubble .table-wrap.sb-on, .tray.sb-on, .todo-list.sb-on, .inbox-list.sb-on, .sched-list.sb-on, .search-results.sb-on { scrollbar-width: auto; }
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); }
@@ -1118,6 +1119,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-new-icon { display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
 .drawer-new:hover .drawer-new-icon { color: var(--fg); }
 .drawer-new-icon svg { width: 14px; height: 14px; }
+/* Search sits directly under New chat and reads as its pair: the same row, only 2px below it. */
+.drawer-search { margin-top: 2px; }
 /* The Schedules row, directly under the main chat: icon and word sized like New chat. */
 /* .chat-row (below) sets the session rows' 56px and 8px padding; the doubled class keeps these sizes ahead of it. */
 .chat-row.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
@@ -1773,6 +1776,74 @@ body.bm-open #bookmarkBtn { background: color-mix(in srgb, var(--accent) 22%, va
   cursor: pointer;
 }
 :where(:root[data-input="mouse"]) .bm-retry:hover { background: color-mix(in srgb, var(--accent) 26%, var(--surface)); }
+
+/* ---------- Search panel ---------- */
+/* The to-do card (todo-dialog), the Bookmarks width on a computer; on a phone the to-do card's own full-page rules take
+   over. The field sits under the header and the results scroll below it: a group heading, then one row per chat or
+   message. */
+.search-dialog { width: min(560px, calc(100vw - 32px)); }
+.search-bar {
+  flex: none; display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 0 12px;
+  height: 44px; border-radius: 14px;
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+}
+.search-bar-icon { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.search-input {
+  flex: 1 1 auto; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; background: transparent;
+  color: var(--fg); font: inherit; font-size: 15px; font-weight: 400; line-height: 1.2; caret-color: var(--accent);
+  outline: none; -webkit-appearance: none; appearance: none;
+}
+.search-input::placeholder { color: var(--muted); }
+.search-input::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+/* The field has its own clear button, so the native one stays out of the way. */
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; }
+.search-clear {
+  flex: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer;
+}
+.search-clear svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.search-clear:hover, .search-clear:focus-visible { outline: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* iPhone and iPad Safari zoom into a focused field under 16px: 16px on Apple touch devices only, as the composer does. */
+@supports (-webkit-touch-callout: none) {
+  .search-input, .search-input:focus { font-size: 16px; }
+}
+.search-results { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.search-results:empty { flex: 0 0 auto; } /* the empty state keeps the card's height, not half of it */
+@media (hover: hover) and (pointer: fine) and (min-width: 641px) {
+  .search-results { scrollbar-gutter: stable; margin: 0 -14px 0 0; padding: 0 4px 0 0; }
+}
+.search-group-head {
+  margin: 0; padding: 8px 8px 4px; font-size: 12px; font-weight: 650; letter-spacing: 0.01em; color: var(--muted);
+}
+.search-group + .search-group { margin-top: 6px; }
+.search-row {
+  display: flex; flex-direction: column; gap: 3px; width: 100%; margin: 0; padding: 10px 8px;
+  border: 0; border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); border-radius: 10px;
+  background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+.search-row:active { background: var(--zebra); }
+:where(:root[data-input="mouse"]) .search-row { transition: background-color 120ms ease; }
+:where(:root[data-input="mouse"]) .search-row:hover:not(:active) { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.search-group-head + .search-row { border-top: 0; }
+.search-row-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.search-row-title { min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-home { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.search-row-time { flex: none; margin-left: auto; font-size: 12px; line-height: 1.35; color: var(--muted); white-space: nowrap; }
+.search-row-preview {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  font-size: 14px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere;
+}
+.search-who { color: var(--muted); font-weight: 500; }
+.search-hit {
+  background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit;
+  border-radius: 3px; padding: 0 2px;
+}
+:where(:root[data-input="mouse"]) .search-row:hover .search-row-title { color: var(--accent); }
+.search-empty[hidden] { display: none; }
+/* The Search row in the chats panel looks pressed while its panel is open. */
+.drawer-search[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+@media (prefers-reduced-motion: reduce) { .search-row, .search-clear { transition: none; } }
 
 /* Appearance switch at the bottom of the chats panel: System / Light / Dark as one small segmented pill. */
 .drawer-foot {

@@ -208,6 +208,10 @@ there is no reply to show.
   from its action row or its long-press menu; the panel lists them newest bookmark first, each with its chat, time and
   a short preview. Tapping one opens the chat at that reply, and the filled bookmark at the right removes it. Bookmarks
   follow the message: a deleted chat or message simply drops out.
+- **Search**: the row directly under New chat in the chats panel. One field looks through the app's chat titles and
+  the visible text of your and the agent's messages as you type. A chat hit opens that chat; a message hit opens it at
+  that message, with the same Loading message… toast and flash the Inbox uses. Only what the chat draws is searched:
+  hidden, tool and out-of-scope rows never match, and a message compaction carried forward is listed once.
 - **Scheduled**: the row under the main chat in the chats panel. It lists the agent's scheduled jobs
   (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
   running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
@@ -437,7 +441,8 @@ Tested here against the real Hermes runtime: the plugin loads through Hermes' di
 routes the suite exercises; settings/identity/avatar validation; push key opt-in and endpoint gating;
 dictation delegation to Hermes' provider with a mocked provider; the app-chat scoping and the
 self-edit guard; scheduled-job target resolution across ids, names, archived chats and missing
-chats; the browser module graph and service-worker asset list.
+chats; search across chat titles and message text (against a mock state.db, with and without
+message_fts, compaction included); the browser module graph and service-worker asset list.
 
 Phones and desktop: the app has been used and fully tested on Android (Chrome, installed to the home screen) and in
 Chrome on desktop. It has **not been tested on an iPhone or iPad**. It is built on standard web features Safari supports, but

@@ -16,6 +16,7 @@ import { createTodo } from "./todo.js";
 import { createSchedules, mentionText } from "./schedules.js";
 import { createInbox } from "./inbox.js";
 import { createBookmarks } from "./bookmarks.js";
+import { createSearch } from "./search.js";
 import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js";
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
@@ -7028,10 +7029,18 @@ const bookmarks = createBookmarks({
   showToast,
   onChange: refreshBookmarkMarks,
 });
+// The Search panel: chat titles and message text across the app's chats, read from /search on every query. A chat hit
+// opens that chat; a message hit opens it at that message through the same openTarget the Inbox uses.
+const search = createSearch({
+  api,
+  formatTime: messageTimeLabel,
+  openSession: (sessionId) => openTarget(sessionId, null),
+  openMessage: (sessionId, messageId) => openTarget(sessionId, { messageId, match: "", ts: 0 }),
+});
 // Desktop scrollbars show only while the mouse is over their area, touch ones only while scrolling (style.css .sb-on). Every scrolling area under the
 // pointer gets .sb-on - a code block in the chat lights both - and loses it when the pointer leaves it or the window.
 // A class, not :hover: Chrome does not reliably repaint a styled scrollbar when only the hover state changes.
-const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .bm-list, .todo-list, .inbox-list, .sched-list";
+const SCROLL_AREAS = ".log, .drawer-list, .bubble pre, .card pre, .bubble .table-wrap, .tray, .bm-list, .todo-list, .inbox-list, .sched-list, .search-results";
 let scrollbarsLit = [];
 function lightScrollbars(target) {
   const next = [];
@@ -7110,7 +7119,8 @@ const schedules = createSchedules({
 });
 // The panels close each other, waiting for each one's history entry so they never race.
 els.todoBtn.addEventListener("click", () => {
-  void inbox.close().then(() => schedules.close()).then(() => bookmarks.close()).then(() => todo.open());
+  void inbox.close().then(() => schedules.close()).then(() => bookmarks.close()).then(() => search.close())
+    .then(() => todo.open());
 });
 // The Bookmarks tool, directly above To-do: a second tap closes the panel.
 els.bookmarkBtn.addEventListener("click", () => {
@@ -7118,7 +7128,8 @@ els.bookmarkBtn.addEventListener("click", () => {
     void bookmarks.close();
     return;
   }
-  void inbox.close().then(() => todo.close()).then(() => schedules.close()).then(() => bookmarks.open());
+  void inbox.close().then(() => todo.close()).then(() => schedules.close()).then(() => search.close())
+    .then(() => bookmarks.open());
 });
 // The agent's picture and name are the Inbox's button: a tap opens it, a second tap closes it.
 const toggleInbox = () => {
@@ -7126,7 +7137,8 @@ const toggleInbox = () => {
     void inbox.close();
     return;
   }
-  void todo.close().then(() => schedules.close()).then(() => bookmarks.close()).then(() => inbox.open());
+  void todo.close().then(() => schedules.close()).then(() => bookmarks.close()).then(() => search.close())
+    .then(() => inbox.open());
 };
 els.inboxBtn.addEventListener("click", toggleInbox);
 els.inboxBtn.addEventListener("keydown", (event) => {
@@ -7143,7 +7155,18 @@ document.getElementById("schedBtn").addEventListener("click", () => {
   }
   const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
   void Promise.resolve(panel).then(() => todo.close()).then(() => inbox.close()).then(() => bookmarks.close())
-    .then(() => schedules.open());
+    .then(() => search.close()).then(() => schedules.open());
+});
+// The Search row under New chat opens Search, and a second tap closes it. On a phone it steps the drawer aside first;
+// a docked drawer stays.
+document.getElementById("searchBtn").addEventListener("click", () => {
+  if (search.isOpen()) {
+    void search.close();
+    return;
+  }
+  const panel = drawerApi.isOpen() && !isDocked() ? drawerApi.close() : Promise.resolve();
+  void Promise.resolve(panel).then(() => todo.close()).then(() => inbox.close()).then(() => schedules.close())
+    .then(() => bookmarks.close()).then(() => search.open());
 });
 // Edit profile, the first button in the Tools tray, opens the name and picture editor (identity-edit.js).
 createIdentityEditor({ rpc, identityApi, api, showToast });

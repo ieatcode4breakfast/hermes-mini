@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Search: a row directly under New chat in the chats panel opens a Search panel (new `search.js`) that looks through
+  the app's chat titles and the visible text of the person's and the agent's messages, narrowed as you type. A chat hit
+  opens that chat; a message hit opens it at that message, with the same Loading message… toast and flash the Inbox
+  uses. New `GET /search` reads state.db read-only with the Inbox's scope and visibility rules (message_fts when the
+  store carries it, a LIKE scan otherwise), so hidden, tool, model-only and out-of-scope rows never match, and a
+  compaction copy is listed once as the row the chat draws. Needs a dashboard restart to load. Tested in the test box
+  suite (the route against a mock state.db, with and without message_fts; the front end statically); the panel itself
+  is untested in a browser and on a phone.
 - Share from Android: the installed app shows in Android's share sheet (`share_target` in `pwa.json`). Text, links,
   pictures and files shared to it land in the message box and its tray (up to 10 files) in the chat on screen; the
   service worker keeps the share on the phone until the app takes it (new `share-target.js`), and nothing is sent

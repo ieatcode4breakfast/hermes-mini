@@ -128,6 +128,7 @@ export function createDrawer(deps) {
   const drawer = $("drawer");
   const scrim = $("scrim");
   const newBtn = $("drawerNew");
+  const searchBtn = $("searchBtn"); // Search, placed directly under New chat
   const schedRow = $("schedBtn"); // Schedules, placed directly under the main chat
   const list = $("drawerList");
   const noteEl = $("drawerNote");
@@ -446,6 +447,7 @@ export function createDrawer(deps) {
       // Same rows as a loaded list, so Schedules and New chat stay reachable during the first fetch.
       if (schedRow) list.append(schedRow);
       list.append(newBtn);
+      if (searchBtn) list.append(searchBtn);
       list.append(skeleton(7));
       return;
     }
@@ -464,6 +466,7 @@ export function createDrawer(deps) {
     // staying pinned above the list. The same singleton element (and its click handler) is re-appended on every
     // render; with no home row it heads the list.
     list.append(newBtn);
+    if (searchBtn) list.append(searchBtn);
     if (!homeItem && !rest.length) {
       list.append(el("p", "drawer-empty", st.error ? "Could not load chats." : "No chats yet. Start one with New chat."));
       return;

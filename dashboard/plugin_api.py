@@ -599,15 +599,19 @@ def _is_silence_marker(text: str) -> bool:
     return value in SILENCE_MARKERS
 
 
-def _plain_text(text: str) -> str:
-    """Markdown stripped, whitespace collapsed; an inline image becomes "Photo"."""
+def _search_plain_text(text: str) -> str:
+    """Markdown stripped, whitespace collapsed; an inline image becomes "Photo". Never truncated."""
     value = IMAGE_MD_RE.sub(" Photo ", str(text or ""))
     value = MEDIA_PATH_RE.sub(" Photo ", value)
     value = LINK_MD_RE.sub(r"\1", value)
     value = core.plain_markdown(value)  # only marks that format; `column_total` keeps its underscore
     value = re.sub(r"(?m)^\s{0,3}(?:[-+*]|\d+\.)\s+", "", value)  # list bullets
-    value = re.sub(r"\s+", " ", value).strip()
-    return value[:INBOX_MAX_TEXT]
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _plain_text(text: str) -> str:
+    """The Inbox's preview: _search_plain_text, capped at INBOX_MAX_TEXT."""
+    return _search_plain_text(text)[:INBOX_MAX_TEXT]
 
 
 def _inbox_item(row: sqlite3.Row, titles: dict[str, str]) -> dict[str, Any] | None:
@@ -1921,6 +1925,250 @@ async def delete_bookmark(item_id: int):
         if conn is not None:
             conn.close()
     return JSONResponse({"ok": True})
+
+
+# ---------- search ----------
+# One query across the app's chats: chat titles and the visible text of user and assistant messages. Every read comes
+# from state.db (read-only) with the Inbox's own scope and visibility rules, so a hit is always something the chat
+# draws and always opens. message_fts is a fast path when the store carries it; the LIKE scan underneath is the
+# fallback (an older schema, an FTS5 syntax error, or a mid-word substring FTS never indexes as a prefix).
+
+SEARCH_MAX_TOKENS = 6
+SEARCH_MAX_CHATS = 10
+SEARCH_MAX_LIMIT = 50
+SEARCH_SNIPPET_CHARS = 150
+
+
+def _search_snippet(text: str, tokens: list[str]) -> str:
+    """~150 chars around the first matching token, with an ellipsis where the text was trimmed."""
+    lower = text.lower()
+    at = next((lower.find(token) for token in tokens if lower.find(token) >= 0), 0)
+    start = max(0, at - (SEARCH_SNIPPET_CHARS // 3))
+    end = min(len(text), start + SEARCH_SNIPPET_CHARS)
+    start = max(0, end - SEARCH_SNIPPET_CHARS)
+    # Prefer whole words at both edges when that does not cut the match itself.
+    if start > 0:
+        space = text.find(" ", start)
+        if 0 <= space < at:
+            start = space + 1
+    if end < len(text):
+        space = text.rfind(" ", at + 1, end)
+        if space > at:
+            end = space
+    snippet = text[start:end].strip()
+    if start > 0:
+        snippet = "…" + snippet
+    if end < len(text):
+        snippet = snippet + "…"
+    return snippet
+
+
+def _search_tokens(q: str) -> list[str]:
+    return [token.lower() for token in q.strip().split()][:SEARCH_MAX_TOKENS]
+
+
+def _search_chats(conn: sqlite3.Connection, titles: dict[str, str], tokens: list[str]) -> list[dict[str, Any]]:
+    """The in-scope chats whose display title holds every token, newest activity first (max SEARCH_MAX_CHATS)."""
+    columns = _table_columns(conn, "sessions")
+    started = "started_at" if "started_at" in columns else "NULL AS started_at"
+    active = "last_active" if "last_active" in columns else "NULL AS last_active"
+    home = _home_id()
+    home_label = core.agent_identity()["home_label"]
+    chats: list[dict[str, Any]] = []
+    for row in conn.execute(f"SELECT id, title, {started}, {active} FROM sessions"):
+        sid = str(row["id"])
+        if sid not in titles:
+            continue
+        is_home = bool(home) and sid == home
+        display = home_label if is_home else (str(row["title"] or "") or "Untitled")
+        haystack = f"{display}\n{row['title'] or ''}".lower()
+        if not all(token in haystack for token in tokens):
+            continue
+        ts = float(row["last_active"] or row["started_at"] or 0)
+        chats.append({"session_id": sid, "title": display, "home": is_home, "ts": ts})
+    chats.sort(key=lambda chat: (chat["ts"], chat["session_id"]), reverse=True)
+    return chats[:SEARCH_MAX_CHATS]
+
+
+def _search_visible_text(row: sqlite3.Row) -> tuple[str, str] | None:
+    """(role, plain text) for a row the chat draws as a person or agent message, or None (the Inbox's rules)."""
+    role = str(row["role"] or "")
+    kind = str(row["display_kind"] or "")
+    display_role = "assistant"
+    if role == "user":
+        if kind == "job_delivery":
+            # Drawn on the agent's side, body without the job header, lifecycle notices skipped.
+            body = core.strip_cron_wrapper(JOB_PREFIX.sub("", _row_text(row), count=1).strip())
+            text = _policy.display_text(body, notice=True)
+            if not text or LIFECYCLE_NOTICE.match(text):
+                return None
+        else:
+            if kind == "hidden" or _model_only(row["display_metadata"]):
+                return None
+            text = core.strip_cron_wrapper(_row_text(row))
+            display_role = "user"
+    elif role == "assistant":
+        if kind in ("hidden", "failed_turn") or _model_only(row["display_metadata"]):
+            return None
+        if "finish_reason" in row.keys() and str(row["finish_reason"] or "") == "tool_calls":
+            return None
+        if "tool_calls" in row.keys():
+            calls = row["tool_calls"]
+            if calls and str(calls) not in ("", "[]"):
+                return None
+        text = _policy.display_text(_row_text(row))
+        if not text or _is_silence_marker(text):
+            return None
+    else:
+        return None  # tool rows, system rows: never drawn
+    plain = _search_plain_text(text)
+    return (display_role, plain) if plain else None
+
+
+SEARCH_COLUMNS = ("m.id, m.session_id, m.role, m.content, m.display_kind, m.display_metadata, m.timestamp,"
+                   " m.finish_reason, m.tool_calls")
+
+
+def _search_fts_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: list[str],
+                     visible: str, over: int) -> list[sqlite3.Row]:
+    """The FTS5 fast path, or [] when the store has no messages_fts or the query cannot run."""
+    try:
+        present = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='messages_fts'").fetchone()
+    except sqlite3.Error:
+        return []
+    if not present:
+        return []
+    marks = ",".join("?" for _ in session_ids)
+    # Every token is a quoted prefix, so punctuation (column_total, v0.2.1, quotes, -) never breaks FTS5 syntax.
+    phrase = " AND ".join('"' + token.replace('"', '""') + '"*' for token in tokens)
+    try:
+        return conn.execute(
+            f"SELECT {SEARCH_COLUMNS} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid"
+            f" WHERE m.session_id IN ({marks}) AND m.role IN ('user', 'assistant'){visible}"
+            " AND messages_fts MATCH ? ORDER BY m.timestamp DESC, m.id DESC LIMIT ?",
+            [*session_ids, phrase, over],
+        ).fetchall()
+    except sqlite3.Error as exc:
+        log.warning("search: FTS query failed, using LIKE: %s", exc)
+        return []
+
+
+def _search_like_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: list[str],
+                      visible: str, over: int) -> list[sqlite3.Row]:
+    """The plain scan: every token must appear somewhere in the content (the visible-text check follows)."""
+    marks = ",".join("?" for _ in session_ids)
+    clauses: list[str] = []
+    params: list[Any] = list(session_ids)
+    for token in tokens:
+        escaped = token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        clauses.append("LOWER(m.content) LIKE ? ESCAPE '\\'")
+        params.append(f"%{escaped}%")
+    return conn.execute(
+        f"SELECT {SEARCH_COLUMNS} FROM messages m WHERE m.session_id IN ({marks})"
+        f" AND m.role IN ('user', 'assistant'){visible} AND " + " AND ".join(clauses)
+        + " ORDER BY m.timestamp DESC, m.id DESC LIMIT ?",
+        [*params, over],
+    ).fetchall()
+
+
+def _search_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: list[str],
+                 limit: int) -> list[sqlite3.Row]:
+    """Candidate message rows in these chats holding every token, newest first (over-fetched, capped).
+
+    The FTS5 lane is the fast path; the LIKE lane runs when the store carries no messages_fts, the query raises, or
+    FTS found fewer than a page (a mid-word substring such as "total" in "column_total" is not an FTS prefix match).
+    Both lanes are merged by row id, so a hit found twice is listed once.
+    """
+    if not session_ids:
+        return []
+    columns = _table_columns(conn, "messages")
+    visible = " AND (m.active = 1 OR m.compacted = 1)" if {"active", "compacted"} <= columns else ""
+    over = max(120, limit * 6)
+    rows = _search_fts_rows(conn, session_ids, tokens, visible, over)
+    if len(rows) < limit:
+        seen = {int(row["id"]) for row in rows}
+        rows.extend(row for row in _search_like_rows(conn, session_ids, tokens, visible, over)
+                    if int(row["id"]) not in seen)
+    rows.sort(key=lambda row: (float(row["timestamp"] or 0), int(row["id"])), reverse=True)
+    return rows
+
+
+def _search_messages(conn: sqlite3.Connection, titles: dict[str, str], tokens: list[str],
+                     limit: int) -> list[dict[str, Any]]:
+    """Message hits across the in-scope chats, compaction-resolved, deduped and newest first."""
+    rows = _search_rows(conn, list(titles), tokens, limit)
+    if not rows:
+        return []
+    home = _home_id()
+    home_label = core.agent_identity()["home_label"]
+    ids = [int(row["id"]) for row in rows]
+    drawn = _drawn_ids(conn, ids)
+    by_id = {int(row["id"]): row for row in rows}
+    # A candidate carried forward by compaction is listed as the copy the chat draws, never as both.
+    missing = [drawn_id for row_id, drawn_id in drawn.items() if drawn_id != row_id and drawn_id not in by_id]
+    for start in range(0, len(missing), BOOKMARK_LOOKUP_CHUNK):
+        chunk = missing[start:start + BOOKMARK_LOOKUP_CHUNK]
+        marks = ",".join("?" for _ in chunk)
+        for row in conn.execute(
+                "SELECT m.id, m.session_id, m.role, m.content, m.display_kind, m.display_metadata, m.timestamp,"
+                f" m.finish_reason, m.tool_calls FROM messages m WHERE m.id IN ({marks})", chunk):
+            by_id[int(row["id"])] = row
+    hits: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        drawn_id = drawn.get(int(row["id"]), int(row["id"]))
+        row = by_id.get(drawn_id)
+        if row is None or drawn_id in hits:
+            continue
+        visible = _search_visible_text(row)
+        if visible is None:
+            continue
+        display_role, plain = visible
+        lower = plain.lower()
+        if not all(token in lower for token in tokens):
+            continue
+        sid = str(row["session_id"])
+        is_home = bool(home) and sid == home
+        thread = home_label if is_home else (titles.get(sid) or "Untitled")
+        hits[drawn_id] = {
+            "id": drawn_id,
+            "session_id": sid,
+            "thread": thread,
+            "home": is_home,
+            "role": display_role,
+            "ts": float(row["timestamp"] or 0),
+            "snippet": _search_snippet(plain, tokens),
+        }
+    items = sorted(hits.values(), key=lambda item: (item["ts"], item["id"]), reverse=True)
+    return items[:limit]
+
+
+@router.get("/search")
+async def search(q: str = "", limit: int = 30):
+    """Search chat titles and the visible text of user and assistant messages across the app's chats."""
+    if not q or not q.strip():
+        return JSONResponse({"chats": [], "messages": []})
+    try:
+        page_size = max(1, min(int(limit), SEARCH_MAX_LIMIT))
+    except (TypeError, ValueError):
+        page_size = 30
+    tokens = _search_tokens(q)
+    if not tokens:
+        return JSONResponse({"chats": [], "messages": []})
+    try:
+        conn = _inbox_conn()
+        try:
+            titles = _scope_titles(conn)
+            if not titles:
+                return JSONResponse({"chats": [], "messages": []})
+            chats = _search_chats(conn, titles, tokens)
+            messages = _search_messages(conn, titles, tokens, page_size)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        log.warning("search failed: %s", exc)
+        return JSONResponse({"detail": "search unavailable"}, status_code=503)
+    return JSONResponse({"chats": chats, "messages": messages})
 
 
 # ---------- gateway stops and starts (the main chat's restart lines) ----------
