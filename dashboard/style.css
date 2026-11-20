@@ -2613,8 +2613,9 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .slash-item { gap: 10px; padding: 6px 8px; flex: 0 0 auto; }
 /* The row Enter would pick: shown with a mouse or keyboard only; on touch it would read as pressed. */
 :where(:root:not([data-input="touch"])) .slash-item.active { background: var(--code-bg); }
-.slash-item .menu-icon { width: 30px; height: 30px; }
-.slash-item .menu-icon svg { width: 16px; height: 16px; stroke-width: 2.2; }
+/* The plain line icon, as in the pills: no disc, no gradient. */
+.slash-item .menu-icon { width: 24px; height: 30px; background: none; box-shadow: none; color: var(--fg); }
+.slash-item .menu-icon svg { width: 18px; height: 18px; stroke-width: 2; }
 .slash-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .slash-name, .slash-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slash-name { font-size: 15px; line-height: 20px; }
