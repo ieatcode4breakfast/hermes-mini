@@ -1659,6 +1659,12 @@ async def delete_todo(item_id: str):
 # Agent replies the person kept, across the app's chats. The store is one small JSON file of ids; every read resolves
 # the id against state.db with the Inbox's own rules, so a bookmark whose chat or message is gone is simply left out.
 # A missing or corrupt file reads as an empty list, never an error, and every write is atomic.
+#
+# Context compaction archives every row (active 0, compacted 1: still drawn) and writes the messages it carries forward
+# again as new rows: new id, same chat, same message_uid and, since Hermes's display slots, the same display_order, so
+# the chat draws the new copy in the original's place (the live row wins its slot). A stored id is therefore read as
+# "this message": every route follows it to the row the chat draws now (_drawn_ids), so the list opens the copy, the
+# reply's button shows it as kept, and keeping or removing the copy acts on the stored original.
 
 MAX_BOOKMARKS = 500
 BOOKMARK_LOOKUP_CHUNK = 200
@@ -1707,12 +1713,46 @@ def _write_bookmarks(items: list[dict[str, Any]]) -> None:
     tmp.replace(path)
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+    except sqlite3.Error:
+        return set()
+
+
+def _drawn_ids(conn: sqlite3.Connection, ids: list[int]) -> dict[int, int]:
+    """Stored id -> the id of the row the chat draws for that message now (the id itself unless compaction carried it
+    forward). A row archived by compaction (active 0, compacted 1) whose message has an active copy in the same chat and
+    the same display slot is drawn as that copy; the newest such copy wins. A copy in a slot of its own (older Hermes)
+    is drawn beside the original, so the original keeps its id. A schema without message_uid or display_order maps
+    every id to itself."""
+    drawn = {item_id: item_id for item_id in ids}
+    if not ids or not {"message_uid", "display_order", "active", "compacted"} <= _table_columns(conn, "messages"):
+        return drawn
+    for start in range(0, len(ids), BOOKMARK_LOOKUP_CHUNK):
+        chunk = ids[start:start + BOOKMARK_LOOKUP_CHUNK]
+        marks = ",".join("?" for _ in chunk)
+        for original, copy in conn.execute(
+            "SELECT o.id, MAX(c.id) FROM messages o JOIN messages c"
+            " ON c.session_id = o.session_id AND c.message_uid = o.message_uid AND c.display_order = o.display_order"
+            " AND c.id > o.id AND c.active = 1"
+            f" WHERE o.id IN ({marks}) AND o.active = 0 AND o.compacted = 1 AND o.message_uid IS NOT NULL"
+            " GROUP BY o.id",
+            chunk,
+        ):
+            if copy is not None:
+                drawn[int(original)] = int(copy)
+    return drawn
+
+
 def _bookmark_items(conn: sqlite3.Connection, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The Inbox item for each stored id that still resolves, in the records' order, plus when it was bookmarked."""
+    """The Inbox item for each stored id that still resolves, in the records' order, plus when it was bookmarked. Each
+    item is the row the chat draws now (_drawn_ids); two stored ids that are now one drawn message are listed once."""
     titles = _scope_titles(conn)
     if not titles or not records:
         return []
-    ids = [record["id"] for record in records]
+    drawn = _drawn_ids(conn, [record["id"] for record in records])
+    ids = list(dict.fromkeys(drawn[record["id"]] for record in records))
     by_id: dict[int, dict[str, Any]] = {}
     for start in range(0, len(ids), BOOKMARK_LOOKUP_CHUNK):
         chunk = ids[start:start + BOOKMARK_LOOKUP_CHUNK]
@@ -1722,12 +1762,13 @@ def _bookmark_items(conn: sqlite3.Connection, records: list[dict[str, Any]]) -> 
             if item is not None:
                 by_id[item["id"]] = item
     items: list[dict[str, Any]] = []
+    listed: set[int] = set()
     for record in records:
-        item = by_id.get(record["id"])
-        if item is None:
+        item = by_id.get(drawn[record["id"]])
+        if item is None or item["id"] in listed:
             continue
-        item["bookmarked_at"] = record["added"]
-        items.append(item)
+        listed.add(item["id"])
+        items.append({**item, "bookmarked_at": record["added"]})
     return items
 
 
@@ -1786,10 +1827,30 @@ async def get_bookmarks():
 
 @router.get("/bookmarks/ids")
 async def get_bookmark_ids():
-    """Every bookmarked id. File only, for the action row's button state."""
+    """Every bookmarked id, for the action row's button state: the stored ids plus the rows the chat draws for them
+    now (_drawn_ids), so a reply compaction carried forward still shows as kept. Without state.db, the stored ids."""
     with _BOOKMARKS_LOCK:
         records = _read_bookmarks()
-    return JSONResponse({"ids": [record["id"] for record in records]})
+    ids = [record["id"] for record in records]
+    if ids:
+        try:
+            conn = _inbox_conn()
+            try:
+                ids = list(dict.fromkeys([*ids, *_drawn_ids(conn, ids).values()]))
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            log.warning("bookmark ids lookup failed: %s", exc)
+    return JSONResponse({"ids": ids})
+
+
+def _kept_as(conn: sqlite3.Connection | None, records: list[dict[str, Any]], item_id: int) -> set[int]:
+    """The stored ids that are this message: the id itself, and any stored original the chat now draws as item_id."""
+    stored = {record["id"] for record in records}
+    found = {item_id} & stored
+    if conn is not None and stored:
+        found.update(original for original, drawn in _drawn_ids(conn, sorted(stored)).items() if drawn == item_id)
+    return found
 
 
 @router.post("/bookmarks")
@@ -1801,12 +1862,13 @@ async def add_bookmark(request: Request):
     item_id = body.get("id")
     if isinstance(item_id, bool) or not isinstance(item_id, int) or item_id <= 0:
         return JSONResponse({"detail": "id must be a positive whole message id"}, status_code=400)
-    with _BOOKMARKS_LOCK:
-        if any(record["id"] == item_id for record in _read_bookmarks()):
-            return JSONResponse({"ok": True, "id": item_id})
     try:
         conn = _inbox_conn()
         try:
+            # Already kept, under this id or as the original a compaction copy stands for: nothing to add.
+            with _BOOKMARKS_LOCK:
+                if _kept_as(conn, _read_bookmarks(), item_id):
+                    return JSONResponse({"ok": True, "id": item_id})
             titles = _scope_titles(conn)
             rows = _candidate_rows(conn, list(titles), only_ids=[item_id], limit=1, by_id=True)
             item = next((found for found in (_inbox_item(row, titles) for row in rows) if found is not None), None)
@@ -1834,16 +1896,30 @@ async def add_bookmark(request: Request):
 
 @router.delete("/bookmarks/{item_id}")
 async def delete_bookmark(item_id: int):
-    """Removes a bookmark. Unknown ids are a no-op: a tap on one already gone is still what the person wanted."""
+    """Removes a bookmark, given its stored id or the id the chat draws it as now (a compaction copy). Unknown ids are
+    a no-op: a tap on one already gone is still what the person wanted."""
+    try:
+        conn = _inbox_conn()
+    except sqlite3.Error as exc:
+        log.warning("bookmark lookup failed: %s", exc)
+        conn = None
     try:
         with _BOOKMARKS_LOCK:
             records = _read_bookmarks()
-            kept = [record for record in records if record["id"] != item_id]
+            try:
+                gone = _kept_as(conn, records, item_id)
+            except sqlite3.Error as exc:
+                log.warning("bookmark lookup failed: %s", exc)
+                gone = {item_id}
+            kept = [record for record in records if record["id"] not in gone]
             if len(kept) != len(records):
                 _write_bookmarks(kept)
     except Exception as exc:  # noqa: BLE001
         log.warning("bookmark delete failed: %s", exc)
         return JSONResponse({"detail": "could not delete the bookmark"}, status_code=500)
+    finally:
+        if conn is not None:
+            conn.close()
     return JSONResponse({"ok": True})
 
 

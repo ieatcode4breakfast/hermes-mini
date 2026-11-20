@@ -105,6 +105,85 @@ class BookmarksRouteTest(DisposableHome):
         self.assertEqual(self.client.delete(f"{self.BASE}/999").status_code, 200)
         self.assertEqual([item["id"] for item in self.items()], [2])
 
+    def _compaction_db(self):
+        """The real store's shape for compaction: rows carry message_uid and a display slot (display_order)."""
+        conn = sqlite3.connect(self.home / "state.db")
+        self.addCleanup(conn.close)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,"
+            " display_kind TEXT, display_metadata TEXT, timestamp REAL, finish_reason TEXT, tool_calls TEXT,"
+            " active INTEGER, compacted INTEGER, message_uid TEXT, display_order INTEGER)"
+        )
+        conn.execute("CREATE TABLE session_turn_leases (conversation_id TEXT, expires_at REAL, acquired_at REAL)")
+        conn.execute("INSERT INTO sessions VALUES ('chat', 'Reminders', 0)")
+        conn.commit()
+        self.client.post(self.CHATS, json={"id": "chat"})
+        return conn
+
+    def _reply(self, conn, row_id, text, uid, slot, active=1, compacted=0):
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, timestamp, finish_reason, active, compacted,"
+            " message_uid, display_order) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (row_id, "chat", "assistant", text, 1_800_000_000.0, "stop", active, compacted, uid, slot),
+        )
+        conn.commit()
+
+    def _compact(self, conn):
+        """What Hermes's compaction does to the rows: archive every active one (still drawn)."""
+        conn.execute("UPDATE messages SET active = 0, compacted = 1 WHERE session_id = 'chat' AND active = 1")
+        conn.commit()
+
+    def test_a_bookmark_follows_its_reply_through_compaction(self):
+        conn = self._compaction_db()
+        self._reply(conn, 1, "Deploy is green.", "u1", 1)
+        self._reply(conn, 2, "Tests pass.", "u2", 2)
+        self.assertEqual(self.add(1).status_code, 200)
+        self._compact(conn)
+        # Carried forward: a new row for the same message in the same slot, so the chat draws the copy (id 9) instead.
+        self._reply(conn, 9, "Deploy is green.", "u1", 1)
+        items = self.items()
+        self.assertEqual([item["id"] for item in items], [9])
+        self.assertIn("Deploy is green", items[0]["text"])
+        self.assertEqual(sorted(self.ids()), [1, 9])  # the copy's button shows it as kept
+        # Keeping the copy again adds nothing; the store still holds the original.
+        self.assertEqual(self.add(9).status_code, 200)
+        self.assertEqual([item["id"] for item in self.store()["items"]], [1])
+        # A second compaction carries it forward again: still one item, now the newest copy.
+        self._compact(conn)
+        self._reply(conn, 14, "Deploy is green.", "u1", 1)
+        self.assertEqual([item["id"] for item in self.items()], [14])
+        # Removing it by the id the chat draws removes the stored original.
+        self.assertEqual(self.client.delete(f"{self.BASE}/14").status_code, 200)
+        self.assertEqual(self.store()["items"], [])
+        self.assertEqual(self.items(), [])
+
+    def test_a_summarised_reply_keeps_its_own_id(self):
+        conn = self._compaction_db()
+        self._reply(conn, 1, "Old reply.", "u1", 1)
+        self.add(1)
+        self._compact(conn)  # summarised away: archived, still drawn, no copy
+        self.assertEqual([item["id"] for item in self.items()], [1])
+        self.assertEqual(self.ids(), [1])
+        # An older Hermes's copy in a slot of its own is drawn beside the original: the bookmark stays on the original.
+        self._reply(conn, 9, "Old reply.", "u1", 9)
+        self.assertEqual([item["id"] for item in self.items()], [1])
+        self.assertEqual(self.ids(), [1])
+
+    def test_two_bookmarks_for_one_message_are_listed_once(self):
+        conn = self._compaction_db()
+        self._reply(conn, 1, "Deploy is green.", "u1", 1)
+        self.add(1)
+        self._compact(conn)
+        self._reply(conn, 9, "Deploy is green.", "u1", 1)
+        # A store written before this fix could hold both the original and its copy.
+        data = self.store()
+        data["items"].append({"id": 9, "session_id": "chat", "added": data["items"][0]["added"] + 5})
+        (self.home / "data" / "hermes-mini" / "bookmarks.json").write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual([item["id"] for item in self.items()], [9])
+        self.assertEqual(self.client.delete(f"{self.BASE}/9").status_code, 200)
+        self.assertEqual(self.store()["items"], [])
+
     def test_add_is_idempotent(self):
         conn = self._db()
         self._add(conn, 1, "Keep this one.")

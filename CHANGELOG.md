@@ -67,6 +67,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Bookmarks follow a reply through context compaction. Compaction writes the replies it carries forward again
+  under new ids, and the chat then draws the copy; a bookmark on the original showed as not kept on that reply, could
+  be added a second time, and opened the chat without finding it. Every bookmark route now follows a stored id to the
+  row the chat draws (same chat, `message_uid` and display slot), so the list opens the copy, the button shows it as
+  kept, and keeping or removing it acts on the stored bookmark. Needs a dashboard restart to load.
+
 - A passage no longer appears twice in a reply when Hermes re-sends part of it (a retried model call). The app
   uses the turn, segment and offset Hermes stamps on every streamed chunk and keeps only text it has not shown.
 - Reloading mid-reply no longer cuts the reply off: the text streamed so far comes back in one bubble and the rest
