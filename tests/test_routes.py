@@ -754,6 +754,28 @@ class DataRoutesTest(RouteTestCase):
         self.assertIn(blank["id"], [item["id"] for item in blank["items"] if item["text"] == ""])
         self.assertTrue((self.home / "data" / "hermes-mini" / "todos.json").is_file())
 
+    def test_todos_tracked_flag_defaults_true_and_toggles(self):
+        created = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "Parent item"})
+        self.assertEqual(created.status_code, 200, created.text)
+        item_id = created.json()["id"]
+        self.assertTrue(created.json()["items"][0]["tracked"])
+
+        untracked = self.client.patch(f"/api/plugins/hermes-mini/todos/{item_id}", json={"tracked": False})
+        self.assertEqual(untracked.status_code, 200, untracked.text)
+        self.assertFalse(untracked.json()["items"][0]["tracked"])
+
+        reread = self.client.get("/api/plugins/hermes-mini/todos").json()["items"]
+        self.assertFalse(reread[0]["tracked"])
+
+        retracked = self.client.patch(f"/api/plugins/hermes-mini/todos/{item_id}", json={"tracked": True})
+        self.assertEqual(retracked.status_code, 200, retracked.text)
+        self.assertTrue(retracked.json()["items"][0]["tracked"])
+
+        bad_post = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "Bad", "tracked": "no"})
+        self.assertEqual(bad_post.status_code, 400)
+        bad_patch = self.client.patch(f"/api/plugins/hermes-mini/todos/{item_id}", json={"tracked": 1})
+        self.assertEqual(bad_patch.status_code, 400)
+
     def test_seen_store_is_created_on_first_read_and_kept_outside_package(self):
         body = self.client.get("/api/plugins/hermes-mini/seen").json()
         self.assertIn("seen", body)

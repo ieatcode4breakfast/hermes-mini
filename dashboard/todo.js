@@ -5,7 +5,7 @@
 // history.back(), and a Back press pops it and only closes this panel, so Back never leaves the app.
 
 import { confirmDialog } from "./confirm.js";
-import { showToast } from "./toast.js";
+import { showToast, openPopover, closePopover } from "./toast.js";
 
 const TODOS_API = "/api/plugins/hermes-mini/todos";
 
@@ -35,6 +35,20 @@ const CHECK_ICON = ["M5 12l4.5 4.5L19 7"];
 const GRIP_ICON = ["M9 6h.01", "M15 6h.01", "M9 12h.01", "M15 12h.01", "M9 18h.01", "M15 18h.01"];
 const DELETE_ICON = ["M6 6l12 12", "M18 6L6 18"];
 const PLUS_ICON = ["M12 5v14", "M5 12h14"];
+const EYE_ICON = [
+  "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z",
+  "M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6Z",
+];
+const EYE_OFF_ICON = [
+  "M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68",
+  "M6.61 6.61A13.53 13.53 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61",
+  "M9.88 9.88a3 3 0 1 0 4.24 4.24",
+  "M2 2l20 20",
+];
+const DOTS_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+const TRASH_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>';
+const EYE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><path d="M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6Z"/></svg>';
+const EYE_OFF_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M2 2l20 20"/></svg>';
 
 // The server's list, kept to the fields the panel uses. A missing or odd field never breaks a render. "indent" is one
 // level of nesting at most: 1 is a child of the nearest open item above it, anything else is top
@@ -47,6 +61,7 @@ function normalise(raw) {
     created: Number(raw.created) || 0,
     done_at: raw.done === true && Number(raw.done_at) ? Number(raw.done_at) : null,
     indent: raw.indent === 1 ? 1 : 0,
+    tracked: raw.tracked !== false,
   };
 }
 
@@ -69,6 +84,108 @@ export function createTodo({ api }) {
   let items = []; // last list the server returned, in stored order (newest open item first)
   let backPending = null; // promise: a history.back() from an in-app close is still in flight
   let resolveBack = null;
+
+  // ---------- parent row menu (⋮): Track/Untrack and Delete, top-layer popover like schedules.js ----------
+  const menuScrim = document.createElement("div");
+  menuScrim.className = "scrim todo-menu-scrim";
+  menuScrim.setAttribute("aria-hidden", "true");
+  menuScrim.setAttribute("popover", "manual");
+  const menuEl = document.createElement("div");
+  menuEl.className = "row-menu todo-menu";
+  menuEl.setAttribute("role", "menu");
+  menuEl.setAttribute("aria-label", "To-do actions");
+  menuEl.setAttribute("popover", "manual");
+  document.body.append(menuScrim, menuEl);
+  let menu = null; // { item, anchor, row } while open
+  let menuBack = null;
+  let resolveMenuBack = null;
+
+  function menuItem(label, iconSvg, pick, danger = false) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `row-menu-item${danger ? " danger" : ""}`;
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `${iconSvg}<span>${label}</span>`;
+    button.addEventListener("click", () => {
+      void closeMenu().then(pick);
+    });
+    return button;
+  }
+
+  function placeMenu(anchor) {
+    const r = anchor.getBoundingClientRect();
+    const w = menuEl.offsetWidth;
+    const h = menuEl.offsetHeight;
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - 6 - h);
+    const left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8);
+    menuEl.style.left = `${left}px`;
+    menuEl.style.top = `${top}px`;
+  }
+
+  function openMenu(item, rowEl) {
+    if (menu || item.pending || item.draft) return;
+    if (menuBack) {
+      menuBack.then(() => openMenu(item, rowEl));
+      return;
+    }
+    const anchor = rowEl.querySelector(".todo-dots") || rowEl;
+    menu = { item, anchor, row: rowEl };
+    const tracked = item.tracked !== false;
+    const choices = [
+      menuItem(tracked ? "Untrack" : "Track", tracked ? EYE_OFF_SVG : EYE_SVG, () => void toggleTrack(item)),
+      menuItem("Delete", TRASH_SVG, () => void remove(item), true),
+    ];
+    menuEl.replaceChildren(...choices);
+    rowEl.classList.add("menu-open");
+    anchor.setAttribute("aria-expanded", "true");
+    openPopover(menuScrim);
+    openPopover(menuEl);
+    placeMenu(anchor);
+    menuScrim.classList.add("open");
+    menuEl.classList.add("open");
+    if (!(history.state && history.state.hermesMiniTodoMenu === true)) history.pushState({ hermesMiniTodoMenu: true }, "");
+    choices[0].focus({ preventScroll: true });
+  }
+
+  function closeMenu({ viaPop = false } = {}) {
+    const m = menu;
+    if (!m) return Promise.resolve();
+    menu = null;
+    m.row.classList.remove("menu-open");
+    m.anchor.setAttribute("aria-expanded", "false");
+    menuScrim.classList.remove("open");
+    menuEl.classList.remove("open");
+    closePopover(menuScrim, 160);
+    closePopover(menuEl, 160);
+    if (m.anchor.isConnected) m.anchor.focus({ preventScroll: true });
+    if (renderHeld && !editing && !drag) render();
+    if (!viaPop && history.state && history.state.hermesMiniTodoMenu === true) {
+      menuBack = new Promise((resolve) => {
+        resolveMenuBack = resolve;
+      });
+      history.back();
+      return menuBack;
+    }
+    return Promise.resolve();
+  }
+
+  menuScrim.addEventListener("click", () => void closeMenu());
+  menuEl.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      void closeMenu();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const choices = [...menuEl.querySelectorAll(".row-menu-item")];
+    const i = choices.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1
+      : (i + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
+    choices[next].focus();
+  });
 
   // ---------- blocks and sections ----------
   // A block is a parent (indent 0) plus the indent-1 rows directly below it. A block's section follows its parent, so a
@@ -117,9 +234,9 @@ export function createTodo({ api }) {
   // ---------- rendering ----------
 
   function render() {
-    // A server answer that lands mid-edit must not pull the input out from under the fingers: the row keeps its input
-    // and the skipped render happens once the edit (or drag) ends.
-    if (editing || drag) {
+    // A server answer that lands mid-edit, mid-drag or with the row menu open must not pull the row out from under the
+    // fingers or detach the menu's anchor: the skipped render runs as soon as that ends.
+    if (editing || drag || menu) {
       renderHeld = true;
       return;
     }
@@ -130,9 +247,9 @@ export function createTodo({ api }) {
     const active = blocksOf().filter((block) => !block.parent.done);
     const done = doneBlocks();
 
-    // The badge counts the ACTIVE top-level items only: a child never counts, ticked or not, and a draft is not a
-    // to-do yet (rule 10, the person, 7 Nov 2026).
-    const real = active.filter((block) => !block.parent.draft).length;
+    // The badge counts tracked ACTIVE top-level items only: a child never counts, ticked or not, an untracked parent
+    // is skipped, and a draft is not a to-do yet (rule 10, the person, 7 Nov 2026).
+    const real = active.filter((block) => !block.parent.draft && block.parent.tracked !== false).length;
     countEl.textContent = real > 99 ? "99+" : String(real);
     countEl.hidden = real === 0;
 
@@ -226,18 +343,45 @@ export function createTodo({ api }) {
       }
       startEdit(item, text, event);
     });
-    const del = el("button", "todo-del");
-    del.type = "button";
-    del.setAttribute("aria-label", "Delete to-do");
-    del.title = "Delete";
-    del.append(svgIcon(DELETE_ICON));
-    // Deleting the row being edited must not save it first: a draft's commit would replace its id, and the tap would
-    // then miss and leave the row behind.
-    del.addEventListener("pointerdown", () => {
-      if (editing && editing.id === item.id) stopEdit();
-    });
-    del.addEventListener("click", () => void remove(item));
-    node.append(check, text, del);
+    if (section === "active" && item.indent === 0) {
+      node.append(check, text);
+      if (item.tracked === false) {
+        const badge = el("span", "todo-untracked-icon");
+        badge.setAttribute("aria-label", "Untracked");
+        badge.title = "Untracked";
+        badge.append(svgIcon(EYE_OFF_ICON));
+        node.append(badge);
+      }
+      const dots = el("button", "todo-dots");
+      dots.type = "button";
+      dots.setAttribute("aria-label", "To-do actions");
+      dots.setAttribute("aria-haspopup", "menu");
+      dots.setAttribute("aria-expanded", "false");
+      dots.title = "More";
+      dots.innerHTML = DOTS_SVG;
+      dots.addEventListener("pointerdown", () => {
+        if (editing) pendingTap = { kind: "menu", item, at: performance.now() };
+      });
+      dots.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (drag || performance.now() < suppressClickUntil || item.draft || item.pending) return;
+        openMenu(item, node);
+      });
+      node.append(dots);
+    } else {
+      const del = el("button", "todo-del");
+      del.type = "button";
+      del.setAttribute("aria-label", "Delete to-do");
+      del.title = "Delete";
+      del.append(svgIcon(DELETE_ICON));
+      // Deleting the row being edited must not save it first: a draft's commit would replace its id, and the tap would
+      // then miss and leave the row behind.
+      del.addEventListener("pointerdown", () => {
+        if (editing && editing.id === item.id) stopEdit();
+      });
+      del.addEventListener("click", () => void remove(item));
+      node.append(check, text, del);
+    }
     if (section === "active") {
       // The drag grip left of the box is the only drag handle: always
       // shown, mouse and touch alike. A draft shows it but cannot be dragged until it is saved.
@@ -336,7 +480,7 @@ export function createTodo({ api }) {
     draftSeq += 1;
     return {
       id: `draft-${Date.now().toString(36)}-${draftSeq}`, text, done: false, created: 0, done_at: null,
-      indent: indent === 1 ? 1 : 0, draft: true,
+      indent: indent === 1 ? 1 : 0, tracked: true, draft: true,
     };
   }
 
@@ -523,6 +667,19 @@ export function createTodo({ api }) {
       body: JSON.stringify(body),
     })));
     if (results.some((result) => result !== true)) await failed("Couldn't save the to-do");
+  }
+
+  async function toggleTrack(item) {
+    const live = items.find((entry) => entry.id === item.id) || item;
+    if (live.pending || live.draft) return;
+    const next = live.tracked === false;
+    items = items.map((entry) => (entry.id === item.id ? { ...entry, tracked: next } : entry));
+    render();
+    const result = await send(`${TODOS_API}/${encodeURIComponent(item.id)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracked: next }),
+    });
+    if (result !== true) await failed("Couldn't save the to-do");
   }
 
   async function remove(item) {
@@ -840,6 +997,12 @@ export function createTodo({ api }) {
     if (!tap || performance.now() - tap.at > 900 || !open || drag || editing) return;
     if (tap.kind === "add") {
       startDraft();
+      return;
+    }
+    if (tap.kind === "menu") {
+      const target = items.find((entry) => entry.id === tap.item.id && !entry.pending && !entry.draft);
+      const targetRow = target ? rowNodeFor(target.id) : null;
+      if (target && targetRow) openMenu(target, targetRow);
       return;
     }
     if (tap.item.id === committedId) return;
@@ -1336,6 +1499,8 @@ export function createTodo({ api }) {
   // a promise that settles once the entry is gone, so another panel can open without racing this one's history.back().
   function closePanel({ viaPop = false } = {}) {
     if (!open) return Promise.resolve();
+    if (menu && !viaPop) return closeMenu().then(() => closePanel());
+    if (menu) void closeMenu({ viaPop: true });
     if (drag) finishDrag(false);
     cancelPress();
     if (editing) finishEdit(editing.span.textContent); // closing saves the text the same way leaving the field does
@@ -1361,12 +1526,17 @@ export function createTodo({ api }) {
   $("todoBack").addEventListener("click", () => closePanel());
   scrim.addEventListener("click", () => closePanel());
 
+  const rePlaceMenu = () => {
+    if (menu && menu.anchor.isConnected) placeMenu(menu.anchor);
+  };
+  window.addEventListener("resize", rePlaceMenu);
   if (window.visualViewport) {
     const reposition = () => {
       if (open) {
         place();
         if (editing) revealEditing();
       }
+      rePlaceMenu();
     };
     window.visualViewport.addEventListener("resize", reposition);
     window.visualViewport.addEventListener("scroll", reposition);
@@ -1375,6 +1545,19 @@ export function createTodo({ api }) {
   // Its own history entry. The popstate from our history.back() only settles the pending close; a Back press closes the
   // panel and leaves whatever is underneath open.
   window.addEventListener("popstate", (event) => {
+    if (resolveMenuBack) {
+      const resolve = resolveMenuBack;
+      resolveMenuBack = null;
+      menuBack = null;
+      resolve();
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (menu && !(event.state && event.state.hermesMiniTodoMenu === true)) {
+      void closeMenu({ viaPop: true });
+      event.stopImmediatePropagation();
+      return;
+    }
     if (resolveBack) {
       const resolve = resolveBack;
       resolveBack = null;
@@ -1408,6 +1591,14 @@ export function createTodo({ api }) {
           event.preventDefault();
           event.stopPropagation();
           cancelDrag();
+        }
+        return;
+      }
+      if (menu) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          void closeMenu();
         }
         return;
       }

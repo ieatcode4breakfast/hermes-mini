@@ -1443,6 +1443,7 @@ def _read_todos() -> list[dict[str, Any]]:
             "created": int(created) if isinstance(created, (int, float)) and not isinstance(created, bool) else 0,
             "done_at": int(done_at) if isinstance(done_at, (int, float)) and not isinstance(done_at, bool) else None,
             "indent": 1 if _todo_indent(raw.get("indent")) == 1 else 0,
+            "tracked": raw.get("tracked") is not False,
         })
     return items[:MAX_TODO_ITEMS]
 
@@ -1504,13 +1505,16 @@ async def add_todo(request: Request):
     indent = _todo_indent(body.get("indent", 0))
     if indent is None:
         return JSONResponse({"detail": "indent must be 0 or 1"}, status_code=400)
+    tracked = body.get("tracked", True)
+    if "tracked" in body and not isinstance(tracked, bool):
+        return JSONResponse({"detail": "tracked must be true or false"}, status_code=400)
     try:
         with _TODOS_LOCK:
             items = _read_todos()
             if len(items) >= MAX_TODO_ITEMS:
                 return JSONResponse({"detail": "the to-do list is full"}, status_code=409)
             item = {"id": secrets.token_hex(6), "text": text, "done": False,
-                    "created": int(time.time()), "done_at": None, "indent": indent}
+                    "created": int(time.time()), "done_at": None, "indent": indent, "tracked": tracked}
             active = _todo_active_rows(items) if index is not None else []
             if index is None:
                 # Newest on top: the stored order is the display order.
@@ -1637,6 +1641,9 @@ async def update_todo(item_id: str, request: Request):
         indent = _todo_indent(body.get("indent"))
         if indent is None:
             return JSONResponse({"detail": "indent must be 0 or 1"}, status_code=400)
+    tracked = body.get("tracked")
+    if "tracked" in body and not isinstance(tracked, bool):
+        return JSONResponse({"detail": "tracked must be true or false"}, status_code=400)
     try:
         with _TODOS_LOCK:
             items = _read_todos()
@@ -1647,6 +1654,8 @@ async def update_todo(item_id: str, request: Request):
                 item["text"] = text
             if indent is not None:
                 item["indent"] = indent
+            if isinstance(tracked, bool):
+                item["tracked"] = tracked
             toggled = isinstance(done, bool)
             if toggled:
                 _set_todo_done(item, done, int(time.time()))

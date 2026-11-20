@@ -1079,7 +1079,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   position: fixed; inset: 0; z-index: var(--z-drawer-scrim); background: var(--scrim); touch-action: none;
   opacity: 0; visibility: hidden; transition: opacity 200ms ease-in, visibility 0s linear 200ms;
 }
-.scrim:not(.row-menu-scrim):not(.msg-menu-scrim):not(.sched-menu-scrim) {
+.scrim:not(.row-menu-scrim):not(.msg-menu-scrim):not(.sched-menu-scrim):not(.todo-menu-scrim) {
   -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
 }
 .scrim.open { opacity: 1; visibility: visible; transition: opacity 260ms ease-out, visibility 0s; }
@@ -1435,6 +1435,29 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 :where(:root[data-input="mouse"]) .todo-row:hover .todo-del,
 :where(:root[data-input="mouse"]) .todo-del:focus-visible { opacity: 1; }
 :where(:root[data-input="mouse"]) .todo-del:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* Parent to-do row menu (⋮): quiet on a computer until hovered/focused/open; always visible on touch. */
+.todo-untracked-icon {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 28px;
+  margin: -3px -4px -3px 0; color: var(--muted); opacity: 0.55;
+}
+.todo-untracked-icon svg { width: 14px; height: 14px; }
+.todo-dots {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px;
+  margin: -3px -4px -3px 0; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+  transition: opacity 120ms ease-out;
+}
+.todo-dots svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.todo-dots:hover, .todo-dots:focus-visible, .todo-row.menu-open .todo-dots {
+  background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg);
+}
+:where(:root[data-input="mouse"]) .todo-dots { opacity: 0; }
+:where(:root[data-input="mouse"]) .todo-row:hover .todo-dots,
+:where(:root[data-input="mouse"]) .todo-row.menu-open .todo-dots,
+:where(:root[data-input="mouse"]) .todo-dots:focus-visible { opacity: 1; }
+.todo-row.draft .todo-dots { display: none; }
+.todo-menu-scrim { background: transparent; }
+.todo-menu { min-width: 150px; transform-origin: top right; }
+.todo-menu .row-menu-item svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .todo-done { margin-top: 12px; padding-top: 8px; }
 .todo-done-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 0; }
 .todo-done-label { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
@@ -2263,7 +2286,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .rename-submit:active:not(:disabled), .confirm-submit:active:not(:disabled) { transform: scale(0.97); }
 /* Quiet icon buttons and menu rows: the hover and press tints ease in instead of snapping. Opacity is listed because
    some of these also fade in on row hover. */
-.msg-act, .bubble .code-copy, .chat-dots, .chat-reset, .group-action, .todo-close, .todo-del, .todo-clear, .todo-additem,
+.msg-act, .bubble .code-copy, .chat-dots, .chat-reset, .group-action, .todo-close, .todo-dots, .todo-del, .todo-clear, .todo-additem,
 .inbox-close, .inbox-markall, .inbox-row, .inbox-toggle, .edit-cancel, .dictate-cancel, .menu-item, .row-menu-item,
 .theme-switch button, .push-btn, .bubble-toggle, .drawer-new-icon {
   transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease-out, border-color 140ms ease, transform 150ms var(--ease-spring);
