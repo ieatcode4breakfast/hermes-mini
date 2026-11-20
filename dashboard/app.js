@@ -1059,16 +1059,16 @@ async function currentServerThreadRow() {
 // Creates the home thread and makes it live here. Callers decide whether it is the chat on screen.
 async function createThread() {
   const created = await rpc("session.create", {});
-  state.liveSid = created.session_id;
+  if (!state.viewedUnsent) state.liveSid = created.session_id;
   state.homeId = created.stored_session_id;
-  modelUi.setInfo(created.info);
+  if (!state.viewedUnsent) modelUi.setInfo(created.info);
   safeStorageSet(STORE_KEY, state.homeId);
   const winner = await registerAppChat(state.homeId, true);
   if (winner && winner !== state.homeId) {
     // Another device claimed the home first: discard this empty row and adopt the winner.
     await rpc("session.archive", { session_id: created.stored_session_id, archived: true }).catch(() => {});
     state.homeId = winner;
-    state.liveSid = null;
+    if (!state.viewedUnsent) state.liveSid = null;
     safeStorageSet(STORE_KEY, winner);
     return false; // resume the other device's thread
   }
@@ -1091,6 +1091,32 @@ async function registerAppChat(id, home = false) {
   } catch {
     return "";
   }
+}
+
+// Registers a chat started from New chat: if no real main chat exists yet on the server (none recorded, or the
+// startup placeholder was never saved), claim this chat as main chat; otherwise register it as a side chat.
+async function registerNewChat(id) {
+  if (!id) return;
+  try {
+    const existing = await currentServerThreadRow();
+    if (!existing) {
+      const winner = await registerAppChat(id, true);
+      if (winner) {
+        state.homeId = winner;
+        safeStorageSet(STORE_KEY, winner);
+        updateCaption();
+        refreshDockedDrawer();
+        return;
+      }
+    } else if (existing.id && existing.id !== state.homeId) {
+      state.homeId = existing.id;
+      safeStorageSet(STORE_KEY, existing.id);
+      updateCaption();
+    }
+  } catch {
+    /* lookup failed: still register the chat so it stays listed in the drawer */
+  }
+  await registerAppChat(id);
 }
 
 // Finds the recorded home thread on the server, or creates one. Returns true when created.
@@ -1177,6 +1203,7 @@ async function openFreshChat() {
   state.liveSid = created.session_id;
   state.viewedTitle = "";
   state.ready = true;
+  await registerNewChat(created.stored_session_id);
   persistView();
   updateCaption();
   void modelUi.afterCreate();
@@ -5833,13 +5860,14 @@ async function send() {
     const full = [outgoing, ...refs].filter(Boolean).join("\n");
     state.localStartAt = Date.now(); // the message.start that follows is ours, not another device's
     await rpc("prompt.submit", { session_id: state.liveSid, text: full });
-    registerAppChat(state.viewedId);
+    const chatId = state.viewedId;
     if (state.viewedUnsent) {
       // The first message saves the chat on the server, so from now on its real id is remembered for a reload.
       state.viewedUnsent = false;
       persistView();
       refreshDockedDrawer();
     }
+    void registerAppChat(chatId);
   } catch (error) {
     // Nothing was submitted: give the text and attachments back so the user can retry.
     const lost = isLostSession(error);

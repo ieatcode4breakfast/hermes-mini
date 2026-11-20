@@ -940,5 +940,29 @@ class MobileZoomLockTest(unittest.TestCase):
         self.assertIn("touch-action: pan-x pan-y;", css)
 
 
+class NewChatMainPromotionTest(unittest.TestCase):
+    """Starting a New chat when no saved main chat exists promotes it to main chat."""
+
+    def test_first_send_from_new_chat_claims_home_before_prompt_submit(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        reg = app[app.index("async function registerNewChat("):app.index("\n// Finds the recorded home thread")]
+        self.assertIn("const existing = await currentServerThreadRow();", reg)
+        self.assertIn("const winner = await registerAppChat(id, true);", reg)
+        self.assertIn("state.homeId = winner;", reg)
+        self.assertIn("updateCaption();", reg)
+        self.assertIn("refreshDockedDrawer();", reg)
+        self.assertIn("await registerAppChat(id);", reg)
+        self.assertNotIn("session.archive", reg)
+
+        fresh = app[app.index("async function openFreshChat("):app.index("\n// A New chat has no server id now")]
+        self.assertIn("await registerNewChat(created.stored_session_id);", fresh)
+
+        create_fn = app[app.index("async function createThread("):app.index("\n// Tags a chat as started in the app")]
+        self.assertIn("if (!state.viewedUnsent) state.liveSid = created.session_id;", create_fn)
+
+        send = app[app.index("    await rpc(\"prompt.submit\""):app.index("  } catch (error) {\n    // Nothing was submitted")]
+        self.assertIn("void registerAppChat(chatId);", send)
+
+
 if __name__ == "__main__":
     unittest.main()
