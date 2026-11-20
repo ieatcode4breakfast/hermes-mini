@@ -559,16 +559,39 @@ def _content_text(value: Any) -> str:
     return ""
 
 
-def _row_text(row: sqlite3.Row) -> str:
-    """app.js chatEntries(): display_content wins, else the decoded content, trimmed.
+# agent/context_compressor.py: a compaction handoff summary is either standalone (hidden in the transcript) or merged
+# around a preserved tail message ([PRIOR CONTEXT ...] before [END OF PRIOR CONTEXT ...], or after the end marker).
+_COMPACTION_PRIOR_HEADER = "[PRIOR CONTEXT — for reference only; not a new message]"
+_COMPACTION_MERGED_DELIMITER = "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]"
+_COMPACTION_END_MARKER = "--- END OF CONTEXT SUMMARY — respond to the message below, not the summary above ---"
+_COMPACTION_PREFIXES = ("[CONTEXT COMPACTION — REFERENCE ONLY]", "[CONTEXT SUMMARY —")
 
-    The stored row has no display_content column; the REST projection adds it only for steers and compaction
-    carriers, which are not assistant bubbles here. So the raw content IS the drawn text for every row in scope.
-    """
+
+def _unwrap_compaction_summary(text: str, summary_flag: bool = False) -> str:
+    """hermes_cli/web_routers/sessions.py _project_for_display(): a merged compaction carrier shows only its prior
+    message; a standalone summary is hidden (empty)."""
+    stripped = text.strip()
+    if _COMPACTION_MERGED_DELIMITER in stripped:
+        prior = stripped.split(_COMPACTION_MERGED_DELIMITER, 1)[0].strip()
+        if prior.startswith(_COMPACTION_PRIOR_HEADER):
+            prior = prior[len(_COMPACTION_PRIOR_HEADER):].strip()
+        return prior
+    if summary_flag or stripped.startswith(_COMPACTION_PREFIXES):
+        if _COMPACTION_END_MARKER in stripped:
+            return stripped.split(_COMPACTION_END_MARKER, 1)[1].strip()
+        if stripped.startswith(_COMPACTION_PREFIXES):
+            return ""
+    return stripped
+
+
+def _row_text(row: sqlite3.Row) -> str:
+    """app.js chatEntries(): display_content wins, else the decoded content, trimmed."""
     raw = row["content"]
     if isinstance(raw, (bytes, bytearray)):
         raw = bytes(raw).decode("utf-8", "replace")
     text = _content_text(raw) if isinstance(raw, (str, list)) else ("" if raw is None else str(raw))
+    if isinstance(text, str) and text.startswith("\x00json:"):
+        text = text[6:]
     if isinstance(text, str) and text[:1] in ("[", "{"):
         try:
             parsed = json.loads(text)
@@ -576,7 +599,8 @@ def _row_text(row: sqlite3.Row) -> str:
             parsed = None
         if isinstance(parsed, (list, dict)):
             text = _content_text(parsed)
-    return text.strip()
+    summary_flag = bool(row["_compressed_summary"]) if "_compressed_summary" in row.keys() else False
+    return _unwrap_compaction_summary(text.strip(), summary_flag)
 
 
 def _model_only(value: Any) -> bool:
@@ -1726,10 +1750,10 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 def _drawn_ids(conn: sqlite3.Connection, ids: list[int]) -> dict[int, int]:
     """Stored id -> the id of the row the chat draws for that message now (the id itself unless compaction carried it
-    forward). A row archived by compaction (active 0, compacted 1) whose message has an active copy in the same chat and
-    the same display slot is drawn as that copy; the newest such copy wins. A copy in a slot of its own (older Hermes)
-    is drawn beside the original, so the original keeps its id. A schema without message_uid or display_order maps
-    every id to itself."""
+    forward). A row archived by compaction (active 0, compacted 1) whose message has a later copy in the same chat and
+    the same display slot is drawn as that copy (hermes_state_messages._display_rows_from_conn: active first, then
+    highest id). A copy in a slot of its own (older Hermes) is drawn beside the original, so the original keeps its
+    id. A schema without message_uid or display_order maps every id to itself."""
     drawn = {item_id: item_id for item_id in ids}
     if not ids or not {"message_uid", "display_order", "active", "compacted"} <= _table_columns(conn, "messages"):
         return drawn
@@ -1737,11 +1761,13 @@ def _drawn_ids(conn: sqlite3.Connection, ids: list[int]) -> dict[int, int]:
         chunk = ids[start:start + BOOKMARK_LOOKUP_CHUNK]
         marks = ",".join("?" for _ in chunk)
         for original, copy in conn.execute(
-            "SELECT o.id, MAX(c.id) FROM messages o JOIN messages c"
-            " ON c.session_id = o.session_id AND c.message_uid = o.message_uid AND c.display_order = o.display_order"
-            " AND c.id > o.id AND c.active = 1"
-            f" WHERE o.id IN ({marks}) AND o.active = 0 AND o.compacted = 1 AND o.message_uid IS NOT NULL"
-            " GROUP BY o.id",
+            "SELECT o.id, ("
+            "  SELECT c.id FROM messages c"
+            "  WHERE c.session_id = o.session_id AND c.message_uid = o.message_uid"
+            "    AND c.display_order = o.display_order AND c.id > o.id AND (c.active = 1 OR c.compacted = 1)"
+            "  ORDER BY c.active DESC, c.id DESC LIMIT 1"
+            f") FROM messages o WHERE o.id IN ({marks}) AND o.active = 0 AND o.compacted = 1"
+            " AND o.message_uid IS NOT NULL AND o.display_order IS NOT NULL",
             chunk,
         ):
             if copy is not None:
@@ -1929,14 +1955,135 @@ async def delete_bookmark(item_id: int):
 
 # ---------- search ----------
 # One query across the app's chats: chat titles and the visible text of user and assistant messages. Every read comes
-# from state.db (read-only) with the Inbox's own scope and visibility rules, so a hit is always something the chat
-# draws and always opens. message_fts is a fast path when the store carries it; the LIKE scan underneath is the
-# fallback (an older schema, an FTS5 syntax error, or a mid-word substring FTS never indexes as a prefix).
+# from state.db (read-only) with the chat's own scope and visibility rules (app.js chatEntries + the Inbox's SQL
+# prefilter), so a hit is always something the chat draws and always opens. messages_fts is a fast path when the store
+# carries it; the LIKE scan underneath is the fallback (an older schema, an FTS5 syntax error, or a mid-word substring
+# FTS never indexes as a prefix).
 
 SEARCH_MAX_TOKENS = 6
 SEARCH_MAX_CHATS = 10
 SEARCH_MAX_LIMIT = 50
 SEARCH_SNIPPET_CHARS = 150
+
+# app.js chatEntries(): user-role display_kinds and wrappers that are never drawn as user bubbles.
+USER_SKIP_KINDS = (
+    "hidden", "failed_turn", "model_switch",
+    "internal_notification", "process_complete", "async_delegation_complete",
+    "personality_switch", "auto_continue",
+)
+USER_SKIP_KINDS_SET = frozenset(USER_SKIP_KINDS)
+USER_SKIP_KINDS_SQL = ", ".join(f"'{kind}'" for kind in USER_SKIP_KINDS)
+LEGACY_HEARTBEAT_RE = re.compile(r"^\[Background process \S+ heartbeat #\d+ ")
+STEER_WRAP_RE = re.compile(
+    r"\[OUT-OF-BAND USER MESSAGE\b[^\]]*\]\s*([\s\S]*?)\s*\[/OUT-OF-BAND USER MESSAGE\]"
+)
+ATTACHED_CONTEXT_TAIL_RE = re.compile(r"(?:^|\n)--- Attached Context ---\s*\n[\s\S]*$")
+CONTEXT_WARNINGS_TAIL_RE = re.compile(r"(?:^|\n)--- Context Warnings ---[\s\S]*$")
+DISCORD_TRIGGERING_NOTE_RE = re.compile(
+    r"(^|\n)\[Triggering message id: `[^`\n]*` — use as `message_id` for reply/react/pin via the discord tools\.\]\n*"
+)
+IMAGE_REF_RE = re.compile(r"@image:\S+")
+FILE_REF_RE = re.compile(r'@file:(?:"[^"\n]+"|\'[^\'\n]+\'|`[^`\n]+`|\S+)')
+OTHER_REF_RE = re.compile(r'@(?:folder|url|tool|terminal):(?:"[^"\n]+"|\'[^\'\n]+\'|`[^`\n]+`|\S+)')
+SCHEDULE_REF_RE = re.compile(r"\[Schedule: ([^\]\n]+?) · job [\w-]+\]")
+
+# slash.js describeSkillInvocation() / agent/skill_commands.py describe_skill_invocation(): a message sent with skills
+# is stored as the expanded skill prompt, and drawn in chat as the skill pills plus the person's own words.
+SKILL_PREFIX = "[IMPORTANT: The user has invoked the "
+SKILL_NAME_RE = re.compile(r'^\[IMPORTANT: The user has invoked the "([^"]*)"')
+SINGLE_SKILL_MARKER = "The full skill content is loaded below.]"
+SINGLE_SKILL_INSTRUCTION = "The user has provided the following instruction alongside the skill invocation: "
+SKILL_RUNTIME_NOTE = "\n\n[Runtime note:"
+BUNDLE_SKILL_MARKER = " skill bundle,"
+BUNDLE_SKILL_INSTRUCTION = "\nUser instruction: "
+BUNDLE_FIRST_BLOCK = "\n\n[Loaded as part of the "
+SKILL_EXCERPT_JOINT = "\x1e"
+
+
+def _cut_after(content: str, marker: str, stop: str, *, last: bool) -> str | None:
+    at = content.rfind(marker) if last else content.find(marker)
+    if at < 0:
+        return None
+    return content[at + len(marker):].split(stop, 1)[0].strip() or None
+
+
+def _describe_skill_invocation(content: str) -> tuple[list[str], str] | None:
+    """(skill names, user text) for a stored skill message, or None (slash.js describeSkillInvocation)."""
+    if not isinstance(content, str) or not content.startswith(SKILL_PREFIX):
+        return None
+    match = SKILL_NAME_RE.match(content)
+    name = (match.group(1) if match else "").strip()
+    instruction: str | None = None
+    if BUNDLE_SKILL_MARKER in content:
+        instruction = _cut_after(content, BUNDLE_SKILL_INSTRUCTION, BUNDLE_FIRST_BLOCK, last=False)
+    elif SINGLE_SKILL_MARKER in content:
+        instruction = _cut_after(content, SINGLE_SKILL_INSTRUCTION, SKILL_RUNTIME_NOTE, last=True)
+    text = " ".join(instruction.split(SKILL_EXCERPT_JOINT, 1)[0].split()) if instruction else ""
+    if not name:
+        names: list[str] = []
+    elif name.startswith("/"):
+        names = [part.lstrip("/") for part in name.split() if part.lstrip("/")]
+    else:
+        names = [name]
+    if not names and not text:
+        return None
+    return names, text
+
+
+def _search_user_text(raw: str) -> str:
+    """The text a user-role row draws in a user bubble, or '' when app.js chatEntries skips it."""
+    stripped = raw.lstrip()
+    if not stripped or stripped.startswith("[System:") or LEGACY_HEARTBEAT_RE.match(stripped):
+        return ""
+    skill = _describe_skill_invocation(raw)
+    text = skill[1] if skill else raw
+    text = ATTACHED_CONTEXT_TAIL_RE.sub("", text)
+    text = CONTEXT_WARNINGS_TAIL_RE.sub("", text)
+    text = DISCORD_TRIGGERING_NOTE_RE.sub(r"\1", text)
+    text = IMAGE_REF_RE.sub("", text)
+    text = FILE_REF_RE.sub("", text)
+    text = OTHER_REF_RE.sub("", text)
+    text = STEER_WRAP_RE.sub(r"\1", text)
+    text = SCHEDULE_REF_RE.sub(r"\1", text)
+    text = core.strip_cron_wrapper(text).strip()
+    if skill:
+        return " ".join([*(f"/{name}" for name in skill[0]), *([text] if text else [])])
+    return text
+
+
+def _unfold_survivor_user_text(conn: sqlite3.Connection, row: sqlite3.Row) -> str | None:
+    """For a folded user row that swallowed a job result (_merged_job_parts), return only the user's own part(s)
+    so the job part is listed once under its own original id, not a second time as 'You: [Scheduled job result]…'."""
+    if str(row["role"] or "") != "user" or row["display_kind"]:
+        return None
+    keys = row.keys()
+    if "absorbed_message_uids" not in keys or "message_uid" not in keys:
+        return None
+    raw_absorbed = row["absorbed_message_uids"]
+    uid = row["message_uid"]
+    if not raw_absorbed or not uid:
+        return None
+    try:
+        absorbed = json.loads(raw_absorbed)
+    except (ValueError, TypeError):
+        return None
+    uids = [uid, *(absorbed if isinstance(absorbed, list) else [])]
+    if len(uids) <= 1 or not all(isinstance(item, str) and item for item in uids):
+        return None
+    originals = _constituent_rows(conn, str(row["session_id"]), uids, int(row["id"]))
+    if len(originals) != len(set(uids)):
+        return None
+    if not any(orig["display_kind"] == "job_delivery" for orig in originals.values()):
+        return None
+    user_parts: list[str] = []
+    for item_uid in dict.fromkeys(uids):
+        orig = originals[item_uid]
+        content = orig["content"]
+        if not isinstance(content, str) or content.startswith("\x00"):
+            return None
+        if orig["display_kind"] != "job_delivery":
+            user_parts.append(content)
+    return _unwrap_compaction_summary("\n".join(user_parts))
 
 
 def _search_snippet(text: str, tokens: list[str]) -> str:
@@ -1990,22 +2137,25 @@ def _search_chats(conn: sqlite3.Connection, titles: dict[str, str], tokens: list
     return chats[:SEARCH_MAX_CHATS]
 
 
-def _search_visible_text(row: sqlite3.Row) -> tuple[str, str] | None:
-    """(role, plain text) for a row the chat draws as a person or agent message, or None (the Inbox's rules)."""
+def _search_visible_text(row: sqlite3.Row, *, raw_override: str | None = None) -> tuple[str, str] | None:
+    """(role, plain text) for a row the chat draws as a person or agent message, or None (app.js chatEntries)."""
     role = str(row["role"] or "")
     kind = str(row["display_kind"] or "")
+    raw = raw_override if raw_override is not None else _row_text(row)
     display_role = "assistant"
     if role == "user":
         if kind == "job_delivery":
             # Drawn on the agent's side, body without the job header, lifecycle notices skipped.
-            body = core.strip_cron_wrapper(JOB_PREFIX.sub("", _row_text(row), count=1).strip())
+            body = core.strip_cron_wrapper(JOB_PREFIX.sub("", raw, count=1).strip())
             text = _policy.display_text(body, notice=True)
             if not text or LIFECYCLE_NOTICE.match(text):
                 return None
         else:
-            if kind == "hidden" or _model_only(row["display_metadata"]):
+            if kind in USER_SKIP_KINDS_SET or _model_only(row["display_metadata"]):
                 return None
-            text = core.strip_cron_wrapper(_row_text(row))
+            text = _search_user_text(raw)
+            if not text:
+                return None
             display_role = "user"
     elif role == "assistant":
         if kind in ("hidden", "failed_turn") or _model_only(row["display_metadata"]):
@@ -2016,7 +2166,7 @@ def _search_visible_text(row: sqlite3.Row) -> tuple[str, str] | None:
             calls = row["tool_calls"]
             if calls and str(calls) not in ("", "[]"):
                 return None
-        text = _policy.display_text(_row_text(row))
+        text = _policy.display_text(raw)
         if not text or _is_silence_marker(text):
             return None
     else:
@@ -2029,8 +2179,39 @@ SEARCH_COLUMNS = ("m.id, m.session_id, m.role, m.content, m.display_kind, m.disp
                    " m.finish_reason, m.tool_calls")
 
 
+def _search_select_columns(columns: set[str]) -> str:
+    extra = [
+        "m._compressed_summary" if "_compressed_summary" in columns else "0 AS _compressed_summary",
+        "m.message_uid" if "message_uid" in columns else "NULL AS message_uid",
+        "m.absorbed_message_uids" if "absorbed_message_uids" in columns else "NULL AS absorbed_message_uids",
+    ]
+    return f"{SEARCH_COLUMNS}, " + ", ".join(extra)
+
+
+def _search_visible_sql(conn: sqlite3.Connection, session_ids: list[str],
+                        columns: set[str]) -> tuple[str, list[Any]]:
+    """The SQL prefilter for rows the chat can draw as a user or assistant bubble (_candidate_rows + user turns)."""
+    clauses: list[str] = []
+    params: list[Any] = []
+    if {"active", "compacted"} <= columns:
+        merged = _merged_job_ids(conn, session_ids)
+        folded = f" OR m.id IN ({','.join('?' for _ in merged)})" if merged else ""
+        clauses.append(f"(m.active = 1 OR m.compacted = 1{folded})")
+        params.extend(merged)
+    if {"display_kind", "finish_reason", "tool_calls"} <= columns:
+        clauses.append(
+            "((m.role = 'assistant' AND COALESCE(m.display_kind, '') NOT IN ('hidden', 'failed_turn')"
+            "  AND (m.finish_reason IS NULL OR m.finish_reason != 'tool_calls')"
+            "  AND (m.tool_calls IS NULL OR m.tool_calls = '' OR m.tool_calls = '[]'))"
+            f" OR (m.role = 'user' AND COALESCE(m.display_kind, '') NOT IN ({USER_SKIP_KINDS_SQL})))"
+        )
+    else:
+        clauses.append("m.role IN ('user', 'assistant')")
+    return " AND " + " AND ".join(clauses), params
+
+
 def _search_fts_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: list[str],
-                     visible: str, over: int) -> list[sqlite3.Row]:
+                     select_cols: str, visible_sql: str, visible_params: list[Any], over: int) -> list[sqlite3.Row]:
     """The FTS5 fast path, or [] when the store has no messages_fts or the query cannot run."""
     try:
         present = conn.execute(
@@ -2044,10 +2225,10 @@ def _search_fts_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: l
     phrase = " AND ".join('"' + token.replace('"', '""') + '"*' for token in tokens)
     try:
         return conn.execute(
-            f"SELECT {SEARCH_COLUMNS} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid"
-            f" WHERE m.session_id IN ({marks}) AND m.role IN ('user', 'assistant'){visible}"
+            f"SELECT {select_cols} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid"
+            f" WHERE m.session_id IN ({marks}){visible_sql}"
             " AND messages_fts MATCH ? ORDER BY m.timestamp DESC, m.id DESC LIMIT ?",
-            [*session_ids, phrase, over],
+            [*session_ids, *visible_params, phrase, over],
         ).fetchall()
     except sqlite3.Error as exc:
         log.warning("search: FTS query failed, using LIKE: %s", exc)
@@ -2055,51 +2236,28 @@ def _search_fts_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: l
 
 
 def _search_like_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: list[str],
-                      visible: str, over: int) -> list[sqlite3.Row]:
+                      select_cols: str, visible_sql: str, visible_params: list[Any], over: int) -> list[sqlite3.Row]:
     """The plain scan: every token must appear somewhere in the content (the visible-text check follows)."""
     marks = ",".join("?" for _ in session_ids)
     clauses: list[str] = []
-    params: list[Any] = list(session_ids)
+    params: list[Any] = [*session_ids, *visible_params]
     for token in tokens:
-        escaped = token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        needle = token.lstrip("/") or token
+        escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         clauses.append("LOWER(m.content) LIKE ? ESCAPE '\\'")
         params.append(f"%{escaped}%")
     return conn.execute(
-        f"SELECT {SEARCH_COLUMNS} FROM messages m WHERE m.session_id IN ({marks})"
-        f" AND m.role IN ('user', 'assistant'){visible} AND " + " AND ".join(clauses)
-        + " ORDER BY m.timestamp DESC, m.id DESC LIMIT ?",
+        f"SELECT {select_cols} FROM messages m WHERE m.session_id IN ({marks}){visible_sql} AND "
+        + " AND ".join(clauses) + " ORDER BY m.timestamp DESC, m.id DESC LIMIT ?",
         [*params, over],
     ).fetchall()
 
 
-def _search_rows(conn: sqlite3.Connection, session_ids: list[str], tokens: list[str],
-                 limit: int) -> list[sqlite3.Row]:
-    """Candidate message rows in these chats holding every token, newest first (over-fetched, capped).
-
-    The FTS5 lane is the fast path; the LIKE lane runs when the store carries no messages_fts, the query raises, or
-    FTS found fewer than a page (a mid-word substring such as "total" in "column_total" is not an FTS prefix match).
-    Both lanes are merged by row id, so a hit found twice is listed once.
-    """
-    if not session_ids:
-        return []
-    columns = _table_columns(conn, "messages")
-    visible = " AND (m.active = 1 OR m.compacted = 1)" if {"active", "compacted"} <= columns else ""
-    over = max(120, limit * 6)
-    rows = _search_fts_rows(conn, session_ids, tokens, visible, over)
-    if len(rows) < limit:
-        seen = {int(row["id"]) for row in rows}
-        rows.extend(row for row in _search_like_rows(conn, session_ids, tokens, visible, over)
-                    if int(row["id"]) not in seen)
-    rows.sort(key=lambda row: (float(row["timestamp"] or 0), int(row["id"])), reverse=True)
-    return rows
-
-
-def _search_messages(conn: sqlite3.Connection, titles: dict[str, str], tokens: list[str],
-                     limit: int) -> list[dict[str, Any]]:
-    """Message hits across the in-scope chats, compaction-resolved, deduped and newest first."""
-    rows = _search_rows(conn, list(titles), tokens, limit)
+def _collect_search_hits(conn: sqlite3.Connection, rows: list[sqlite3.Row], titles: dict[str, str],
+                         tokens: list[str], select_cols: str, hits: dict[int, dict[str, Any]]) -> None:
+    """Resolve compaction copies and folded job survivors among candidate rows, keeping visible matches in `hits`."""
     if not rows:
-        return []
+        return
     home = _home_id()
     home_label = core.agent_identity()["home_label"]
     ids = [int(row["id"]) for row in rows]
@@ -2110,17 +2268,15 @@ def _search_messages(conn: sqlite3.Connection, titles: dict[str, str], tokens: l
     for start in range(0, len(missing), BOOKMARK_LOOKUP_CHUNK):
         chunk = missing[start:start + BOOKMARK_LOOKUP_CHUNK]
         marks = ",".join("?" for _ in chunk)
-        for row in conn.execute(
-                "SELECT m.id, m.session_id, m.role, m.content, m.display_kind, m.display_metadata, m.timestamp,"
-                f" m.finish_reason, m.tool_calls FROM messages m WHERE m.id IN ({marks})", chunk):
+        for row in conn.execute(f"SELECT {select_cols} FROM messages m WHERE m.id IN ({marks})", chunk):
             by_id[int(row["id"])] = row
-    hits: dict[int, dict[str, Any]] = {}
     for row in rows:
         drawn_id = drawn.get(int(row["id"]), int(row["id"]))
         row = by_id.get(drawn_id)
         if row is None or drawn_id in hits:
             continue
-        visible = _search_visible_text(row)
+        unfolded = _unfold_survivor_user_text(conn, row)
+        visible = _search_visible_text(row, raw_override=unfolded)
         if visible is None:
             continue
         display_role, plain = visible
@@ -2139,6 +2295,27 @@ def _search_messages(conn: sqlite3.Connection, titles: dict[str, str], tokens: l
             "ts": float(row["timestamp"] or 0),
             "snippet": _search_snippet(plain, tokens),
         }
+
+
+def _search_messages(conn: sqlite3.Connection, titles: dict[str, str], tokens: list[str],
+                     limit: int) -> list[dict[str, Any]]:
+    """Message hits across the in-scope chats, compaction-resolved, deduped and newest first."""
+    session_ids = list(titles)
+    if not session_ids:
+        return []
+    columns = _table_columns(conn, "messages")
+    select_cols = _search_select_columns(columns)
+    visible_sql, visible_params = _search_visible_sql(conn, session_ids, columns)
+    over = max(300, limit * 10)
+    hits: dict[int, dict[str, Any]] = {}
+    fts_rows = _search_fts_rows(conn, session_ids, tokens, select_cols, visible_sql, visible_params, over)
+    _collect_search_hits(conn, fts_rows, titles, tokens, select_cols, hits)
+    if len(hits) < limit:
+        seen = {int(row["id"]) for row in fts_rows}
+        like_rows = [row for row in _search_like_rows(
+            conn, session_ids, tokens, select_cols, visible_sql, visible_params, over)
+            if int(row["id"]) not in seen]
+        _collect_search_hits(conn, like_rows, titles, tokens, select_cols, hits)
     items = sorted(hits.values(), key=lambda item: (item["ts"], item["id"]), reverse=True)
     return items[:limit]
 

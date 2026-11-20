@@ -38,7 +38,8 @@ class SearchRouteTest(DisposableHome):
         conn.execute(
             "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,"
             " display_kind TEXT, display_metadata TEXT, timestamp REAL, finish_reason TEXT, tool_calls TEXT,"
-            " active INTEGER, compacted INTEGER, message_uid TEXT, display_order INTEGER)"
+            " active INTEGER, compacted INTEGER, message_uid TEXT, display_order INTEGER,"
+            " _compressed_summary INTEGER DEFAULT 0, absorbed_message_uids TEXT)"
         )
         conn.execute("INSERT INTO sessions VALUES ('chat', 'Reminders', 0, 1800000000, 1800000100)")
         conn.commit()
@@ -49,13 +50,15 @@ class SearchRouteTest(DisposableHome):
         return conn
 
     def _add(self, conn, row_id, text, role="assistant", session="chat", ts=1_800_000_000.0, kind=None,
-             meta=None, finish="stop", tools=None, active=1, compacted=0, uid=None, slot=None):
+             meta=None, finish="stop", tools=None, active=1, compacted=0, uid=None, slot=None,
+             summary=0, absorbed=None):
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, display_kind, display_metadata, timestamp,"
-            " finish_reason, tool_calls, active, compacted, message_uid, display_order)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " finish_reason, tool_calls, active, compacted, message_uid, display_order,"
+            " _compressed_summary, absorbed_message_uids)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (row_id, session, role, text, kind, meta, ts, finish if role == "assistant" else None, tools,
-             active, compacted, uid, slot),
+             active, compacted, uid, slot, summary, absorbed),
         )
         if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='messages_fts'").fetchone():
             conn.execute("INSERT INTO messages_fts (rowid, content) VALUES (?, ?)", (row_id, text))
@@ -154,6 +157,110 @@ class SearchRouteTest(DisposableHome):
         self.assertEqual(data["messages"][0]["snippet"], "Backup finished.")
         # A normal person message keeps its own side.
         self.assertEqual(self.search("noted")["messages"][0]["role"], "user")
+
+    def test_tool_call_rows_in_fts_do_not_starve_visible_matches(self):
+        conn = self._db(fts=True)
+        self._add(conn, 1, "Run python3 manage.py check.", ts=1_800_000_001.0)
+        for idx in range(2, 210):
+            self._add(conn, idx, f"Running python3 step {idx}", finish="tool_calls",
+                      tools='[{"id": "call_1"}]', ts=1_800_000_000.0 + idx)
+        data = self.search("python3")
+        self.assertEqual([item["id"] for item in data["messages"]], [1])
+
+    def test_compaction_summaries_are_hidden_and_merged_carriers_are_unwrapped(self):
+        conn = self._db(fts=True)
+        end = "--- END OF CONTEXT SUMMARY — respond to the message below, not the summary above ---"
+        prior = "[PRIOR CONTEXT — for reference only; not a new message]"
+        delim = "[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]"
+        head = "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns mention secretword."
+        # Standalone summaries (user and assistant) are hidden in chat and must never match.
+        self._add(conn, 1, f"{head}\n\n{end}", role="user", summary=1, ts=1_800_000_010.0)
+        self._add(conn, 2, f"{prior}\n\n\n{delim}\n\n{head}\n\n{end}", role="assistant", summary=1, ts=1_800_000_020.0)
+        # Merged carriers keep only the real message outside the summary.
+        self._add(conn, 3, f"{prior}\nVisible reply about deploy.\n\n{delim}\n\n{head}\n\n{end}",
+                  role="assistant", summary=1, ts=1_800_000_030.0)
+        self._add(conn, 4, f"{head}\n\n{end}\n\nVisible question about deploy.",
+                  role="user", summary=1, ts=1_800_000_040.0)
+        self.assertEqual(self.search("secretword")["messages"], [])
+        self.assertEqual(self.search("compaction")["messages"], [])
+        hits = self.search("deploy")["messages"]
+        self.assertEqual([item["id"] for item in hits], [4, 3])
+        self.assertEqual(hits[0]["snippet"], "Visible question about deploy.")
+        self.assertEqual(hits[1]["snippet"], "Visible reply about deploy.")
+
+    def test_skill_messages_match_only_their_visible_label_and_words(self):
+        single = (
+            '[IMPORTANT: The user has invoked the "humanizer" skill, indicating they want you to follow its '
+            'instructions. The full skill content is loaded below.]\n\nHidden skill body with secretword.\n\n'
+            'The user has provided the following instruction alongside the skill invocation: fix the leak'
+            '\n\n[Runtime note: from chat]'
+        )
+        stacked = (
+            '[IMPORTANT: The user has invoked the "/humanizer /github" stacked skill bundle, loading 2 skills '
+            'together.]\n\nUser instruction: ship it\n\n[Loaded as part of the stacked skill invocation '
+            '"humanizer".]\n\nHidden skill body with secretword.'
+        )
+        for fts in (True, False):
+            with self.subTest(fts=fts):
+                (self.home / "state.db").unlink(missing_ok=True)
+                conn = self._db(fts=fts)
+                self._add(conn, 1, single, role="user", ts=1_800_000_010.0)
+                self._add(conn, 2, stacked, role="user", ts=1_800_000_020.0)
+                for hidden_term in ("secretword", "invoked", "instructions", "runtime"):
+                    self.assertEqual(self.search(hidden_term)["messages"], [], hidden_term)
+                for skill_term in ("humanizer", "%2Fhumanizer"):
+                    hits = self.search(skill_term)["messages"]
+                    self.assertEqual([item["id"] for item in hits], [2, 1], skill_term)
+                    self.assertEqual(hits[0]["snippet"], "/humanizer /github ship it")
+                    self.assertEqual(hits[1]["snippet"], "/humanizer fix the leak")
+                leak = self.search("leak")["messages"]
+                self.assertEqual([item["id"] for item in leak], [1])
+                self.assertEqual(leak[0]["snippet"], "/humanizer fix the leak")
+
+    def test_user_notices_and_wrappers_follow_chat_entries(self):
+        conn = self._db(fts=True)
+        row_id = 1
+        for kind in ("internal_notification", "process_complete", "async_delegation_complete",
+                     "personality_switch", "auto_continue", "model_switch", "failed_turn"):
+            self._add(conn, row_id, f"Notice about deploy ({kind})", role="user", kind=kind)
+            row_id += 1
+        self._add(conn, row_id, "[System: The active model for this chat has changed to deploy-v1.]", role="user")
+        row_id += 1
+        self._add(conn, row_id, "[Background process proc_1 heartbeat #2 deploy running]", role="user")
+        row_id += 1
+        self._add(conn, row_id, "@image:/tmp/shot.png", role="user")
+        row_id += 1
+        self._add(
+            conn, 50,
+            "[OUT-OF-BAND USER MESSAGE — delivered once]\nCheck [Schedule: Morning deploy · job j99] now\n"
+            "[/OUT-OF-BAND USER MESSAGE]\n@file:/tmp/secret.xlsx\n\n--- Attached Context ---\nsecretword in file",
+            role="user", kind="steer", ts=1_800_000_050.0,
+        )
+        self.assertEqual(self.search("secretword")["messages"], [])
+        self.assertEqual(self.search("secret.xlsx")["messages"], [])
+        self.assertEqual(self.search("OUT-OF-BAND")["messages"], [])
+        self.assertEqual(self.search("Photo")["messages"], [])
+        self.assertEqual(self.search("j99")["messages"], [])
+        hits = self.search("deploy")["messages"]
+        self.assertEqual([item["id"] for item in hits], [50])
+        self.assertEqual(hits[0]["role"], "user")
+        self.assertEqual(hits[0]["snippet"], "Check Morning deploy now")
+
+    def test_folded_job_delivery_matches_as_agent_reply_under_original_id(self):
+        conn = self._db(fts=True)
+        self._add(conn, 10, "[Scheduled job result] Backup finished.", role="user", kind="job_delivery",
+                  active=0, compacted=0, uid="u_job", ts=1_800_000_010.0)
+        self._add(conn, 11, "Thanks, noted.", role="user", active=0, compacted=0, uid="u_user", ts=1_800_000_020.0)
+        self._add(conn, 12, "[Scheduled job result] Backup finished.\n\nThanks, noted.", role="user",
+                  active=1, compacted=0, uid="u_job", absorbed='["u_user"]', ts=1_800_000_020.0)
+        job_hits = self.search("backup")["messages"]
+        self.assertEqual([item["id"] for item in job_hits], [10])
+        self.assertEqual(job_hits[0]["role"], "assistant")
+        self.assertEqual(job_hits[0]["snippet"], "Backup finished.")
+        user_hits = self.search("noted")["messages"]
+        self.assertEqual([item["id"] for item in user_hits], [12])
+        self.assertEqual(user_hits[0]["role"], "user")
+        self.assertEqual(user_hits[0]["snippet"], "Thanks, noted.")
 
     def test_limit_is_clamped(self):
         conn = self._db()
