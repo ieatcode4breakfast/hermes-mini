@@ -51,6 +51,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The Schedules row and panel are now called Scheduled, and so is their group in the "/" list.
+
 - Question sets: Skip skips only the question on screen (the agent is told that one was skipped) instead of
   closing the whole set. Back reopens the previous question with its answer marked, and a set of two or more
   ends on a review step listing every answer with Change; the last answer is only sent on Submit, so any answer

@@ -208,7 +208,7 @@ there is no reply to show.
   from its action row or its long-press menu; the panel lists them newest bookmark first, each with its chat, time and
   a short preview. Tapping one opens the chat at that reply, and the filled bookmark at the right removes it. Bookmarks
   follow the message: a deleted chat or message simply drops out.
-- **Schedules**: the row under the main chat in the chats panel. It lists the agent's scheduled jobs
+- **Scheduled**: the row under the main chat in the chats panel. It lists the agent's scheduled jobs
   (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
   running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
   routes, or adds it to the message being written as an inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.

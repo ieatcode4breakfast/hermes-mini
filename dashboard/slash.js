@@ -204,7 +204,7 @@ export function createSlashPicker({ input, anchor, api, enabled, onPick }) {
       for (const skill of found.skills) items.push({ kind: "skill", data: skill, el: menu.appendChild(row("skill", skill)) });
     }
     if (found.schedules.length) {
-      menu.append(group("Schedules"));
+      menu.append(group("Scheduled"));
       for (const job of found.schedules) items.push({ kind: "schedule", data: job, el: menu.appendChild(row("schedule", job)) });
     }
     if (!items.length) {
