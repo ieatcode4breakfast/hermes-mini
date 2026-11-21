@@ -1020,7 +1020,7 @@ export function createDrawer(deps) {
     rowMenuScrim.classList.add("open");
     rowMenu.classList.add("open");
     if (!(history.state && history.state.hermesMiniMenu === true)) history.pushState({ hermesMiniMenu: true }, "");
-    const first = [menuPin, menuUnread, menuMute, menuRename, menuDelete, menuReset].find((btn) => btn && !btn.hidden);
+    const first = [menuPin, menuMute, menuRename, menuUnread, menuDelete, menuReset].find((btn) => btn && !btn.hidden);
     if (first) first.focus({ preventScroll: true });
   }
 
@@ -1068,7 +1068,7 @@ export function createDrawer(deps) {
 
   // Arrow keys, Home and End move between the menu's items (Enter and Space activate the focused one natively).
   function moveMenuFocus(event) {
-    const items = [menuPin, menuUnread, menuMute, menuRename, menuDelete, menuReset].filter((item) => item && !item.hidden);
+    const items = [menuPin, menuMute, menuRename, menuUnread, menuDelete, menuReset].filter((item) => item && !item.hidden);
     const index = items.indexOf(document.activeElement);
     let next;
     if (event.key === "Home") next = 0;
