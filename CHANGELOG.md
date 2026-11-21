@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Phone walkthrough demo video: added a 37-second mobile walkthrough (`docs/media/demo-walkthrough.mp4` and inline
+  preview `docs/media/demo-walkthrough.gif`) beside the original demo clip in `README.md`.
 - Manual unread for chat sessions: **Mark unread** / **Mark read** directly below **Rename** in every chat's `⋮` menu
   (including the main chat), backed by an `unread` list in `seen.json` and `POST /seen/unread`. It shows the accent dot
   and bold title across devices, stays separate from Inbox message unread marks, survives passive read updates, and
@@ -88,6 +90,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Nudged the composer's shared model and approval tab slightly closer to the right edge so it lines up above the
+  Send button while keeping full left clearance for long model names.
 - **New chat** promotes to the main chat on its first sent message when no saved main chat exists yet (without
   overwriting state on an unsent reload).
 - Mobile page pinch and double-tap zoom are disabled (pinch and double-tap zoom remain enabled in the full-screen
@@ -112,6 +116,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Resetting the main chat now clears stored gateway restart notices (`DELETE /app-chats/home` clears
+  `gateway-events.json`), cancels pending live-line timers, and ensures an empty main chat only shows restart
+  notices recorded after it started instead of dumping historical notices. Needs a dashboard restart to load the
+  server-side clear.
 - Computer view places **Start Screen** centred directly under the stopped-screen message.
 - Bookmarks follow a reply through context compaction. Compaction writes the replies it carries forward again
   under new ids, and the chat then draws the copy; a bookmark on the original showed as not kept on that reply, could
