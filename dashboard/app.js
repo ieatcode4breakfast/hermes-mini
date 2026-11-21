@@ -21,6 +21,7 @@ import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js"
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
 import { createModelPicker, shortModel } from "./model.js";
+import { createApprovalPicker } from "./approvals.js";
 import * as clarifyFlow from "./clarify.js";
 import { dictationInsert } from "./dictation-text.js";
 import * as conn from "./connections.js";
@@ -170,6 +171,14 @@ const modelUi = createModelPicker({
   confirmDialog,
   showToast,
   chip: $("modelChip"),
+});
+
+// The approval mode pill below the input box and its sheet (approvals.js).
+const approvalUi = createApprovalPicker({
+  rpc: (method, params, timeoutMs) => rpc(method, params, timeoutMs),
+  confirmDialog,
+  showToast,
+  chip: $("approvalChip"),
 });
 
 // ---------- storage / small helpers ----------
@@ -903,6 +912,7 @@ function openSocket(url) {
 
 function onGatewayReady(payload) {
   state.wsReady = true;
+  void approvalUi.refresh();
   state.connectionEpoch += 1;
   // The backend treats a client that never advertises this as too old to answer server requests.
   rpc("client.capabilities", { server_requests: true }).catch(() => undefined);
@@ -7700,6 +7710,7 @@ document.addEventListener("visibilitychange", () => {
   if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
   refreshDrawerActivity();
   void todo.refresh(); // to-dos may have changed on another device while the app was away
+  if (state.wsReady) void approvalUi.refresh();
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
     state.backoffIdx = 0;
     noteOnline();

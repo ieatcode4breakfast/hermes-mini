@@ -2352,41 +2352,81 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .app.drop-target .composer .row::after { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
 .log { padding-bottom: calc(16px + 26px); }
-/* The tab is a layer behind the box: its own shade (a step lighter than the box in dark, a step darker in light, where
-   white cannot go lighter); the box's own shadow falls across its lower edge. The feet are cut to their concave
-   shape with a mask and overlap the tab by 1px so no seam shows. It sits clear of the box's rounded corner (27px
-   radius + 12px foot), so both feet land on the straight top edge. */
+/* One shared top-edge tab joined to the composer pill: approval mode on the left, model picker on the right. */
 :root { --model-tab: #e6e7ec; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --model-tab: #2a2c33; } }
 :root[data-theme="dark"] { --model-tab: #2a2c33; }
-.model-tab {
+.composer-tabs {
   --tab-bg: var(--model-tab);
   position: absolute; bottom: calc(100% - 1px); right: 34px; z-index: -2;
-  display: inline-flex; align-items: center; gap: 4px; max-width: min(70%, 320px); height: 28px; margin: 0; padding: 0 12px 2px;
-  border: 0; border-radius: 12px 12px 0 0; background: var(--tab-bg); color: var(--muted);
-  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
-  transition: color 150ms ease, background-color 150ms ease;
+  display: inline-flex; align-items: stretch; max-width: calc(100% - 68px); height: 28px;
+  border-radius: 12px 12px 0 0; background: var(--tab-bg);
 }
-.model-tab::before, .model-tab::after {
+.composer-tabs:not(:has(> :not([hidden]))), .composer-tabs:has(> .model-tab[hidden]) { display: none; }
+.composer-tabs::before, .composer-tabs::after {
   content: ""; position: absolute; bottom: 0; width: 12px; height: 12px; pointer-events: none; background: var(--tab-bg);
 }
-.model-tab::before {
+.composer-tabs::before {
   left: -11px;
   -webkit-mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px);
 }
-.model-tab::after {
+.composer-tabs::after {
   right: -11px;
   -webkit-mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px);
 }
-:where(:root[data-input="mouse"]) .model-tab:hover { color: var(--fg); --tab-bg: color-mix(in srgb, var(--fg) 5%, var(--model-tab)); }
-.model-tab[aria-expanded="true"] { color: var(--fg); --tab-bg: color-mix(in srgb, var(--accent) 12%, var(--model-tab)); }
+.composer .row.wide > .composer-tabs { grid-area: auto; }
+.approval-tab, .model-tab {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 4px; height: 100%; margin: 0; padding: 0 11px 2px;
+  border: 0; background: transparent; color: var(--muted);
+  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+.model-tab { flex: 0 1 auto; min-width: 0; max-width: 300px; border-radius: 12px 0 0 0; }
+.approval-tab { flex: 0 0 auto; padding: 0 11px 2px 9px; border-radius: 0 12px 0 0; }
+.model-tab:only-child, .model-tab:has(+ .approval-tab[hidden]) { border-radius: 12px 12px 0 0; }
+.model-tab[hidden] + .approval-tab { border-radius: 12px 12px 0 0; }
+.model-tab:not([hidden]) + .approval-tab:not([hidden])::before {
+  content: ""; position: absolute; left: 0; top: 7px; bottom: 9px; width: 1px;
+  background: color-mix(in srgb, var(--fg) 14%, transparent); pointer-events: none;
+}
+.approval-tab[hidden] { display: none; }
+.approval-tab-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.approval-tab-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+.approval-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.approval-tab.is-off { color: var(--danger); }
+:where(:root[data-input="mouse"]) .approval-tab:hover,
+:where(:root[data-input="mouse"]) .model-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(:root[data-input="mouse"]) .approval-tab.is-off:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.approval-tab[aria-expanded="true"],
+.model-tab[aria-expanded="true"] { color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.approval-tab.is-off[aria-expanded="true"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .model-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-tab-meta { white-space: nowrap; }
 .model-tab-meta::before { content: "·"; margin-right: 4px; }
 .model-tab[hidden], .model-tab-meta[hidden] { display: none; }
 .model-tab-caret { width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; transition: transform 220ms var(--ease-spring); }
 .model-tab[aria-expanded="true"] .model-tab-caret { transform: rotate(180deg); }
-.composer .row.wide > .model-tab { grid-area: auto; }
+
+.approval-sheet { max-height: min(70vh, 420px); }
+.approval-list { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 6px; overflow-y: auto; }
+.approval-option {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px;
+  border: 0; border-radius: 16px; background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+:where(:root[data-input="mouse"]) .approval-option:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.approval-option.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.approval-option.danger.selected { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.approval-option:disabled { opacity: 0.6; cursor: default; }
+.approval-option-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.approval-option-title { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.approval-option.danger .approval-option-title { color: var(--danger); }
+.approval-option-desc { font-size: 13px; line-height: 1.35; color: var(--muted); }
+.approval-option-check { flex: 0 0 auto; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: var(--accent); }
+.approval-option.danger .approval-option-check { color: var(--danger); }
+.approval-option-check svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; }
 
 .model-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; width: min(100%, 560px);
@@ -2529,7 +2569,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .provider-command:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
-  .model-sheet, .model-sheet.open, .model-provider::after, .model-tab-caret, .model-option, .model-add { transition: none; }
+  .model-sheet, .model-sheet.open, .model-provider::after, .model-tab-caret, .approval-tab-caret, .model-option, .approval-option, .model-add { transition: none; }
   .model-refresh.spin svg, .identity:not(.flying):not(.lowering) .avatar, .card:not(.resolved), .todo-check.checked, .inbox-new, .tray .item { animation: none; }
   .audio-bar, .audio-play, .audio-down { transition: none; }
   .audio-card.loading-meta .audio-bar { animation: none; }

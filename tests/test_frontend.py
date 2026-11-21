@@ -281,6 +281,11 @@ class DockedOverlaysTest(unittest.TestCase):
         model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
         self.assertIn('sheet.setAttribute("popover", "manual");', model)
         self.assertIn('scrim.setAttribute("popover", "manual");', model)
+        approvals = (DASHBOARD / "approvals.js").read_text(encoding="utf-8")
+        self.assertIn('sheet.setAttribute("popover", "manual");', approvals)
+        self.assertIn('scrim.setAttribute("popover", "manual");', approvals)
+        self.assertIn('key: "approvals.mode"', approvals)
+        self.assertIn("Turn off approvals?", approvals)
 
 
 
