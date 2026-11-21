@@ -17,7 +17,10 @@ desktop.
 
 Screenshots use sample data.
 
-<p><img src="docs/media/demo.gif" alt="Sending a message and watching the agent narrate its work" width="300"></p>
+<p>
+<a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Sending a message and watching the agent narrate its work" width="300"></a>
+<a href="docs/media/demo-walkthrough.mp4"><img src="docs/media/demo-walkthrough.gif" alt="Phone walkthrough: chats, scheduled jobs, inline photos, Hermes's Computer, bookmarks and to-dos" width="300"></a>
+</p>
 
 <p>
 <a href="docs/media/phone-01-chat.png"><img src="docs/media/phone-01-chat.png" alt="A chat with code and a table" width="180"></a>
