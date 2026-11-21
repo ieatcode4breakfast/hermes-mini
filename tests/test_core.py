@@ -251,6 +251,15 @@ class GatewayEventsTest(DisposableHome):
         self.assertEqual(len(events), self.core.GATEWAY_EVENTS_MAX)
         self.assertEqual(events[-1]["ts"], float(self.core.GATEWAY_EVENTS_MAX + 9))
 
+    def test_clear_drops_recorded_events_and_ignores_missing_file(self):
+        self.core.clear_gateway_events()
+        self.assertEqual(self.core.gateway_events(), [])
+        self.core.record_gateway_event("down", ts=10)
+        self.core.record_gateway_event("up", ts=20)
+        self.core.clear_gateway_events()
+        self.assertEqual(self.core.gateway_events(), [])
+        self.assertFalse((self.home / "data" / "hermes-mini" / "gateway-events.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -183,6 +183,14 @@ def record_gateway_event(kind: str, ts: float | None = None) -> bool:
     return True
 
 
+def clear_gateway_events() -> None:
+    """Drop every recorded gateway stop and start (called when the main chat is reset)."""
+    try:
+        data_file(GATEWAY_EVENTS_FILE).unlink()
+    except FileNotFoundError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------

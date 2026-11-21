@@ -159,6 +159,7 @@ const state = {
   editing: null, // Edit & resend in progress: { row, saved } (see beginEdit)
   resettingMain: false, // a main-chat reset is between its confirmation and its finish
   composerLocked: false, // a reset deleted the old main but no replacement is attached: keep the composer disabled
+  homeStartedAt: 0, // creation time of the current main chat (seconds), or Infinity right after creation
 };
 
 // The model chip on the composer and its sheet (model.js). A New chat (draft) has no session yet: its pick is sent
@@ -1298,6 +1299,7 @@ async function attachHome(fresh) {
   let pendingConnection = null;
   let inflight = null;
   let messageCount = 0;
+  let startedAt = fresh ? Infinity : 0;
   if (!fresh) {
     try {
       const resumed = await rpc("session.resume", { session_id: state.homeId });
@@ -1308,6 +1310,7 @@ async function attachHome(fresh) {
       pendingConnection = resumed.pending_connection || null;
       inflight = resumed.inflight || null;
       messageCount = Number(resumed.message_count) || 0;
+      startedAt = Number(resumed.started_at) || 0;
     } catch (error) {
       if (!/not found/i.test(errorText(error))) throw error;
       // The stored home thread no longer exists on the server: start a fresh one.
@@ -1316,6 +1319,7 @@ async function attachHome(fresh) {
       return attachThread();
     }
   }
+  state.homeStartedAt = startedAt;
   state.storedId = state.homeId;
   state.viewedTitle = "";
   setReadOnly(false);
@@ -1649,6 +1653,9 @@ async function resetMainChat(item) {
       clearComposer(); // the old main chat's draft, attachments and pastes go with it
     }
     clearLog(); // the deleted chat's messages must never be shown again, even if the create fails below
+    cancelGatewayLineTimers();
+    state.gatewaySeenTs = 0;
+    state.homeStartedAt = 0;
     setEmptyState(false);
     for (const id of [...state.cards.keys()]) removeCard(id);
     persistView();
@@ -1793,8 +1800,12 @@ function addGatewayLine(event) {
 // recorded since the last line drawn goes at the end of the main chat. The gateway may write its line a moment after
 // the socket changes, so it looks again after a short wait.
 let gatewayLineTimers = [];
-function showNewGatewayEvents() {
+function cancelGatewayLineTimers() {
   for (const timer of gatewayLineTimers) clearTimeout(timer);
+  gatewayLineTimers = [];
+}
+function showNewGatewayEvents() {
+  cancelGatewayLineTimers();
   gatewayLineTimers = [0, 3000, 10000].map((delay) => setTimeout(async () => {
     if (!viewingHome()) return;
     const viewed = state.viewedId;
@@ -1836,8 +1847,9 @@ async function loadHistory(messageCount = null) {
   older.minId = lowestRowId(rows);
   older.done = rows.length === 0;
   older.busy = false;
-  // Only the stops and starts this page covers: older ones belong with older pages, which carry no lines.
-  const pageStart = older.done ? -Infinity : Math.min(...rows.map((m) => Number(m.timestamp) || Infinity));
+  // Only the stops and starts this page covers: an empty main chat starts clean (nothing recorded before this chat
+  // existed), and older pages carry no lines.
+  const pageStart = rows.length ? Math.min(...rows.map((m) => Number(m.timestamp) || Infinity)) : (state.homeStartedAt || Infinity);
   state.gatewaySeenTs = gatewayEvents.reduce((high, e) => Math.max(high, e.ts), 0);
   renderHistoryEntries(rows, gatewayEvents.filter((e) => e.ts >= pageStart));
   // A chat opens at its newest message, so that is the one seen first (Inbox read tracker, the person, 8 Nov 2026). A deep

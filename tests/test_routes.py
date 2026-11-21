@@ -836,6 +836,14 @@ class AppChatsHomeRoutesTest(RouteTestCase):
         self.assertEqual(cleared.status_code, 200)
         self.assertEqual(self.client.get(url).json()["home"], "")
 
+    def test_clearing_home_also_clears_gateway_events(self):
+        self.api.core.record_gateway_event("down", ts=100)
+        self.api.core.record_gateway_event("up", ts=104)
+        self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/gateway-events").json()["events"]), 2)
+        cleared = self.client.delete("/api/plugins/hermes-mini/app-chats/home")
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(self.client.get("/api/plugins/hermes-mini/gateway-events").json(), {"events": []})
+
     def test_inbox_scope_uses_the_recorded_home_not_the_title(self):
         self.client.post(
             "/api/plugins/hermes-mini/app-chats", json={"id": "home", "home": True},

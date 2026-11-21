@@ -868,6 +868,19 @@ class ZIndexLadderTest(unittest.TestCase):
         # Drawn as the muted centred system line, not as a bubble.
         self.assertIn("const row = addFailLine(gatewayLineText(event));", app)
 
+    def test_empty_or_reset_main_chat_drops_old_gateway_lines(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        load = app[app.index("async function loadHistory"):app.index("\n// Loads the next older page")]
+        self.assertNotIn("older.done ? -Infinity", load)
+        self.assertIn("rows.length ? Math.min(...rows.map((m) => Number(m.timestamp) || Infinity)) : (state.homeStartedAt || Infinity)", load)
+        attach = app[app.index("async function attachHome"):app.index("\n// Another chat picked from the drawer")]
+        self.assertIn("let startedAt = fresh ? Infinity : 0;", attach)
+        self.assertIn("startedAt = Number(resumed.started_at) || 0;", attach)
+        self.assertIn("state.homeStartedAt = startedAt;", attach)
+        reset = app[app.index("async function resetMainChat"):app.index("\n// Pins or unpins a chat")]
+        self.assertIn("cancelGatewayLineTimers();", reset)
+        self.assertIn("state.gatewaySeenTs = 0;", reset)
+
     def test_every_layer_used_is_named(self):
         defined = set(re.findall(r"(--z-[a-z-]+)\s*:", self.style + self.screen))
         used = set(re.findall(r"var\((--z-[a-z-]+)\)", self.style + self.screen))

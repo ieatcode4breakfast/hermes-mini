@@ -382,6 +382,10 @@ async def clear_app_home():
     except Exception as exc:  # noqa: BLE001
         log.warning("app-chats home clear failed: %s", exc)
         return JSONResponse({"detail": "registry unavailable"}, status_code=503)
+    try:
+        core.clear_gateway_events()
+    except OSError as exc:
+        log.warning("gateway events clear failed: %s", exc)
     return JSONResponse({"ok": True, "home": ""})
 
 
