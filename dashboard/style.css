@@ -1547,6 +1547,9 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
 #rowMenuMute[data-muted="true"] .bell-unmuted { display: none; }
 #rowMenuMute[data-muted="false"] .bell-muted { display: none; }
 #rowMenuMute:not([data-muted]) .bell-muted { display: none; }
+#rowMenuUnread[data-unread="true"] .mail-unread { display: none; }
+#rowMenuUnread[data-unread="false"] .mail-read { display: none; }
+#rowMenuUnread:not([data-unread]) .mail-read { display: none; }
 .row-menu-item:hover, .row-menu-item:focus-visible { background: var(--zebra); outline: none; }
 .row-menu-item svg { width: 18px; height: 18px; flex: none; order: -1; }
 .row-menu-item.danger { color: var(--danger); }

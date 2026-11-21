@@ -1478,7 +1478,7 @@ async function switchSession(id) {
   state.viewedUnsent = false;
   state.viewedId = id;
   persistView();
-  drawerApi.markSeen(id); // opening a chat is what clears its unread dot
+  drawerApi.markSeen(id, null, { clearManual: true }); // opening a chat is what clears its unread dot
   // The chat being left was on screen until now, so everything in it so far was seen: a job result or background
   // follow-up that landed while it was open must not come back as a dot (ghost-dot fix, 7 Nov 2026).
   if (leaving && !leavingUnsent) drawerApi.markSeen(leaving);

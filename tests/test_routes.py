@@ -779,7 +779,28 @@ class DataRoutesTest(RouteTestCase):
     def test_seen_store_is_created_on_first_read_and_kept_outside_package(self):
         body = self.client.get("/api/plugins/hermes-mini/seen").json()
         self.assertIn("seen", body)
+        self.assertEqual(body["unread"], [])
         self.assertTrue((self.home / "data" / "hermes-mini" / "seen.json").is_file())
+
+    def test_seen_manual_unread_roundtrip(self):
+        marked = self.client.post("/api/plugins/hermes-mini/seen/unread", json={"id": "chat-1", "unread": True})
+        self.assertEqual(marked.status_code, 200, marked.text)
+        self.assertIn("chat-1", marked.json()["unread"])
+        # Passive PUT /seen does not clear a manual unread mark.
+        seen_put = self.client.put("/api/plugins/hermes-mini/seen", json={"id": "chat-1", "at": 1_800_000_000})
+        self.assertEqual(seen_put.status_code, 200)
+        self.assertIn("chat-1", seen_put.json()["unread"])
+        # Marking read clears it and updates the seen timestamp.
+        cleared = self.client.post(
+            "/api/plugins/hermes-mini/seen/unread",
+            json={"id": "chat-1", "unread": False, "at": 1_800_000_123},
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertNotIn("chat-1", cleared.json()["unread"])
+        self.assertGreaterEqual(cleared.json()["seen"]["chat-1"], 1_800_000_123)
+        # Invalid inputs rejected.
+        self.assertEqual(self.client.post("/api/plugins/hermes-mini/seen/unread", json={"id": "", "unread": True}).status_code, 400)
+        self.assertEqual(self.client.post("/api/plugins/hermes-mini/seen/unread", json={"id": "chat-1", "unread": "yes"}).status_code, 400)
 
     def test_reading_a_chat_sends_no_push(self):
         # Notifications are not retracted on read. An older cached page still sends its push endpoint: ignored.

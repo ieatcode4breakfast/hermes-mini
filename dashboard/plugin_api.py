@@ -416,7 +416,21 @@ def _read_seen() -> dict[str, Any] | None:
         for key, value in seen_raw.items():
             if isinstance(key, str) and key and isinstance(value, (int, float)) and not isinstance(value, bool):
                 seen[key] = int(value)
-    return {"since": int(since) if isinstance(since, (int, float)) and not isinstance(since, bool) else 0, "seen": seen}
+    unread_raw = data.get("unread")
+    unread: list[str] = []
+    if isinstance(unread_raw, list):
+        seen_unread: set[str] = set()
+        for item in unread_raw:
+            if isinstance(item, str) and 0 < len(item) <= 200 and item not in seen_unread:
+                seen_unread.add(item)
+                unread.append(item)
+                if len(unread) >= MAX_SEEN_IDS:
+                    break
+    return {
+        "since": int(since) if isinstance(since, (int, float)) and not isinstance(since, bool) else 0,
+        "seen": seen,
+        "unread": unread,
+    }
 
 
 def _write_seen(data: dict[str, Any]) -> None:
@@ -433,7 +447,7 @@ async def get_seen():
         data = _read_seen()
         if data is None:
             # First ever read: everything that already exists counts as read.
-            data = {"since": int(time.time()), "seen": {}}
+            data = {"since": int(time.time()), "seen": {}, "unread": []}
             try:
                 _write_seen(data)
             except Exception as exc:  # noqa: BLE001 - the answer still works, the next GET retries the file
@@ -459,7 +473,7 @@ async def put_seen(request: Request):
             data = _read_seen()
             if data is None:
                 now = int(time.time())
-                data = {"since": now, "seen": {}}
+                data = {"since": now, "seen": {}, "unread": []}
             seen = data["seen"]
             seen[session_id] = max(int(seen.get(session_id) or 0), stamp)
             if len(seen) > MAX_SEEN_IDS:
@@ -470,6 +484,50 @@ async def put_seen(request: Request):
     except Exception as exc:  # noqa: BLE001
         log.warning("seen store save failed: %s", exc)
         return JSONResponse({"detail": "could not save the seen marker"}, status_code=500)
+    return JSONResponse(data)
+
+
+@router.post("/seen/unread")
+async def set_chat_unread(request: Request):
+    """Marks a chat session manually unread (shows its dot even if already read) or clears it."""
+    body, error = await _json_body(request)
+    if error is not None:
+        return error
+    assert body is not None
+    session_id = body.get("id")
+    if not isinstance(session_id, str) or not 0 < len(session_id) <= 200:
+        return JSONResponse({"detail": "id must be a chat id"}, status_code=400)
+    unread = body.get("unread", True)
+    if not isinstance(unread, bool):
+        return JSONResponse({"detail": "unread must be true or false"}, status_code=400)
+    at = body.get("at")
+    if "at" in body and (
+        isinstance(at, bool) or not isinstance(at, (int, float)) or at != at or at in (float("inf"), float("-inf"))
+    ):
+        return JSONResponse({"detail": "at must be a unix time in seconds"}, status_code=400)
+    try:
+        with _SEEN_LOCK:
+            now = int(time.time())
+            data = _read_seen()
+            if data is None:
+                data = {"since": now, "seen": {}, "unread": []}
+            manual = [cid for cid in data.get("unread", []) if cid != session_id]
+            if unread:
+                manual.append(session_id)
+                if len(manual) > MAX_SEEN_IDS:
+                    manual = manual[-MAX_SEEN_IDS:]
+            else:
+                seen = data["seen"]
+                stamp = max(int(at) if at is not None else 0, now)
+                seen[session_id] = max(int(seen.get(session_id) or 0), stamp)
+                if len(seen) > MAX_SEEN_IDS:
+                    kept = sorted(seen.items(), key=lambda item: item[1], reverse=True)[:MAX_SEEN_IDS]
+                    data["seen"] = dict(kept)
+            data["unread"] = manual
+            _write_seen(data)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("seen unread save failed: %s", exc)
+        return JSONResponse({"detail": "could not save the unread state"}, status_code=500)
     return JSONResponse(data)
 
 

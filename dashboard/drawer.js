@@ -136,6 +136,8 @@ export function createDrawer(deps) {
   const rowMenu = $("rowMenu");
   const menuPin = $("rowMenuPin");
   const menuPinLabel = menuPin.querySelector("span");
+  const menuUnread = $("rowMenuUnread");
+  const menuUnreadLabel = menuUnread ? menuUnread.querySelector("span") : null;
   const menuMute = $("rowMenuMute");
   const menuMuteLabel = menuMute ? menuMute.querySelector("span") : null;
   const menuRename = $("rowMenuRename");
@@ -174,7 +176,7 @@ export function createDrawer(deps) {
     muted: new Set(), // chat ids with notifications muted (plugin_api.py /push/muted), shared across devices
     sorting: false, // the Pinned group is in Sort mode: drag handles on, taps do not open chats
     busy: new Set(), // chat ids with a reply in progress right now (setBusy, fed by app.js); their rows pulse
-    seen: { since: 0, seen: {} }, // shared read markers (plugin_api.py /seen): chat id -> unix seconds
+    seen: { since: 0, seen: {}, unread: new Set() }, // shared read markers + manual unread ids (plugin_api.py /seen)
     seenLoaded: false, // the first /seen reply has not landed yet: show no dots rather than guess
   };
 
@@ -233,13 +235,19 @@ export function createDrawer(deps) {
   // The unread markers arrive once at start too. They are merged rather than replaced, so a chat
   // read while the request was in flight keeps its newer local mark.
   const SEEN_URL = "/api/plugins/hermes-mini/seen";
-  function mergeSeen(data) {
+  const SEEN_UNREAD_URL = "/api/plugins/hermes-mini/seen/unread";
+  let unreadInflight = 0;
+  function mergeSeen(data, { replaceUnread = false } = {}) {
     const since = Number(data && data.since) || 0;
     const map = data && data.seen && typeof data.seen === "object" ? data.seen : {};
     const merged = {};
     for (const [id, at] of Object.entries(map)) merged[id] = Number(at) || 0;
     for (const [id, at] of Object.entries(st.seen.seen)) merged[id] = Math.max(merged[id] || 0, Number(at) || 0);
-    st.seen = { since: Math.max(since, Number(st.seen.since) || 0), seen: merged };
+    let unread = st.seen.unread;
+    if ((replaceUnread || unreadInflight === 0) && Array.isArray(data && data.unread)) {
+      unread = new Set(data.unread.filter((id) => typeof id === "string" && id));
+    }
+    st.seen = { since: Math.max(since, Number(st.seen.since) || 0), seen: merged, unread };
   }
   deps.api(SEEN_URL).then((data) => {
     mergeSeen(data);
@@ -247,21 +255,59 @@ export function createDrawer(deps) {
     if (st.rows.length) render({ keepScroll: true });
   }).catch(() => {}); // no markers: no dots, never a guess
 
-  // A row is unread while its latest activity is newer than the last time it was looked at. The chat on screen is never
-  // unread: opening it is exactly what clears the mark.
+  // A row is unread while manually marked unread, or while its latest activity is newer than the last time it was
+  // looked at. A manually marked unread chat keeps its dot even while open until cleared by hand or re-opened later.
   function isUnread(item) {
     // A chat mid-reply pulses instead: its tool steps bump last_active before any reply exists (ghost-dot fix).
-    if (!st.seenLoaded || item.id === viewedId() || st.busy.has(item.id)) return false;
+    if (!st.seenLoaded || st.busy.has(item.id)) return false;
+    if (st.seen.unread.has(item.id)) return true;
+    if (item.id === viewedId()) return false;
     const mark = Math.max(Number(st.seen.seen[item.id]) || 0, Number(st.seen.since) || 0);
     return item.last_active > mark;
+  }
+
+  async function setUnread(item, unread) {
+    if (!item || !item.id) return;
+    const prevManual = st.seen.unread.has(item.id);
+    const prevSeen = Number(st.seen.seen[item.id]) || 0;
+    const stamp = Math.floor(Math.max(item.last_active || 0, Date.now() / 1000));
+    if (unread) st.seen.unread.add(item.id);
+    else {
+      st.seen.unread.delete(item.id);
+      st.seen.seen[item.id] = Math.max(prevSeen, stamp);
+    }
+    st.seenLoaded = true;
+    render({ keepScroll: true });
+    unreadInflight += 1;
+    try {
+      const data = await deps.api(SEEN_UNREAD_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, unread, at: stamp }),
+      });
+      unreadInflight -= 1;
+      mergeSeen(data, { replaceUnread: unreadInflight === 0 });
+      render({ keepScroll: true });
+    } catch {
+      unreadInflight -= 1;
+      if (prevManual) st.seen.unread.add(item.id);
+      else st.seen.unread.delete(item.id);
+      if (prevSeen) st.seen.seen[item.id] = prevSeen;
+      render({ keepScroll: true });
+      showToast(unread ? "Could not mark unread" : "Could not mark read", "error");
+    }
   }
 
   // Records that a chat has been looked at. The local map updates now, so the dot clears at once, and the server keeps
   // the shared copy for the other devices. The mark is the chat's own latest activity or now, whichever is later, so a
   // slightly different clock on the phone can never leave a just-read chat looking unread.
-  function markSeen(id, at = null) {
+  function markSeen(id, at = null, { clearManual = false } = {}) {
     if (!id) return;
     const row = st.rows.find((item) => item.id === id);
+    if (clearManual && st.seen.unread.has(id)) {
+      void setUnread(row || { id, last_active: Number(at) || 0 }, false);
+      return;
+    }
     const stamp = Math.floor(Math.max(Number(at) || 0, row ? row.last_active : 0, Date.now() / 1000));
     if ((Number(st.seen.seen[id]) || 0) >= stamp) return; // already recorded at least this far
     st.seen.seen[id] = stamp;
@@ -945,6 +991,12 @@ export function createDrawer(deps) {
     const home = isHome(item);
     const pushOn = isDevicePushEnabled();
     menuPin.hidden = home;
+    if (menuUnread) {
+      const unread = isUnread(item);
+      if (menuUnreadLabel) menuUnreadLabel.textContent = unread ? "Mark read" : "Mark unread";
+      menuUnread.setAttribute("data-unread", unread ? "true" : "false");
+      menuUnread.setAttribute("aria-label", unread ? "Mark read" : "Mark unread");
+    }
     if (menuMute) {
       menuMute.hidden = !pushOn;
       if (pushOn) {
@@ -968,7 +1020,7 @@ export function createDrawer(deps) {
     rowMenuScrim.classList.add("open");
     rowMenu.classList.add("open");
     if (!(history.state && history.state.hermesMiniMenu === true)) history.pushState({ hermesMiniMenu: true }, "");
-    const first = [menuPin, menuMute, menuRename, menuDelete, menuReset].find((btn) => btn && !btn.hidden);
+    const first = [menuPin, menuUnread, menuMute, menuRename, menuDelete, menuReset].find((btn) => btn && !btn.hidden);
     if (first) first.focus({ preventScroll: true });
   }
 
@@ -1016,7 +1068,7 @@ export function createDrawer(deps) {
 
   // Arrow keys, Home and End move between the menu's items (Enter and Space activate the focused one natively).
   function moveMenuFocus(event) {
-    const items = [menuPin, menuMute, menuRename, menuDelete, menuReset].filter((item) => item && !item.hidden);
+    const items = [menuPin, menuUnread, menuMute, menuRename, menuDelete, menuReset].filter((item) => item && !item.hidden);
     const index = items.indexOf(document.activeElement);
     let next;
     if (event.key === "Home") next = 0;
@@ -1034,6 +1086,15 @@ export function createDrawer(deps) {
     const pinned = !item.pinned;
     void closeMenu().then(() => setPinned(item, pinned));
   });
+  if (menuUnread) {
+    menuUnread.addEventListener("click", () => {
+      const m = st.menu;
+      if (!m) return;
+      const item = m.item;
+      const next = !isUnread(item);
+      void closeMenu().then(() => setUnread(item, next));
+    });
+  }
   if (menuMute) {
     menuMute.addEventListener("click", () => {
       const m = st.menu;
