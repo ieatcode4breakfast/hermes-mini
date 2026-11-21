@@ -2364,8 +2364,8 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 :root[data-theme="dark"] { --model-tab: #2a2c33; }
 .composer-tabs {
   --tab-bg: var(--model-tab);
-  position: absolute; bottom: calc(100% - 1px); right: 34px; z-index: -2;
-  display: inline-flex; align-items: stretch; max-width: calc(100% - 68px); height: 28px;
+  position: absolute; bottom: calc(100% - 1px); right: 26px; z-index: -2;
+  display: inline-flex; align-items: stretch; max-width: calc(100% - 60px); height: 28px;
   border-radius: 12px 12px 0 0; background: var(--tab-bg);
 }
 .composer-tabs:not(:has(> :not([hidden]))), .composer-tabs:has(> .model-tab[hidden]) { display: none; }
