@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-21
+
 ### Added
 
 - Manual unread for chat sessions: **Mark unread** / **Mark read** directly below **Rename** in every chat's `⋮` menu

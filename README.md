@@ -85,7 +85,7 @@ because restarting the gateway ends its reply. Then open the address, sign in wi
 Hermes login, and use your browser's "Install app" / "Add to Home Screen".
 
 Installing by name uses the Hermes plugin catalog, which pins a reviewed release (currently
-v0.2.1). To get the newest commit on `main` before the catalog catches up, install from GitHub
+v0.3.0). To get the newest commit on `main` before the catalog catches up, install from GitHub
 instead:
 
 ```bash
