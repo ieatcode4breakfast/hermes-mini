@@ -75,8 +75,7 @@ body.bot-screen-open {
 }
 /* Ownership label and actions float over the remote desktop inside #bsStage: one absolute row, so the
    header keeps only Back + title. screen.js anchors it to the rendered noVNC canvas, not to the stage:
-   the row's bottom sits ~7px above the image and its sides line up with the image's 8px inset. The
-   translate lifts the row by its own height, so the gap stays exact if the buttons wrap. */
+   the row's top sits ~7px below the image and its sides line up with the image's 8px inset. */
 .bs-float {
   position: absolute;
   top: var(--bs-float-top, 8px);
@@ -163,7 +162,7 @@ body.bot-screen-open {
 .bs-btn.primary { background: var(--accent); color: #fff; }
 .bs-btn.danger { background: color-mix(in srgb, var(--danger) 12%, var(--bg)); color: var(--danger); }
 
-/* Reuse the chat bubble purple and foreground tokens for a clear, theme-aware button surface. */
+/* A neutral, theme-aware grey pill so the controls read clearly against any desktop. */
 .bs-controls .bs-btn, .bs-lease-group .bs-btn {
   min-height: 32px;
   padding: 0 12px;
@@ -212,7 +211,7 @@ body.bot-screen-open {
   #bsHandback.counting::after { animation: none; }
 }
 
-/* Icon-only toolbar actions (remote keyboard, reconnect): the same compact purple pill, narrowed to an
+/* Icon-only toolbar actions (remote keyboard, reconnect): the same compact neutral pill, narrowed to an
    icon target instead of text so the title keeps its room. */
 .bs-controls .bs-icon-btn {
   width: 32px;
@@ -329,7 +328,7 @@ body.bot-screen-open {
   pointer-events: none;
 }
 
-/* Narrow phones: the arrow stays 44px tall, and the action group wraps inside itself. */
+/* Narrow phones: the back control stays the 46px monitor button, and the action group wraps inside itself. */
 @media (max-width: 420px) {
   .bs-bar { min-height: 44px; padding-top: 0; padding-bottom: 0; }
   .bs-title { font-size: 15px; }
@@ -349,7 +348,7 @@ body.bot-screen-open {
 }
 
 /* Docked (wide window): the computer is a right-hand pane, not an overlay. The chat keeps a 440px column to its
-   left, so the divider is a hairline instead of a big shadow. Top/height still come from screen.js (--bs-vt/--bs-vh). */
+   left; the docked pane has no divider and no shadow. Top/height still come from screen.js (--bs-vt/--bs-vh). */
 body.docked.computer-docked .bot-screen {
   left: var(--chat-w, 440px); /* the chats panel collapses while the computer is open */
   right: 0;
@@ -376,8 +375,8 @@ body.docked.computer-three-pane .bot-screen.bs-leaving-docked { left: calc(300px
 @media (hover: hover) and (pointer: fine) {
   .bs-host { left: 20px; right: 20px; }
 }
-/* Docked: no X on the pane. The monitor button beside the chat opens and closes it. Phones keep
-   the back arrow, since the computer covers the whole screen there. */
+/* Docked: no X on the pane; CSS hides it. The monitor button beside the chat opens and closes it. Phones and narrow
+   windows show the monitor button in the back slot, with no back arrow, since the computer covers the whole screen there. */
 body.docked #bsBack { visibility: hidden; }
 /* The picture comes first: the title and the control row wait (hidden) until the desktop image is on screen, then
    fade in (screen.js toggles .bs-chrome-wait). */

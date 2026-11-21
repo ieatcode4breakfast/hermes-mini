@@ -2,7 +2,7 @@
 // Protocol mirrors web/src (gatewayClient.ts) and apps/shared (json-rpc-channel.ts, json-rpc-gateway.ts):
 //  - WebSocket /api/ws?ticket=<single-use ticket from POST /api/auth/ws-ticket>
 //  - newline-delimited JSON-RPC 2.0; event notifications have method "event"
-//  - server->client requests (approval, clarify) carry a string id and are answered with a response frame,
+//  - server->client requests (approval, clarify, password/secret/vault prompts) carry a string id and are answered with a response frame,
 //    except clarify answers, which lock per question through clarify.lock, and approval, which uses approval.respond
 //  - after gateway.ready the client advertises client.capabilities {server_requests: true}, otherwise the
 //    backend treats it as an old client and fails approvals and clarify immediately
@@ -153,7 +153,7 @@ const state = {
   cards: new Map(), // server request id -> { el, method, params, ... }
   attachments: [], // { file, kind: "image" | "file", url }
   pastes: [], // collapsed large pastes: { label, text }. The label stays in the textarea and the text is swapped back in on send.
-  mentions: [], // schedules added to the draft: { token, tag, title }. " Name" stays in the textarea (drawn as a pill) and
+  mentions: [], // schedules and skill pills added to the draft: { token, tag, title, kind }. " Name" stays in the textarea (drawn as a pill) and
   //               becomes the full "[Schedule: … · job …]" tag on send, like a collapsed paste.
   sending: false,
   editing: null, // Edit & resend in progress: { row, saved } (see beginEdit)
@@ -173,7 +173,7 @@ const modelUi = createModelPicker({
   chip: $("modelChip"),
 });
 
-// The approval mode pill below the input box and its sheet (approvals.js).
+// The approval mode icon tab on the input pill's top edge, right of the model tab, and its sheet (approvals.js).
 const approvalUi = createApprovalPicker({
   rpc: (method, params, timeoutMs) => rpc(method, params, timeoutMs),
   confirmDialog,
@@ -2396,13 +2396,13 @@ function addAssistantBubble(text, meta = {}) {
   return bubble;
 }
 
-// ---------- message actions: copy, edit & resend, branch, mark unread / mark read ----------
-// Each message has an action row under it. A reply gets Copy, Branch and Mark unread (Mark read once it is held
-// unread), then its time; a user message gets its time, then Copy and Edit, right-aligned. The row always takes its
+// ---------- message actions: copy, edit & resend, branch, mark unread / mark read, bookmark ----------
+// Each message has an action row under it. A reply gets its time, Copy, Branch, Mark unread (Mark read once it is held
+// unread) and Bookmark / Remove bookmark; a user message gets Copy, Edit, then its time, right-aligned. The row always takes its
 // height, so nothing moves when the buttons appear; with a mouse the buttons and the time fade in on hover, and a touch
 // device shows only the time (the long-press menu below carries the actions). Every row keeps a small record on the
 // element (hermesMiniMsg): role, text shown, durable row id (null until known), time in epoch seconds (0 = unknown),
-// whether it had attachments, and whether the Inbox holds it unread by hand (markedUnread).
+// whether it had attachments, whether the Inbox holds it unread by hand (markedUnread), and whether it is bookmarked.
 
 const ICON_ATTRS = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
 const ICON_EDIT = `<svg ${ICON_ATTRS}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
@@ -2463,7 +2463,7 @@ function addMessageActions(row) {
   const copy = makeCopyButton("msg-copy msg-act", () => copyText(meta.text));
   copy.disabled = !meta.text;
   const time = timeEl(meta.ts);
-  // Icons sit on the outer edge, the time on the inner side: user rows read [icons] time (right-aligned),
+  // The time sits on the outer edge, the icons on the inner side: user rows read [icons] time (right-aligned),
   // Agent rows read time [icons] (left-aligned).
   if (meta.role === "user") {
     bar.append(copy, actionButton("edit", "Edit message", ICON_EDIT, () => beginEdit(row)));
@@ -2531,7 +2531,8 @@ function syncActionAvailability(root = els.log) {
 // ---------- message menu (touch long press) and select mode ----------
 // On a touch device a long press (450 ms, cancelled by a 10 px move or by lifting) on a message's bubble opens the
 // same actions the row's buttons offer, anchored at the press point. The menu is the drawer's row-menu card (same
-// look), built on demand: Copy, then Edit (user) or Branch and Mark unread / Mark read (reply, by the row's flag), then Select text, each with its icon on the left.
+// look), built on demand: Copy, then Edit (user) or Branch, Mark unread / Mark read (reply, by the row's flag) and
+// Bookmark / Remove bookmark, then Select text, each with its icon on the left.
 // It reuses the history pattern: one entry pushed on open, consumed by every in-app close. Select text puts that one
 // message into native selection mode so Android's handles and copy toolbar appear.
 
@@ -7141,7 +7142,7 @@ setToolsOpen(toolsRemembered, { remember: false });
 toolsBtn.addEventListener("click", () => setToolsOpen(!document.body.classList.contains("tools-open")));
 new MutationObserver(syncToolsCount).observe(todoCountEl, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
 
-// The Schedules panel: Hermes's scheduled jobs, fetched on every open; pause, resume, delete and
+// The Scheduled panel: Hermes's scheduled jobs, fetched on every open; pause, resume, delete and
 // add-to-message go through it (schedules.js).
 const schedules = createSchedules({
   api,
@@ -7184,7 +7185,7 @@ els.inboxBtn.addEventListener("keydown", (event) => {
   event.preventDefault();
   toggleInbox();
 });
-// The Schedules row in the chats panel opens Schedules, and a second tap closes it. On a phone the panel is an
+// The Scheduled row in the chats panel opens Scheduled, and a second tap closes it. On a phone the panel is an
 // overlay, so it steps aside first; a docked panel stays.
 document.getElementById("schedBtn").addEventListener("click", () => {
   if (schedules.isOpen()) {

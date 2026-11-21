@@ -32,7 +32,7 @@ const IDLE_HAND_BACK_MS = 20_000;
 const COUNTDOWN_MS = 5_000;
 const TAKE_NUDGE_MS = 4_000; // after "the agent is working", the next tap within this still takes over
 // Floating ownership/action row placement. noVNC letterboxes its real canvas inside #bsHost, so the row
-// is anchored to the rendered canvas, not to the stage box: bottom edge just above the image, sides
+// is anchored to the rendered canvas, not to the stage box: top edge just below the image, sides
 // aligned to the image with a small inset.
 const FLOAT_GAP_PX = 7; // vertical gap between the image's bottom and the row's top
 const FLOAT_INSET_PX = 8; // horizontal inset from the image's left/right edges
@@ -225,13 +225,13 @@ export function createBotScreen(deps) {
   const rpcReady = () => Boolean(conn().ready);
   // Docked: on a wide window the computer is a right-hand pane beside a still-usable chat, not a full-screen overlay.
   const docked = () => Boolean(deps.isDocked && deps.isDocked());
-  // The header button is a back arrow in the overlay and an X that closes the pane when docked.
+  // The header button is the monitor glyph in the overlay; docked, CSS hides it.
   const CLOSE_X = "M6 6l12 12M18 6L6 18";
 
   function syncBackButton() {
     const isDocked = docked();
-    // Phones and narrow windows: the close control is the "active" monitor button, in the same spot as the chat's
-    // Computer button, so the button that opened the computer also closes it. Docked hides it.
+    // Phones and narrow windows: the close control is the "active" monitor button in the left back slot, not the
+    // same spot as the chat's right-side Computer button. Docked hides it.
     const label = "Close computer";
     backBtn.setAttribute("aria-label", label);
     backBtn.setAttribute("title", label);
@@ -524,7 +524,7 @@ export function createBotScreen(deps) {
     const hasImage = Boolean(probe && probe.width > 0 && probe.height > 0);
 
     // A constant band, only while an image exists: noVNC refits into the remaining host area, which
-    // guarantees the row a place to sit above the image. A constant (never measured from the row or the
+    // guarantees the row a place to sit below the image. A constant (never measured from the row or the
     // canvas) is what keeps the ResizeObserver from toggling this and looping.
     // Phones: the picture goes to the top so a trackpad surface can fill the rest. Its height comes from the desktop's
     // aspect and the stage width only (never from the drawn canvas), so this cannot loop with the ResizeObserver.

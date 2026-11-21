@@ -146,7 +146,8 @@ def plain_markdown(text: Any) -> str:
 # Gateway lifecycle (the main chat's "restarting" / "back" lines)
 # ---------------------------------------------------------------------------
 
-# Written by the gateway half (bridge.py) when the gateway stops and starts; read by the app through the dashboard.
+# Written by the gateway half (bridge.py) when the gateway stops and starts, and by dashboard/plugin_api.py's restart
+# route for the app's own stop; read by the app through the dashboard.
 # Kept apart from the chat store, so the model never sees them and they never reach the Inbox or a notification.
 GATEWAY_EVENTS_FILE = "gateway-events.json"
 GATEWAY_EVENTS_MAX = 200

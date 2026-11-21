@@ -1,4 +1,4 @@
-// Schedules: the agent's scheduled jobs, opened from the Tools tray. It reads Hermes's own cron list (GET
+// Scheduled: the agent's scheduled jobs, opened from the Scheduled row in the chats panel. It reads Hermes's own cron list (GET
 // /api/cron/jobs) on every open. Each row says what the job is, when it runs in plain words, and when it runs next; a
 // job running right now says so. Each row's ⋮ menu (also a right click, or a long press on touch) offers: Add to
 // message (the job goes into the draft at the caret as an inline pill), Pause/Resume, and Delete (asks first).
@@ -466,7 +466,7 @@ export function createSchedules({ api, mention = null }) {
     dialog.classList.remove("open");
     document.body.classList.remove("sched-open");
     btn.setAttribute("aria-expanded", "false");
-    // Back to the Schedules row when it is on screen (a docked panel); with the panel closed, to the panel's button.
+    // Back to the Scheduled row when it is on screen (a docked panel); with the panel closed, to the panel's button.
     const back = btn.offsetParent ? btn : document.getElementById("menuBtn");
     if (back && back.offsetParent) back.focus({ preventScroll: true });
     if (!viaPop && history.state && history.state.hermesMiniSched === true) {

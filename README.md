@@ -195,7 +195,8 @@ there is no reply to show.
 
 - **Chats**: multiple conversations, a main chat, new chat, rename, pin (with a shared manual
   order), delete, reset of the main chat, and a read-only view of a chat that belongs to another
-  source.
+  source. Any chat's `⋮` menu, including the main chat's, offers **Mark unread** / **Mark read**.
+  Sending the first message in a New chat promotes it to the main chat when no saved main chat exists yet.
 - **Inbox**: every agent message across the app's chats, newest first, with unread tracking. It opens
   from the agent's picture or name, with the unread count on the picture; on a phone it opens as a
   full page. A swipe on a phone or an envelope button on hover marks a message read or
@@ -203,19 +204,23 @@ there is no reply to show.
   read while the reply is held unread, and Bookmark, which becomes Remove bookmark once the reply is kept. The main
   chat's messages carry the same home icon as the chat
   list.
-- **To-dos**: one shared list, nesting one level, drag to sort, clear finished.
+- **To-dos**: one shared list, nesting one level, drag to sort, clear finished. Each active top-level
+  row has a `⋮` menu with **Track** / **Untrack** and **Delete**; untracked parents are excluded from
+  the To-do and folded Tools badge counters and show a subtle untracked cue.
 - **Bookmarks**: the agent replies you kept, in the tool directly above To-do in the Tools tray. A reply is bookmarked
   from its action row or its long-press menu; the panel lists them newest bookmark first, each with its chat, time and
   a short preview. Tapping one opens the chat at that reply, and the filled bookmark at the right removes it. Bookmarks
   follow the message: a deleted chat or message simply drops out.
 - **Search**: the row directly under New chat in the chats panel. One field looks through the app's chat titles and
   the visible text of your and the agent's messages as you type. A chat hit opens that chat; a message hit opens it at
-  that message, with the same Loading message… toast and flash the Inbox uses. Only what the chat draws is searched:
-  hidden, tool and out-of-scope rows never match, and a message compaction carried forward is listed once.
+  that message, with the same Loading message… toast and flash the Inbox uses. Hits from the main chat, both chat and
+  message results, carry the home icon. Only what the chat draws is searched: hidden, tool and out-of-scope rows never
+  match, and a message compaction carried forward is listed once.
 - **Scheduled**: the row under the main chat in the chats panel. It lists the agent's scheduled jobs
   (Hermes cron), each with what it is, when it runs in plain words and when it runs next; a job
-  running now says so. Each row's ⋮ menu pauses, resumes or deletes the job through Hermes' own
-  routes, or adds it to the message being written as an inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.
+  running now says so, and a failed last run says "Last run didn't finish". Each row's ⋮ menu pauses,
+  resumes or deletes the job through Hermes' own routes, or adds it to the message being written as an
+  inline pill, which reaches the agent as `[Schedule: <name> · job <id>]`.
 - **Skills and schedules with "/"**: typing `/` at the start of a word in the message box lists the agent's skills
   (bolt icon) and schedules (clock icon) above it; typing on narrows the list. A pick goes into the message as the same
   inline pill. A message with skills is sent through Hermes's own skill command (`command.dispatch`), so each skill's
@@ -226,10 +231,15 @@ there is no reply to show.
   it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
 - **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning
-  level. The sheet lists Hermes's connected providers and their models (search, prices where Hermes
-  has them), with a five-bar reasoning level meter and fast mode where the model supports it; a pick
-  switches the chat and becomes the default for new chats. **Providers +** can add or update a
-  provider's API key through Hermes.
+  level. Friendly names are used throughout — the tab, the sheet, the picker and the "Switched to" line read
+  "DeepSeek v4.1 Flash" instead of the raw model id. The sheet lists Hermes's connected providers and
+  their models (search, prices where Hermes has them), with a five-bar reasoning level meter and fast
+  mode where the model supports it; a pick switches the chat and becomes the default for new chats.
+  **Providers +** can add or update a provider's API key through Hermes. On the right half of that same
+  shared top-edge tab sits an **Approval mode** icon button (a shield): tapping it opens a bottom sheet
+  for Hermes's live profile approval mode (**Manual**, **Smart**, **Off**) with plain-English
+  descriptions. It asks for confirmation before switching to **Off** (explicit deny rules in Hermes
+  still apply), and writes Hermes's profile config (`approvals.mode`) through Hermes's gateway (`config.set`).
 - **Live streaming**: replies appear as they arrive, with a short quiet narration line (a soft
   shimmer slides across it while the agent works) and tool-step progress. Narration uses Hermes' auxiliary model slots and stays silent if that is not
   configured.
@@ -239,7 +249,7 @@ there is no reply to show.
   reopens the one before, and a review step lists every answer with Change before you Submit. A "pick any
   that apply" question takes several answers. When the agent connects an app (Notion, Slack, ...), a card
   offers the sign-in link and Skip. Inline prompt cards also handle sudo passwords, skill secrets, vault
-  unlocks, saved logins, and one-time codes with masked inputs (Show/Hide) and Skip. A question's answer
+  unlocks, and saved logins with masked inputs (Show/Hide), plus one-time codes, all with Skip. A question's answer
   box has its own mic: tap to dictate an answer through the same speech-to-text as the input box, then
   edit or send it.
 - **Attachments**: photos, files and pasted text, with a collapsed view for long pastes. Pictures the
@@ -252,7 +262,7 @@ there is no reply to show.
   chat on screen, ready to add a word and send. The share stays on the phone (the service worker keeps it until the app
   takes it, at most an hour) and nothing is sent until you press Send. An app installed before this needs Chrome to
   pick up the new manifest, which it does on its own within about a day; uninstalling and adding it to the home screen
-  again does it at once. Tested in desktop Chromium against a mock; untested on a phone.
+  again does it at once.
 - **Picture viewer**: full screen, with a back button and a download button; swipe, the arrows or
   the arrow keys slide between a message's pictures; pinch or double-tap to zoom.
 - **Markdown**: GitHub-flavoured markdown with sanitised HTML and syntax highlighting.
@@ -290,7 +300,7 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
 - A chat platform named `hermes-mini` inside the gateway (in-process), so scheduled jobs can deliver
   their results to the app.
 
-**Hooks (app chats only; other chats, Discord, the CLI, cron runs and subagents are left alone)**
+**Hooks (app chats only; other chats, Discord, the CLI and cron runs are left alone; subagents of app chats inherit the turn rule and self-edit guard, while push notifications and progress nudges skip them)**
 - `pre_llm_call`: adds a short turn rule to app chats (acknowledge the newest message before the first
   tool call) and the default delivery target for scheduled jobs created there.
 - `transform_tool_result`: during a long turn, appends a one-line instruction to a tool result asking the
@@ -301,15 +311,21 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
 - `pre_tool_call`: blocks an app chat from editing the plugin's own files (a self-edit guard).
 
 **Reads**
-- Hermes' chat history and session list (`state.db`, through `SessionDB`; the Inbox query opens it read-only),
-  the scheduled-job list
+- Hermes' chat history and session list (`state.db`, through `SessionDB`; the Inbox and Search queries open it
+  read-only), the scheduled-job list
   (Hermes' cron routes), the skill list (Hermes' `/api/skills` route), the model/provider list, and its own data folder.
 
 **Writes**
 - Its own settings in `$HERMES_HOME/hermes-mini/` and state in `$HERMES_HOME/data/hermes-mini/`.
-- `$HERMES_HOME/config.yaml`, once, through Hermes' config API: it records
-  `platforms.hermes-mini.home_channel` when none is set (and marks the platform enabled if it has no
-  `enabled` key). Nothing else there.
+- `$HERMES_HOME/config.yaml`, once automatically, through Hermes' config API: it records
+  `platforms.hermes-mini.home_channel` (`chat_id: "main"`, resolved through the app registry) when none
+  is set (and marks the platform enabled if it has no `enabled` key). Nothing else there automatically.
+- Through Hermes' own gateway methods, only when you explicitly use those UI controls: profile name and
+  picture (`profiles.configure` / `profiles.set_asset`) in Edit profile, provider API keys in
+  **Providers +**, and `approvals.mode` (`config.set`) in the approval-mode sheet.
+- Through Hermes' `SessionDB.append_message`: appends a message row to `state.db` when a scheduled job
+  delivers to `hermes-mini`.
+- `$HERMES_HOME/logs/gateway-restart-app.log` when you press the **Restart** button.
 
 **Runs**
 - `ffmpeg` (from PATH or Hermes' tools folder) to read the length and waveform of an audio attachment.
@@ -324,7 +340,7 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
   at most 80 tokens each, on your provider and your bill. Without an auxiliary model the line is absent.
 
 **Sends over the network**
-- Web Push messages to your browser's push service (Google FCM, Mozilla or Apple), only after you turn
+- Web Push messages to your browser's push service (Google FCM, Mozilla, Apple or Windows), only after you turn
   notifications on, and only to those hosts. The push key is created at that moment.
 - Dictation audio to the speech-to-text provider you configured in Hermes (through Hermes).
 - Nothing else: no telemetry, no analytics, no update checks.
@@ -336,16 +352,18 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 
 | Path | Contents |
 |---|---|
-| `$HERMES_HOME/hermes-mini/config.yaml` | Your agent name, home label, uploaded picture's filename, first-run completion, optional public URL and push contact. |
-| `$HERMES_HOME/hermes-mini/assets/` | Your uploaded picture. |
-| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen markers, inbox read state, the app-chat registry and recorded main-chat id, push key, subscriptions and muted chats. |
+| `$HERMES_HOME/hermes-mini/config.yaml` | Optional public URL and push contact, plus legacy/optional app-local identity fields (the current Edit profile saves name and picture in Hermes' own profile). |
+| `$HERMES_HOME/hermes-mini/assets/` | Legacy/optional app-uploaded picture (the current Edit profile saves to Hermes' own profile assets). |
+| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen/unread markers, inbox read state, bookmarks, gateway restart events, the app-chat registry and recorded main-chat id, push key, subscriptions and muted chats. |
 
-`config.yaml` is written atomically with mode `0600`, and unknown keys are dropped. Everything is
-per profile: a second Hermes profile gets its own name, picture and data, and one profile's app never
-reads another's.
+`config.yaml` is written atomically with mode `0600`, and unknown keys are dropped. App settings and
+state are strictly per profile and never cross profiles: a second Hermes profile gets its own settings
+and data, and one profile's app never reads another's. The agent's name and picture are the one
+deliberate exception: they check the default profile first, matching how the name is chosen elsewhere.
 
 The plugin also records the platform's delivery default in Hermes' own `$HERMES_HOME/config.yaml`:
-`platforms.hermes-mini.home_channel`, and in that same first write it marks the platform enabled if
+`platforms.hermes-mini.home_channel` with `chat_id: "main"` (resolved to the real main-chat id through
+`app-chats.json`), and in that same first write it marks the platform enabled if
 it has no `enabled` key. The app records its main chat there the first time it loads, so a bare
 `hermes-mini` job address has a destination. The home channel is written only when no value is
 present; an existing value is never replaced.
@@ -431,8 +449,8 @@ not set up, the button is hidden; when it is, **Start Screen** asks Hermes to st
 - **No bell.** `cryptography`/`httpx` are missing from Hermes' environment, or the browser does not
   support Push.
 - **No computer button.** Bot Desktop is unsupported or not installed on this host.
-- **The name is `Hermes`.** No name, display name or named profile exists yet. Tap the agent's
-  picture to set one in Edit profile, or set it in Hermes.
+- **The name is `Hermes`.** No name, display name or named profile exists yet. Open Tools → Edit profile
+  to set one, or set it in Hermes.
 
 ## Verified, and not
 

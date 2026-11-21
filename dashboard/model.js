@@ -297,8 +297,8 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     const effortRow = node("div", "model-row model-effort");
     effortRow.append(node("span", "model-row-label", "Reasoning"));
     // A level meter instead of a range input: five bars rising in height (low..max); none filled is Off. Tap a bar or
-    // drag across them; the title line previews the level while the finger is down and it is sent on release. The far
-    // left edge (left of the first bar's middle) is Off, and tapping the only lit bar turns it off too.
+    // drag across them; the title line previews the level while the finger is down and it is sent on release. The zone
+    // left of the first bar's left edge (not its middle) is Off, and tapping the only lit bar turns it off too.
     const effort = node("div", "model-meter");
     effort.tabIndex = 0;
     effort.setAttribute("role", "slider");

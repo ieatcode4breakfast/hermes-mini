@@ -51,8 +51,8 @@
   --z-composer-above: 11;       /* the composer while its "+" menu is open (no-Popover fallback only) */
   --z-drawer-scrim: 40;         /* the dim behind the chats drawer */
   --z-drawer: 41;               /* the chats drawer */
-  --z-panel-scrim: 63;          /* the dim behind the To-do and Schedules cards */
-  --z-panel: 64;                /* the To-do and Schedules cards */
+  --z-panel-scrim: 63;          /* the dim behind the To-do, Scheduled, Bookmarks and Search cards */
+  --z-panel: 64;                /* the To-do, Scheduled, Bookmarks and Search cards */
   --z-inbox-scrim: 65;          /* the dim behind the Inbox card */
   --z-inbox: 66;                /* the Inbox card */
   --z-header-over-panel: 67;    /* the photo and name, above the open Inbox */
@@ -61,7 +61,7 @@
   --z-computer-chrome: 72;      /* the drawer scrim and the resize seam over the docked computer */
   --z-viewer: 73;               /* the full-screen picture viewer */
   --z-drawer-over-computer: 73; /* the chats drawer opened over the docked computer */
-  --z-panel-over-computer: 74;  /* To-do/Inbox cards opened while the computer is docked */
+  --z-panel-over-computer: 74;  /* To-do, Inbox, Scheduled, Bookmarks and Search cards opened while the computer is docked */
   --z-header-over-computer: 75; /* ... with the photo and name still above them */
 }
 /* No Android tap flash on tapped elements; keyboard focus rings only (not after a tap). */
@@ -158,7 +158,7 @@ input, textarea, select { font-family: inherit; }
 /* Phone-width screens: 14px base text. */
 @media (max-width: 600px) { body { font-size: 14px; } }
 
-/* Slim scrollbars (PC Chrome) on every scrollable area: the chat log, the drawer list, the to-do list, the Inbox list, the Schedules list, code blocks, wide tables and the
+/* Slim scrollbars (PC Chrome) on every scrollable area: the chat log, the drawer list, the to-do list, the Inbox list, the search results, the Scheduled list, code blocks, wide tables and the
    attachment tray. A 10px lane with a transparent track and no arrows; the thumb is a 6px pill, because its 2px
    transparent border is kept out of the paint by background-clip, so it floats inside the lane. Do not set
    scrollbar-width or scrollbar-color on these: Chrome 121+ uses those instead of ::-webkit-scrollbar. The composer
@@ -208,7 +208,7 @@ input, textarea, select { font-family: inherit; }
 
 /* Side padding is the phone gutter, or the space that centres a --col wide column on larger screens. */
 /* Floating header: overlays the top of the chat (messages scroll underneath and fade out behind it).
-   Centre: round photo with the name in a pill overlapping its bottom edge; right: round New chat button. */
+   Centre: round photo with the name in a pill overlapping its bottom edge; right: round Tools button. */
 .app { position: relative; --head-h: calc(env(safe-area-inset-top) + 107px); /* floating header bottom (topbar height, safe area included): the greeting centres between it and the composer */ }
 .topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: var(--z-header); pointer-events: none;
@@ -306,7 +306,7 @@ input, textarea, select { font-family: inherit; }
 }
 .fab:active { transform: scale(0.92); }
 .fab svg { width: 20px; height: 20px; }
-/* Chats menu: the mirror of New chat on the left, same size and surface, no border. */
+/* Chats menu: the mirror of Tools on the left, same size and surface, no border. */
 .fab.fab-menu {
   right: auto;
   left: calc(max(calc(env(safe-area-inset-left) + 16px), calc((100% - var(--col)) / 2)) + 6px);
@@ -485,7 +485,7 @@ input, textarea, select { font-family: inherit; }
 .bubble .hljs-strong { font-weight: 700; }
 .bubble .hljs-link { color: var(--hl-fn); text-decoration: underline; }
 
-/* Action row under a message: icon buttons (Copy, then Edit or Branch) and the time. Both layouts always keep the
+/* Action row under a message: icon buttons (Copy, Edit or Branch, Mark unread, and Bookmark) and the time. Both layouts always keep the
    row's 28px height and 2px gap, so nothing moves when the icons appear. The time is always visible; on a mouse layout
    the icons fade in on hover or keyboard focus, and on a touch layout a tap on the message reveals them (app.js). */
 .msg-actions { display: flex; align-items: center; gap: 2px; min-height: 28px; margin-top: 2px; }
@@ -786,7 +786,7 @@ input, textarea, select { font-family: inherit; }
 .tray .item-view:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .tray .x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 14px; line-height: 20px; padding: 0; }
 .row { display: flex; align-items: flex-end; gap: 8px; }
-/* "+" attach menu: a small popover above the button with Photos and Files. It is drawn in the top layer, so it
+/* "+" attach menu: a small popover above the button with Take a photo, Photos and Files. It is drawn in the top layer, so it
    is fixed-positioned and placed by app.js from the "+" button's box on screen (14px above it, left edges together). */
 .attach-wrap { position: relative; flex: 0 0 auto; }
 .icon-btn.plus svg { transition: transform 0.26s var(--ease-spring); }
@@ -1097,11 +1097,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 /* One horizontal system. The gutter (8px) is the list's padding and the outer edge of every row, New chat and the row
    menu. Inside each, content starts 12px in (x=20): the New chat label, the row titles and the group headers all share
    that line. There is no visible drawer title (the dialog is named by aria-label); --drawer-gap is
-   the small inset above the list. --drawer-sb is the list's scrollbar width (set by drawer.js), so New chat keeps the
-   same right edge as the rows when it scrolls. */
+   the small inset above the list. New chat sits inside the padded list, so it shares the rows' right edge. */
 .drawer { --drawer-gap: 10px; --drawer-sb: 0px; }
-/* New chat is a plain row in the list, directly under the home row (drawer.js moves the element there on every
-   render). It looks like the other rows: transparent, same 14px radius, same hover tint and press tint,
+/* New chat is a plain row in the list, just below the home row with the Scheduled row between them (drawer.js moves the
+   element there on every render). It looks like the other rows: transparent, same 14px radius, same hover tint and press tint,
    with a neutral pencil instead of the old accent pill. Its 8px list gutter plus 12px row padding put the content at
    x = 20. */
 .drawer-new {
@@ -1111,7 +1110,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 /* The pencil icon, plain (no circle), at the end of the row. */
 .drawer-new { justify-content: space-between; }
-/* Home row and New chat: tighter vertically, with a gap between them. */
+/* Home row, Scheduled and New chat: tighter vertically, with a gap between them. */
 .home-row-wrap .chat-row { min-height: 44px; padding-top: 5px; padding-bottom: 5px; }
 /* New chat matches the session rows: 14px title, 32px row, 14px icon centred where the pin and
    the ⋮ sit (20px from the row edge). */
@@ -1121,11 +1120,11 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .drawer-new-icon svg { width: 14px; height: 14px; }
 /* Search sits directly under New chat and reads as its pair: the same row, only 2px below it. */
 .drawer-search { margin-top: 2px; }
-/* The Schedules row, directly under the main chat: icon and word sized like New chat. */
+/* The Scheduled row, directly under the main chat: icon and word sized like New chat. */
 /* .chat-row (below) sets the session rows' 56px and 8px padding; the doubled class keeps these sizes ahead of it. */
 .chat-row.drawer-inbox { min-height: 32px; margin-top: 6px; padding-top: 3px; padding-bottom: 3px; padding-right: 9px; gap: 6px; }
 .drawer-inbox .chat-title { flex: 1; font-size: 14px; }
-/* A plain icon in the text colour, not the home row's accent: open tray when all is read, closed envelope otherwise. */
+/* The Scheduled row's plain clock icon in the text colour, not an envelope or a tray. */
 .drawer-inbox-icon { display: flex; flex: none; color: var(--fg); }
 .drawer-inbox-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .drawer-inbox.has-unread .chat-title { font-weight: 650; }
@@ -1185,8 +1184,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 /* was @media (hover: none): follows the last input (data-input, index.html) */
   :where(:root[data-input="touch"]) .chat-dots { display: none; }
 
-/* The main chat's reset button: always visible at the trailing end of the home row, a sibling of the row button (never
-   nested). Grey circular arrow; a round 44px target on touch, a smaller one for a mouse. */
+/* The main chat's reset button: hidden on mouse until the row is hovered, and hidden on touch (where the long press row
+   menu carries Reset). A sibling of the row button (never nested). Grey circular arrow; a 32px target for a mouse
+   (the 44px touch sizing below stays unused while hidden on touch). In the main chat's long-press menu, Reset replaces
+   Pin/Rename/Delete while Mark unread/read stays, and Mute shows when push notifications are enabled. */
 .home-row-wrap .chat-row { padding-right: 36px; }
 .chat-reset {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
@@ -1203,7 +1204,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   :where(:root[data-input="mouse"]) .home-row-wrap:hover .chat-reset,
 :where(:root[data-input="mouse"]) .chat-reset:focus-visible { opacity: 1; }
 
-/* Mobile: no reset button on the row; long press opens a menu with only Reset. */
+/* Mobile: no reset button on the row; long press opens the row menu, where Reset replaces Pin/Rename/Delete while
+   Mark unread/read stays, and Mute shows when push notifications are enabled. */
 /* was @media (hover: none): follows the last input (data-input, index.html) */
   :where(:root[data-input="touch"]) .home-row-wrap .chat-reset { display: none; }
   :where(:root[data-input="touch"]) .home-row-wrap .chat-row { padding-right: 12px; }
@@ -1543,7 +1545,7 @@ body.todo-dragging .todo-dialog, body.todo-dragging .todo-row { user-select: non
 .row-menu-item[hidden] { display: none; }
 .row-menu-item:first-child { border-radius: 16px 16px 0 0; }
 .row-menu-item:last-child { border-radius: 0 0 16px 16px; }
-#rowMenuReset { border-radius: 16px; } /* the only item in the main chat's menu */
+#rowMenuReset { border-radius: 16px; } /* Reset keeps its own rounded card corners when shown */
 #rowMenuMute[data-muted="true"] .bell-unmuted { display: none; }
 #rowMenuMute[data-muted="false"] .bell-muted { display: none; }
 #rowMenuMute:not([data-muted]) .bell-muted { display: none; }
@@ -1697,7 +1699,7 @@ body.bm-open #bookmarkBtn { background: color-mix(in srgb, var(--accent) 22%, va
 /* ...and Edit profile while its card is open. */
 #profileBtn[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 
-/* Schedules panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
+/* Scheduled panel (schedules.js): the to-do card (todo-dialog). Each row is the job's name, then one muted line with
    when it runs and when it runs next (or "Running now" and "Paused"), a failure note when the last run failed, and the
    row's ⋮ menu. */
 /* The slim scrollbar (10px) sits in the card's right padding, so the rows end in line with the title and the close
@@ -1725,7 +1727,7 @@ body.bm-open #bookmarkBtn { background: color-mix(in srgb, var(--accent) 22%, va
 :where(:root[data-input="mouse"]) .sched-row:hover .sched-dots,
 :where(:root[data-input="mouse"]) .sched-row.menu-open .sched-dots,
 :where(:root[data-input="mouse"]) .sched-dots:focus-visible { opacity: 1; }
-/* Its menu: the chat list's row-menu card, in the top layer so it is always above the Schedules panel. */
+/* Its menu: the chat list's row-menu card, in the top layer so it is always above the Scheduled panel. */
 .sched-menu-scrim { background: transparent; }
 .sched-menu { min-width: 190px; transform-origin: top right; }
 .sched-menu .row-menu-item svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -1782,7 +1784,7 @@ body.bm-open #bookmarkBtn { background: color-mix(in srgb, var(--accent) 22%, va
 .bm-remove svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
 .bm-remove:hover, .bm-remove:focus-visible { outline: none; background: color-mix(in srgb, var(--fg) 10%, transparent); }
 .bm-remove:disabled { opacity: 0.45; cursor: default; }
-/* Nothing kept yet: the same quiet centre as the Schedules empty state. */
+/* Nothing kept yet: the same quiet centre as the Scheduled empty state. */
 .bm-empty {
   flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   margin: 24px 0; text-align: center; color: var(--muted); font-size: 14px;
@@ -2002,7 +2004,7 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
 .todo-row.pending button { pointer-events: none; }
 
 /* Phones: the to-do list takes the whole screen like the computer (screen.css .bot-screen): page background,
-   no card, slides in from the right, Back arrow + centred title bar. */
+   no card, slides in from the right, the to-do checklist icon in the back slot + centred title bar. */
 @media (max-width: 640px) {
   .todo-dialog, .todo-dialog.open {
     left: 0 !important; top: var(--todo-vt, 0px) !important; width: 100%; height: var(--todo-vh, 100%); max-height: none;
@@ -2038,7 +2040,8 @@ body.docked.computer-docked.computer-three-pane #scrim { display: none; }
 /* ---------- Inbox ---------- */
 /* the agent's photo and name open the Inbox: the unread count sits on the photo's top-right like the
    other buttons' counts, and the whole identity reads as tappable. Hidden while the identity sits centred over an
-   empty chat, where the photo is scaled and not tappable. */
+   empty chat, where the photo is scaled and the count is repositioned, and only the flying/lowering moves are
+   untappable. */
 .identity[role="button"] { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .identity[role="button"]:focus { outline: none; }
 .identity[role="button"]:focus-visible .avatar { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -2189,7 +2192,7 @@ body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color
 }
 :where(:root[data-input="mouse"]) .inbox-item:hover .inbox-row.unread { background: color-mix(in srgb, var(--accent) 17%, transparent); }
 .inbox-row.unread .inbox-text { color: var(--fg); font-weight: 500; }
-/* Inbox button and the panel's back button: open tray when all is read, closed envelope while anything is unread. */
+/* The Inbox panel's back button: open tray when all is read, closed envelope while anything is unread. */
 .inbox-icon-unread { display: none; }
 .has-unread .inbox-icon-read { display: none; }
 .has-unread .inbox-icon-unread { display: block; }
@@ -2213,7 +2216,7 @@ body.inbox-open .identity .avatar { animation: none; box-shadow: 0 0 0 3px color
   .inbox-dialog, .inbox-dialog.open { transition: none; }
 }
 
-/* Phones: a full page like the To-do and Schedules pages (inbox.js place() fills the visible viewport): no card, slides
+/* Phones: a full page like the To-do and Scheduled pages (inbox.js place() fills the visible viewport): no card, slides
    in from the right, a Back button and a centred title in the same 84px bar, the tabs on the strip under it. */
 @media (max-width: 640px) {
   .inbox-dialog {
@@ -2355,7 +2358,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .app.drop-target .composer .row::after { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
 .log { padding-bottom: calc(16px + 26px); }
-/* One shared top-edge tab joined to the composer pill: approval mode on the left, model picker on the right. */
+/* One shared top-edge tab joined to the composer pill: model picker on the left, approval mode on the right. */
 :root { --model-tab: #e6e7ec; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --model-tab: #2a2c33; } }
 :root[data-theme="dark"] { --model-tab: #2a2c33; }

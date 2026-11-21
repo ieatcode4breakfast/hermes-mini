@@ -174,7 +174,8 @@ const SANITIZE = {
 
 const SAFE_HREF = /^(?:https?:\/\/|mailto:)/i;
 const SAFE_SRC = /^(?:https:\/\/|data:image\/(?:png|jpe?g|gif|webp|avif|bmp);base64,)/i;
-// Spans carry highlight.js token classes (hljs-keyword, function_); other elements keep only the classes listed here.
+// Spans carry highlight.js token classes (hljs-keyword, function_). Non-span elements keep only the classes listed here,
+// plus language-* classes on code blocks.
 const SPAN_CLASS = /^(?:hljs-[\w-]+|[a-z]+_+)$/;
 const ELEMENT_CLASS = new Set(["hljs", "table-wrap", "contains-task-list", "task-list-item"]);
 

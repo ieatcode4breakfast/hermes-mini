@@ -1,4 +1,4 @@
-// Approval mode picker: a pill below the input box and a bottom sheet behind it, matching model.js.
+// Approval mode picker: an icon-only tab on the input pill's top edge, right of the model tab, and a bottom sheet behind it, matching model.js.
 // Everything goes through Hermes's own gateway config methods (profile-scoped, immediate, no restarts):
 //   config.get {key: "approvals.mode"} -> {value: "manual"|"smart"|"off"}
 //   config.set {key: "approvals.mode", value: "manual"|"smart"|"off"} -> {key, value}

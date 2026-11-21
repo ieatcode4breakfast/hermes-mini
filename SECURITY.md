@@ -23,7 +23,7 @@ reasonable window to ship a fix before publishing details.
 
 ## Supported versions
 
-The project is pre-1.0 (`0.1.x`). Fixes go to the latest release only, and the current Hermes tested
+The project is pre-1.0 (`0.2.x`). Fixes go to the latest release only, and the current Hermes tested
 version is named in `README.md`. An older Hermes may lack the plugin hooks or routes this app builds
 on; that is a compatibility problem, not a security one.
 
@@ -58,6 +58,12 @@ own and does not weaken the one Hermes has.
 - **The package is not writable at runtime.** Settings, pictures and state live outside the plugin
   directory, so a compromised app cannot rewrite its own code. A guard also blocks an agent turn
   running inside an app chat from writing to the plugin directory.
+- **Writes to Hermes happen only on explicit user action.** Nothing here writes Hermes' files on its
+  own. When a person uses the controls, the app goes through Hermes' authenticated gateway methods:
+  Edit profile saves the name and picture, **Providers +** saves an API key, and the approval-mode sheet
+  writes `approvals.mode` (asking first before turning approvals off, while explicit deny rules in
+  Hermes still apply). Pressing **Restart** writes `$HERMES_HOME/logs/gateway-restart-app.log`, and a
+  scheduled-job delivery appends a message row through Hermes' `SessionDB.append_message`.
 - **Path handling is resolved, not concatenated.** The avatar route may not escape the assets
   directory. The audio-metadata route accepts an absolute or `~/` path only when its extension is a
   known audio type and it resolves to a regular file, and it hands that file to ffmpeg rather than

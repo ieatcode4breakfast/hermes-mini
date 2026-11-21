@@ -23,7 +23,7 @@ export const botScreenHtml = (NAME) => `
       </div>
     </div>
     <!-- Phones: a visible trackpad surface under the picture. trackpad.js listens on it too, so
-         it drives the pointer like a laptop pad. screen.js sizes it and shows it only on touch, portrait, with room. -->
+         it drives the pointer like a laptop pad. screen.js sizes it and shows it only on touch, while not docked, when there is room. -->
     <div id="bsPad" class="bs-pad" hidden aria-label="Trackpad">
       <span class="bs-pad-label">Trackpad</span>
     </div>

@@ -129,7 +129,7 @@ export function createDrawer(deps) {
   const scrim = $("scrim");
   const newBtn = $("drawerNew");
   const searchBtn = $("searchBtn"); // Search, placed directly under New chat
-  const schedRow = $("schedBtn"); // Schedules, placed directly under the main chat
+  const schedRow = $("schedBtn"); // Scheduled, placed directly under the main chat
   const list = $("drawerList");
   const noteEl = $("drawerNote");
   const rowMenuScrim = $("rowMenuScrim");
@@ -490,7 +490,7 @@ export function createDrawer(deps) {
   function renderBrowse(now) {
     const home = homeId();
     if (st.loading && !st.rows.length && !st.home && !home) {
-      // Same rows as a loaded list, so Schedules and New chat stay reachable during the first fetch.
+      // Same rows as a loaded list, so Scheduled and New chat stay reachable during the first fetch.
       if (schedRow) list.append(schedRow);
       list.append(newBtn);
       if (searchBtn) list.append(searchBtn);
@@ -505,8 +505,8 @@ export function createDrawer(deps) {
       slot.append(rowEl(homeItem));
       list.append(slot);
     }
-    // Schedules sits directly under the main chat, then New chat. Like New chat it is one element re-appended on
-    // every render (app.js opens Schedules from it).
+    // Scheduled sits directly under the main chat, then New chat. Like New chat it is one element re-appended on
+    // every render (app.js opens Scheduled from it).
     if (schedRow) list.append(schedRow);
     // New chat sits directly under the home row, above the first group, so it scrolls with the home row rather than
     // staying pinned above the list. The same singleton element (and its click handler) is re-appended on every
@@ -594,7 +594,7 @@ export function createDrawer(deps) {
     const preview = item.title ? item.preview : "";
     if (preview && preview !== item.title) main.append(el("div", "chat-preview", preview));
     const meta = el("div", "chat-meta");
-    // No time on a row: the stamp holds only the pin mark for a pinned chat.
+    // No time on a row: the stamp stays empty and is never appended; a pinned chat's pin mark is a sibling element at the row end.
     const stamp = el("div", "chat-stamp");
     // A pinned row's pin mark sits at the row end (a sibling of the row button, added below), not in the stamp.
     if (stamp.childNodes.length) meta.append(stamp);
@@ -978,7 +978,7 @@ export function createDrawer(deps) {
   // A card anchored under the pressed row: its left edge on the row's, flipped above the row near the bottom of the
   // screen. The pressed row keeps a highlight. The menu pushes one history entry (like the rename dialog), which a tap
   // outside, Escape, a chosen item and the Android Back button all consume, so nothing stacks. Choosing an item closes
-  // the menu first, then acts. The home chat has no menu.
+  // the menu first, then acts. The home chat's menu replaces Pin/Rename/Delete with Reset (Mark unread/read stays, and Mute shows when notifications are enabled).
 
   function openMenu(item, row, dots = null) {
     if (st.menu) return;

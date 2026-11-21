@@ -659,8 +659,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 =================== noVNC 1.7.0 (MPL-2.0; bundled pako MIT) ===================
-Vendored files: vendor/novnc/core/**, vendor/novnc/vendor/pako/**.
+Vendored files: dashboard/computer/vendor/novnc/core/**, dashboard/computer/vendor/novnc/vendor/pako/**.
 The noVNC core library is licensed under the Mozilla Public License 2.0. The full licence text is
-in vendor/novnc/LICENSE.txt; copyright notices are in vendor/novnc/AUTHORS. The bundled pako
-deflate/inflate library is MIT-licensed; its full text is in vendor/novnc/vendor/pako/LICENSE.
+in dashboard/computer/vendor/novnc/LICENSE.txt; copyright notices are in
+dashboard/computer/vendor/novnc/AUTHORS. The bundled pako deflate/inflate library is MIT-licensed;
+its full text is in dashboard/computer/vendor/novnc/vendor/pako/LICENSE.
 No files were modified. Source: https://github.com/novnc/noVNC (npm @novnc/novnc@1.7.0).

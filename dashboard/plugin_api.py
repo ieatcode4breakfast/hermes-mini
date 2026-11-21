@@ -1,11 +1,11 @@
 """Hermes Mini app backend — mounted at /api/plugins/hermes-mini/.
 
 The chat itself rides Hermes' own authenticated ``/api/ws`` and REST routes; this router adds the
-app's own data (to-dos, pins, seen markers, inbox read state, the app-chat registry, the folded-job
-lookup and audio metadata), identity and settings, capability advertisement, live narration, Web
-Push, dictation and the gateway restart. It also records the app's main chat as the
-platform's default scheduled-job delivery target once, so a bare ``hermes-mini`` address has a
-destination. The dashboard's dashboard-auth dependency is
+app's own data (to-dos, pins, seen markers, inbox read state, bookmarks, search, the app-chat registry,
+the folded-job lookup, gateway events and audio metadata), identity and settings, capability
+advertisement, live narration, Web Push, dictation and the gateway restart. It also records the
+app's main chat as the platform's default scheduled-job delivery target once, so a bare
+``hermes-mini`` address has a destination. The dashboard's dashboard-auth dependency is
 attached by ``web_server_dashboard._mount_one_plugin_api`` (the same cookie auth as the rest of
 ``/api``), so this file only has to be a FastAPI ``router``.
 
@@ -643,7 +643,7 @@ def _unwrap_compaction_summary(text: str, summary_flag: bool = False) -> str:
 
 
 def _row_text(row: sqlite3.Row) -> str:
-    """app.js chatEntries(): display_content wins, else the decoded content, trimmed."""
+    """app.js chatEntries(): the decoded stored ``content``, trimmed (without the app's ``display_content`` layer)."""
     raw = row["content"]
     if isinstance(raw, (bytes, bytearray)):
         raw = bytes(raw).decode("utf-8", "replace")
@@ -1098,7 +1098,7 @@ def _max_feed_id(conn: sqlite3.Connection, titles: dict[str, str]) -> int:
 
 def _unread_count(conn: sqlite3.Connection, titles: dict[str, str], state: dict[str, Any]) -> int:
     """Feed items above the watermark that are not in the read list, nor compaction copies of a read message. Cheap
-    enough to poll: the SQL prefilters, and the scan stops as soon as the badge cannot grow past 99+ anyway."""
+    enough to poll: the SQL prefilters, and the scan stops at 1000 (past what the 99+ badge ever shows)."""
     watermark = int(state.get("watermark") or 0)
     read = set(state.get("read") or [])
     unread = set(state.get("unread") or [])
@@ -2416,7 +2416,8 @@ async def search(q: str = "", limit: int = 30):
 
 
 # ---------- gateway stops and starts (the main chat's restart lines) ----------
-# Written by the gateway half (bridge.py) into this profile's data folder; the app draws them in the main chat only.
+# Written by the gateway half (bridge.py) and by this module's restart route for the app's own stop, into this profile's
+# data folder; the app draws them in the main chat only.
 GATEWAY_EVENTS_PAGE = 50
 
 

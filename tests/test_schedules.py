@@ -1,4 +1,4 @@
-"""The Schedules panel (dashboard/schedules.js): plain-English schedule wording and row selection."""
+"""The Scheduled panel (dashboard/schedules.js): plain-English schedule wording and row selection."""
 
 from __future__ import annotations
 

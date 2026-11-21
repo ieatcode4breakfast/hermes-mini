@@ -1,5 +1,5 @@
-Vendored browser builds for dashboard/md.js (chat markdown rendering). Copied unmodified from the npm tarballs,
-with one exception:
+Vendored browser builds for dashboard/md.js (chat markdown rendering) and dashboard/computer/screen.js (optional computer viewer).
+Copied unmodified from the npm tarballs, with one exception:
 
   marked.esm.js: every regex lookaround on a backtick (a negative lookahead or lookbehind whose character is
   the backtick) spells that character \x60. Same character, same matching. Hermes' plugin install scanner reads
@@ -10,7 +10,7 @@ with one exception:
 Re-vendor: npm install marked@18.1.1 dompurify@3.4.17 highlight.js@11.12.0 @highlightjs/cdn-assets@11.12.0
 (copy lib/marked.esm.js, dist/purify.es.mjs, es/core.min.js and es/languages/<name>.min.js from the packages).
 For noVNC: npm pack @novnc/novnc@1.7.0 and copy package/core, package/vendor, LICENSE.txt and AUTHORS
-into vendor/novnc/ (see vendor/novnc/VERSION.txt).
+into dashboard/computer/vendor/novnc/ (see dashboard/computer/vendor/novnc/VERSION.txt).
 
 Package                 Version   Licence                     Files
 marked                  18.1.1    MIT                         marked.esm.js                    (from lib/marked.esm.js)
@@ -19,10 +19,10 @@ highlight.js            11.12.0   BSD-3-Clause                highlight/core.min
 @highlightjs/cdn-assets 11.12.0   BSD-3-Clause                highlight/languages/*.min.js     (from @highlightjs/cdn-assets/es/languages/)
 @novnc/novnc            1.7.0     MPL-2.0 (pako: MIT)         novnc/core/**/*.js, novnc/vendor/pako/**/*.js  (from the npm tarball)
   languages: bash shell python javascript typescript json yaml sql xml css diff markdown go rust
-  noVNC: 54 ES modules under vendor/novnc/ (core + pako), unmodified
+  noVNC: 54 ES modules under dashboard/computer/vendor/novnc/ (core + pako), unmodified
 
 SHA-256 (as shipped):
-930457e5d55439f90465015cc507d3323366e80df5f7a701b61189d4e1046bda  marked.esm.js
+b1e02892ea0411aed680b24714582b128cec41c254e15eb0ab5f8bb3dc3c0276  marked.esm.js
 60c5d5ccbb466de3de3ba863461a92bf134f8c156cef7992da43e0f659bc5cbd  purify.es.mjs
 67a339aa68880a40c9803def9c8cebb2225dec76230382db86e349370dee70e9  highlight/core.min.js
 7db1758fe6f04cd410760c29879812a3774edc54edcc91323511a24efc0b9e61  highlight/languages/bash.min.js
@@ -45,4 +45,4 @@ c46dfefbf869eda0c6d06c5dd86c42e96fc8a77c125e91599a2cdf3841261564  novnc/core/rfb
 d1a96fc1316eaab9badcba9b0f1a7a55d748a4d4d26dc0263cc179dba2131cf4  novnc/core/websock.js
 4ddf0e21f07328358974d91aa2d7f839ba2116688b28e43d3f6f4e2eae8c45cf  novnc/core/input/keysym.js
 
-Licence texts: LICENSES.txt in this folder. Each file also carries its own licence header.
+Licence texts: LICENSES.txt in this folder; upstream headers are kept where the build carries one.

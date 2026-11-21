@@ -1,7 +1,7 @@
 // The "/" picker: typing "/" at the start of a word in the message box lists the agent's skills and schedules above
 // it. Picking one puts it in the draft as an inline pill (app.js addPill), the same pill a schedule's "Add to message"
 // makes. Skills come from Hermes's skill list (GET /api/skills: enabled skills only, the same set Hermes accepts as
-// "/name" commands), schedules from GET /api/cron/jobs (the Schedules panel's rows). Both are fetched when the picker
+// "/name" commands), schedules from GET /api/cron/jobs (the Scheduled panel's rows). Both are fetched when the picker
 // opens and kept for a minute while it is used.
 //
 // Also here: describeSkillInvocation, the JS twin of Hermes's agent/skill_commands.py describe_skill_invocation. A
@@ -41,7 +41,7 @@ function score(query, name, description = "") {
 }
 
 // The picker's two lists for a query: skills (best match first, then most used, then by name) and schedules (best
-// match first, then in the Schedules panel's order).
+// match first, then in the Scheduled panel's order).
 export function slashMatches(query, skills, schedules) {
   const q = norm(query);
   const rankedSkills = (skills || [])

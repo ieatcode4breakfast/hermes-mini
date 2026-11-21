@@ -2,8 +2,8 @@
 // It stores nothing itself: each open reads the app's own sessions through plugin_api.py /inbox, so deleting a chat
 // makes its rows vanish and no row can point at a message that is gone. The only thing kept is the server's per-message
 // read tracker, which this module never writes text into.
-// The panel mirrors To-do (todo.js): one history entry per open, the same centred card on a desktop and the same
-// full-screen presentation with the active button on the left on a phone.
+// The panel mirrors To-do (todo.js): one history entry per open; on a desktop it hangs from the agent's photo with a top-edge
+// pointer, while a phone gets the same full-page presentation with Back on the left.
 
 import { stripCronWrapper } from "./jobtext.js";
 
@@ -573,7 +573,7 @@ export function createInbox({ api, formatTime, openMessage, isPhone }) {
     const vTop = vv ? vv.offsetTop : 0;
     const vWidth = vv ? vv.width : window.innerWidth;
     const vHeight = vv ? vv.height : window.innerHeight;
-    // Phones: a full page over the visible viewport, like the To-do and Schedules pages.
+    // Phones: a full page over the visible viewport, like the To-do and Scheduled pages.
     const phone = window.matchMedia("(max-width: 640px)").matches;
     if (phone) {
       dialog.style.left = `${vLeft}px`;

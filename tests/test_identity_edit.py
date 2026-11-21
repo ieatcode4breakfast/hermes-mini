@@ -1,5 +1,5 @@
 """The name and picture editor: saves through Hermes's profile methods, never by writing Hermes's files.
-The Inbox moved from the agent's picture to its own row under the main chat."""
+The Inbox opens from the agent's picture and name, not from a drawer row."""
 
 from __future__ import annotations
 

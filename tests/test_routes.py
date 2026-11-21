@@ -1,4 +1,6 @@
-"""The app's HTTP routes: identity, settings, capabilities and the first-run flow.
+"""The app's HTTP routes: identity, settings, capabilities and the first-run/home-target flow; restart
+and gateway events; dictation; the Inbox and merged jobs; to-dos; seen/unread markers; the app-chats
+registry; and audio metadata.
 
 These import the real ``dashboard/plugin_api.py`` and call the routes through the actual FastAPI
 router, with a ``TestClient``. They need FastAPI (which Hermes ships); where it is absent the class

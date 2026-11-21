@@ -27,8 +27,9 @@ hermes dashboard     # then open /dashboard-plugins/hermes-mini/index.html
 
 ## Running the tests
 
-The suite is standard-library `unittest` and does not need a browser or a network. **Always point it
-at a disposable home**; it must never touch your real `~/.hermes`:
+The suite is standard-library `unittest` and does not need a browser or a network. Node is needed for the JavaScript
+helper tests (they skip when Node is absent). **Always point it at a disposable home**; it must never touch your real
+`~/.hermes`:
 
 ```bash
 HERMES_HOME="$(mktemp -d)" python3 -m unittest discover -s tests -t .
@@ -38,6 +39,7 @@ Route tests need FastAPI (Hermes ships it). Where the managed venv is available,
 the same interpreter Hermes uses so those tests are not skipped:
 
 ```bash
+PYTHON=/path/to/hermes/venv/bin/python
 HERMES_AGENT_ROOT=/path/to/hermes-agent \
 HERMES_HOME="$(mktemp -d)" \
   "$PYTHON" -m unittest discover -s tests -t . -v
@@ -84,7 +86,9 @@ If you're unsure, open a feature request first and ask.
 
 - **A test that would fail without it.** The suite covers paths, settings, validation, routes,
   push gates, dictation delegation, hook scoping and the browser module graph; add to the closest
-  file. Tests should exercise behaviour, not mirror the implementation.
+  file. Tests should exercise behaviour, not mirror the implementation. Where the file itself is the
+  contract — the module graph, popover guards, scanner safety — a static contract assertion is the
+  right test.
 - **No new personal material.** No names, domains, avatars or installation paths that belong to one
   person. Product text uses "Hermes Mini"; user text uses the agent's own name.
 - **No writes into the plugin package.** If you need to persist something, it belongs under
@@ -121,4 +125,4 @@ type: concise subject line
 Optional body explaining the why.
 ```
 
-Types: `fix:`, `feat:`, `refactor:`, `docs:`, `test:`, `chore:`.
+Types: `fix:`, `feat:`, `refactor:`, `docs:`, `test:`, `chore:`, `polish:`, `remove:`.

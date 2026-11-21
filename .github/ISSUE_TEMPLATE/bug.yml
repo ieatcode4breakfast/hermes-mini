@@ -19,7 +19,7 @@ body:
     attributes:
       label: How Hermes Mini was installed
       options:
-        - From the plugin catalog (hermes plugins install hermes-mini)
+        - From the plugin catalog (hermes plugins install hermes-mini --enable)
         - From GitHub (hermes plugins install ieatcode4breakfast/hermes-mini)
         - Manual install (copied folder or git clone)
     validations:

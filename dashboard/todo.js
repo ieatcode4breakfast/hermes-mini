@@ -383,8 +383,8 @@ export function createTodo({ api }) {
       node.append(check, text, del);
     }
     if (section === "active") {
-      // The drag grip left of the box is the only drag handle: always
-      // shown, mouse and touch alike. A draft shows it but cannot be dragged until it is saved.
+      // On a mouse only the grip drags; on touch the checkbox is a drag handle too (press and move
+      // drags, a plain tap still ticks). The grip is always shown, mouse and touch alike. A draft shows it but cannot be dragged until it is saved.
       const grip = el("span", "todo-grip");
       grip.setAttribute("aria-hidden", "true");
       grip.append(svgIcon(GRIP_ICON));
@@ -1056,7 +1056,8 @@ export function createTodo({ api }) {
   }
 
   // ---------- drag to sort the open rows ----------
-  // Only open rows sort; done ones keep their section. Only the grip drags: pressing it and moving a few pixels starts
+  // Only open rows sort; done ones keep their section. On a mouse only the grip drags; on touch the checkbox is a drag
+  // handle too (press and move drags, a plain tap still ticks). Pressing and moving a few pixels starts
   // the drag, mouse or finger; the rest of the row scrolls and edits as usual. The row follows the pointer, the other
   // open rows slide out of the way, the list scrolls near its edges, and the new order is sent once on release. The same
   // shape as the drawer's pinned-chat sort.

@@ -8,19 +8,36 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Manual unread for chat sessions: **Mark unread** / **Mark read** directly below **Rename** in every chat's `⋮` menu
+  (including the main chat), backed by an `unread` list in `seen.json` and `POST /seen/unread`. It shows the accent dot
+  and bold title across devices, stays separate from Inbox message unread marks, survives passive read updates, and
+  clears when opening the chat (from the chats list, Search, Bookmarks, Inbox, or a notification) or picking
+  **Mark read**. Needs a dashboard restart to load `/seen/unread`.
+- Approval mode picker: icon-only shield button on the right half of the composer's shared top-edge tab (beside the
+  model tab, upward caret removed, synced to appear with the model tab). Opens a bottom sheet (`approvals.js`) reading
+  and writing Hermes's live profile `approvals.mode` (**Manual**, **Smart**, **Off**) via `config.get`/`config.set`,
+  with plain-English descriptions and a confirmation warning before switching to **Off** (explicit deny rules still
+  apply). Front end only.
+- Track / untrack parent to-do items: active top-level to-do rows have a `⋮` menu with **Track** / **Untrack** and
+  **Delete** (hidden on desktop until hovered/focused/open, always visible on touch). Untracked parents are excluded
+  from the To-do and folded Tools badge counters and show a subtle slashed-eye cue; list redraws pause while the menu
+  is open. Backed by a `tracked` boolean on `/todos` routes (needs a dashboard restart).
+- Loading message… toast: persistent top-layer pill with blinking dots shown while jumping to a message from a
+  notification, Inbox, Bookmarks, Search, or a deep link, dismissed as soon as the row flashes.
 - Search: a row directly under New chat in the chats panel opens a Search panel (new `search.js`) that looks through
   the app's chat titles and the visible text of the person's and the agent's messages, narrowed as you type. A chat hit
   opens that chat; a message hit opens it at that message, with the same Loading message… toast and flash the Inbox
   uses. New `GET /search` reads state.db read-only with the Inbox's scope and visibility rules (message_fts when the
   store carries it, a LIKE scan otherwise), so hidden, tool, model-only and out-of-scope rows never match, and a
   compaction copy is listed once as the row the chat draws. Needs a dashboard restart to load. Tested in the test box
-  suite (the route against a mock state.db, with and without message_fts; the front end statically); the panel itself
-  is untested in a browser and on a phone.
+  suite (the route against a mock state.db, with and without message_fts; the front end statically), and in a browser
+  and on a phone (Android Chrome and desktop Chrome; iPhone/iPad stays untested as noted in `README.md`).
 - Share from Android: the installed app shows in Android's share sheet (`share_target` in `pwa.json`). Text, links,
   pictures and files shared to it land in the message box and its tray (up to 10 files) in the chat on screen; the
   service worker keeps the share on the phone until the app takes it (new `share-target.js`), and nothing is sent
   until Send. An app installed earlier picks up the new manifest within about a day, or at once when reinstalled.
-  Tested in desktop Chromium against a mock (a multipart post to the share target); untested on a phone.
+  Tested in desktop Chromium against a mock (a multipart post to the share target), and on a phone (Android Chrome;
+  iPhone/iPad stays untested as noted in `README.md`).
 
 - Skills and schedules with "/": typing `/` at the start of a word in the message box opens a list of the agent's
   skills (bolt icon) and schedules (clock icon) above it, narrowed as you type (name first, then description; most
@@ -31,32 +48,36 @@ All notable changes to this project are documented here. The format follows
   and a skill message is not offered for Edit. Skills never go in a steer: while a reply runs, a draft with a
   skill pill shows Stop instead of Send (Enter does nothing) until the reply is done. A steer now sends a schedule
   pill as its tag. Arrow keys, Enter or Tab and Escape work in the list with a keyboard. Tested on the
-  test box suite and in a browser against a mock; untested on a phone.
+  test box suite, in a browser against a mock, and on a phone (Android Chrome; iPhone/iPad stays untested as noted in
+  `README.md`).
 - Dictation in question cards: the answer box of a question (single or "pick any that apply") has a mic
-  between the box and Send. A tap records, a second tap stops, and the text from Hermes' speech-to-text (the same
-  `/dictate` route as the input box) goes in at the caret, ready to edit or send. Hidden on the same terms as the
-  input box's mic; one recording at a time; stops by itself after a minute; a card that moves on drops it.
-- Edit profile: the first button in the Tools tray opens a card to change her name and picture. It saves through
-  Hermes's own profile methods (`profiles.set_asset`, and `profiles.configure` as a compare-and-swap that keeps the
-  profile's other display fields), so Hermes and every client that asks it see the change. A picture uploaded
+  inside the answer box at its right end, sharing the composer's recording strip (bars, one-minute countdown, cancel;
+  pressing Send while recording sends once transcription finishes). A tap records, a second tap stops, and the text from
+  Hermes' speech-to-text (the same `/dictate` route as the input box) goes in at the caret, ready to edit or send. Hidden
+  on the same terms as the input box's mic; one recording at a time; stops by itself after a minute; a card that moves on
+  drops it.
+- Edit profile: the first button in the Tools tray opens a card to change the agent's name and picture. It saves
+  through Hermes's own profile methods (`profiles.set_asset`, and `profiles.configure` as a compare-and-swap that keeps
+  the profile's other display fields), so Hermes and every client that asks it see the change. A picture uploaded
   through the app's old setup is dropped once a new one is saved. Hermes's desktop app keeps its own copy of a
   picture it has already shown, so it shows the old one until the picture is picked there too.
 - The Inbox still opens from the agent's picture or name, with the unread count on the picture. On a phone it
-  opens as a full page, like the To-do and Schedules pages, with a Back button.
+  opens as a full page, like the To-do and Scheduled pages, with a Back button.
 - Bookmarks: every agent reply's action row (and long-press menu) has a Bookmark button right after Mark unread; on a
   kept reply it becomes Remove bookmark with a filled icon. A new Bookmarks tool directly above To-do in the Tools tray
   opens a panel of the kept replies, newest bookmark first, each opening its chat at that reply or removed with one
   tap. New `GET/POST /bookmarks`, `GET /bookmarks/ids` and `DELETE /bookmarks/{id}` routes, stored in
   `data/hermes-mini/bookmarks.json`; a reply whose chat or message is gone drops out, and is removed from the file the next time the list opens. Needs a dashboard restart to
   load.
-- Schedules is a row directly under the main chat in the chats panel; its clock button left the Tools tray, which
-  now holds Edit profile, Computer and To-do.
+- Scheduled is a row directly under the main chat in the chats panel; its clock button left the Tools tray, which
+  now holds Edit profile, Computer, Bookmarks and To-do.
 - Friendly model names: the model chip, the model sheet, the picker and the "Switched to" line read
   "DeepSeek v4.1 Flash" instead of `deepseek-v4.1-flash` (new `model-name.js`, following Hermes's desktop app).
   The picker search matches the name or the id, and the id is still what is sent.
 - Inline prompt cards (new `prompts.js`) for passwords, secrets, and vault requests (`sudo`,
   `display.install.sudo`, `secret`, `vault.unlock_prompt`, `vault.save_login`, and `vault.code`). Each card masks
-  secret inputs with a Show/Hide toggle, offers Skip, answers over JSON-RPC without putting values in chat
+  password and secret inputs with a Show/Hide toggle, while the one-time `vault.code` field is left unmasked so it can
+  be read at a glance; every card offers Skip, answers over JSON-RPC without putting values in chat
   history, and skips cleanly if you send a message instead.
 - A "connect an app" card for Hermes' `manage_connections` tool: each app with its state, Open (the sign-in link),
   Allow (a local install or enable) and Skip, plus Done to stop waiting. It updates as Hermes reports progress and
@@ -65,6 +86,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **New chat** promotes to the main chat on its first sent message when no saved main chat exists yet (without
+  overwriting state on an unsent reload).
+- Mobile page pinch and double-tap zoom are disabled (pinch and double-tap zoom remain enabled in the full-screen
+  picture viewer).
+- App system prompt and per-turn instructions consistently enforce silent inline image rendering without mentioning
+  TUI/CLI limits or fallback links.
 - The Schedules row and panel are now called Scheduled, and so is their group in the "/" list.
 
 - Question sets: Skip skips only the question on screen (the agent is told that one was skipped) instead of
@@ -83,6 +110,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Computer view places **Start Screen** centred directly under the stopped-screen message.
 - Bookmarks follow a reply through context compaction. Compaction writes the replies it carries forward again
   under new ids, and the chat then draws the copy; a bookmark on the original showed as not kept on that reply, could
   be added a second time, and opened the chat without finding it. Every bookmark route now follows a stored id to the

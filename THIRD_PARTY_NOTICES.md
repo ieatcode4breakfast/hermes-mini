@@ -1,8 +1,9 @@
 # Third-party notices
 
 Hermes Mini's own code is MIT-licensed (see [LICENSE](LICENSE)). The browser app bundles the
-following unmodified third-party builds. Their licenses and copyright notices apply to those files,
-and each file keeps its own license header.
+following third-party builds. Their licenses and copyright notices apply to those files, and upstream
+headers are kept where the build carries one; the full license texts live in
+`dashboard/vendor/LICENSES.txt`.
 
 ## Markdown rendering — `dashboard/vendor/`
 
@@ -24,13 +25,17 @@ SHA-256 checksums in `dashboard/vendor/VERSIONS.txt`.
 | [pako](https://github.com/nodeca/pako) (vendored inside noVNC) | as shipped by noVNC 1.7.0 | MIT | `vendor/pako/**/*.js` |
 
 The unmodified files come from the `@novnc/novnc@1.7.0` npm tarball. The license texts are in
-`dashboard/computer/vendor/novnc/LICENSE.txt` (MPL-2.0) and the pako license beside it; the file
-manifest and version are in `dashboard/computer/vendor/novnc/VERSION.txt`.
+`dashboard/computer/vendor/novnc/LICENSE.txt` (MPL-2.0) and the pako license beside it. See
+`dashboard/vendor/VERSIONS.txt` for the module count and entry-point checksums, and
+`dashboard/computer/vendor/novnc/VERSION.txt` for provenance.
 
 ## Notes on use
 
-- No vendored file was modified other than being copied. If you re-vendor, copy the upstream build
-  again and update the notice above and the SHA-256 list.
+- No vendored file was modified other than being copied, with one scanner-safe exception: in
+  `marked.esm.js` every regex lookaround on a backtick spells that character `\x60` (same character,
+  same matching), so Hermes' plugin install scanner stays clean — see `dashboard/vendor/VERSIONS.txt`.
+  If you re-vendor, copy the upstream build again, re-apply that spelling, and update the notice above
+  and the SHA-256 list.
 - MPL-2.0 applies file-by-file to the noVNC sources. Keeping those files separate and unmodified in
   `dashboard/computer/vendor/novnc/` satisfies its file-level copyleft; nothing in the rest of this
   project is derived from them.

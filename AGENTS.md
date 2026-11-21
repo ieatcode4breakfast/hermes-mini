@@ -19,13 +19,19 @@ the plugin installable, replaceable and honest. Read them before changing anythi
 
 - The plugin directory is replaceable code and bundled defaults. Nothing at runtime may write into
   it: no settings, no keys, no logs, no caches, no generated files.
-- Settings live in `$HERMES_HOME/hermes-mini/config.yaml`, your picture in
-  `$HERMES_HOME/hermes-mini/assets/`, and state in `$HERMES_HOME/data/hermes-mini/`.
+- Settings live in `$HERMES_HOME/hermes-mini/config.yaml`, and state in `$HERMES_HOME/data/hermes-mini/`.
+  Active profile pictures live in Hermes itself, saved through `profiles.set_asset`;
+  `$HERMES_HOME/hermes-mini/assets/` is only for legacy/optional app-uploaded pictures.
 - The one Hermes-owned configuration file the plugin may write is `$HERMES_HOME/config.yaml`,
   through Hermes' documented config load/save API, and only to record
   `platforms.hermes-mini.home_channel`; in that same write it marks the platform enabled if it has
-  no `enabled` key. It writes the home channel once, only when none is present, and touches nothing
-  else there.
+  no `enabled` key. It writes the home channel once automatically, only when none is present, and
+  touches nothing else there.
+- Other Hermes-owned writes happen only when a person explicitly acts: `approvals.mode`, the profile
+  name/picture, and provider keys are written through Hermes's own gateway APIs (the approval-mode
+  sheet, Edit profile, and **Providers +**). A scheduled-job delivery appends a message row to
+  `state.db` through Hermes' `SessionDB`. Pressing **Restart** writes
+  `$HERMES_HOME/logs/gateway-restart-app.log`.
 - Resolve paths per call through `mini_core.hermes_home()` (which uses Hermes' own resolver). Never
   hard-code `~/.hermes`, `/root/...`, the current working directory, or a profile name.
 - A test asserts the package is byte-identical after normal operation with the directory read-only.
@@ -39,9 +45,12 @@ the plugin installable, replaceable and honest. Read them before changing anythi
 - The agent's name and picture are Hermes's own. The app changes them only when the person saves them in the
   name and picture editor, and only through Hermes's profile methods (`profiles.configure` for the title,
   `profiles.set_asset` for the picture). It never writes Hermes's files for them and never renames a profile,
-  and it touches no other file Hermes owns — the one exception is the delivery default in section 2.
+  and it touches no other file Hermes owns — the exceptions are the delivery default in section 2 and the
+  explicit user-triggered gateway writes listed there.
+- The legacy `POST /identity` route is kept for compatibility only; the current UI does not use it.
 - Everything is per profile. A request served for another profile must read that profile's settings,
-  or nothing at all — never another profile's.
+  or nothing at all — never another profile's. Settings and state are strictly per profile; identity is the
+  deliberate exception, checking the default profile first (as in section 3 above).
 
 ## 4. No secrets, ever
 
