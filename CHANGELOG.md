@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the `transform_tool_result` progress-update hook (which appended a forced progress-update directive every
+  four minutes or ten tool calls in app chats). Long turns now rely on the opening acknowledgment, live narration
+  line, and any interim updates the agent writes naturally. Needs a gateway restart to take effect.
+
 ## [0.3.1] — 2026-11-24
 
 ### Fixed

@@ -1,5 +1,5 @@
-"""Hermes Mini hook half: app-chat scoping, Web Push notifications, app-only prompt sections,
-periodic progress nudges and the self-edit guard.
+"""Hermes Mini hook half: app-chat scoping, Web Push notifications, app-only prompt sections
+and the self-edit guard.
 
 Registered by Hermes' plugin loader; the app half (``dashboard/plugin_api.py``) serves the browser
 routes. Both halves load ``mini_core.py`` and ``push_store.py`` under fixed module names so they
@@ -17,7 +17,6 @@ import logging
 import re
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -246,12 +245,6 @@ no narrating your steps.
   warm, simple — never the setup behind it.
 """
 
-# Periodic progress updates: every 4 minutes or 10 tool calls in an app turn, the tool result
-# carries a directive to write a short update before the next tool. Keyed by turn id.
-_TURN_TRACKER: dict[str, dict[str, Any]] = {}
-_NUDGE_INTERVAL_SECONDS = 240.0  # 4 minutes
-_NUDGE_INTERVAL_TOOLS = 10       # or 10 consecutive tool calls
-
 
 def _registered_app_chat(session_id: str) -> bool:
     """True when the app started this chat (app_chats.py registry). Fails closed: no registry, no push."""
@@ -424,10 +417,6 @@ def _post_llm_call(*args: Any, **kwargs: Any) -> None:
         )
     except Exception:  # noqa: BLE001
         log.warning("push: post_llm_call hook failed", exc_info=True)
-    finally:
-        for _k in (kw.get("turn_id"), kw.get("session_id"), kw.get("task_id")):
-            if _k:
-                _TURN_TRACKER.pop(str(_k), None)
     return None
 
 
@@ -583,63 +572,12 @@ def _pre_tool_call(*args: Any, **kwargs: Any) -> dict[str, str] | None:
     return None
 
 
-# ---------- periodic progress updates ----------
-def _clean_stale_turn_tracker(now: float) -> None:
-    for key in list(_TURN_TRACKER):
-        if now - _TURN_TRACKER[key].get("last_nudge_time", now) > 1800:
-            _TURN_TRACKER.pop(key, None)
-
-
-def _transform_tool_result(*args: Any, **kwargs: Any) -> str | None:
-    try:
-        kw = _merge_args(args, kwargs)
-        session_id = str(kw.get("session_id") or "")
-        turn_id = str(kw.get("turn_id") or "")
-        if not session_id and not turn_id:
-            return None
-        # App chats only: no progress nudges in Discord, CLI, cron jobs or delegated subagents.
-        if str(kw.get("platform") or "") == "subagent":
-            return None
-        if not _in_app_chat(session_id, kw.get("task_id"), fail_closed=False):
-            return None
-
-        now = time.monotonic()
-        key = turn_id or session_id
-        _clean_stale_turn_tracker(now)
-
-        state = _TURN_TRACKER.setdefault(key, {
-            "start_time": now,
-            "last_nudge_time": now,
-            "tool_count": 0,
-        })
-        state["tool_count"] += 1
-
-        elapsed = now - state["last_nudge_time"]
-        if elapsed >= _NUDGE_INTERVAL_SECONDS or state["tool_count"] >= _NUDGE_INTERVAL_TOOLS:
-            state["last_nudge_time"] = now
-            state["tool_count"] = 0
-            raw_result = kw.get("result")
-            result_str = raw_result if isinstance(raw_result, str) else str(raw_result or "")
-            minutes = max(4, int((now - state["start_time"]) // 60))
-            nudge = (
-                f"\n\n[SYSTEM DIRECTIVE — PROGRESS UPDATE: ~{minutes} minutes have elapsed in this turn. "
-                "Before executing any further tools, your immediate next response MUST output a short 1-2 "
-                "sentence progress update to the user describing what you have checked/done so far and what "
-                "step you are taking next.]"
-            )
-            return result_str + nudge
-    except Exception:  # noqa: BLE001 - never break tool execution
-        log.warning("hermes-mini: transform_tool_result progress nudge failed", exc_info=True)
-    return None
-
-
 def register(ctx: Any) -> None:
     ctx.register_hook("pre_tool_call", _pre_tool_call)
     ctx.register_hook("pre_approval_request", _pre_approval_request)
     ctx.register_hook("on_human_input_request", _on_human_input_request)
     ctx.register_hook("post_llm_call", _post_llm_call)
     ctx.register_hook("pre_llm_call", _pre_llm_call)
-    ctx.register_hook("transform_tool_result", _transform_tool_result)
     # What this surface is, and how replies should read: both sections render into app chats only,
     # so CLI, Discord and cron prompts stay untouched.
     if hasattr(ctx, "register_system_prompt_section"):

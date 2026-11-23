@@ -303,11 +303,9 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
 - A chat platform named `hermes-mini` inside the gateway (in-process), so scheduled jobs can deliver
   their results to the app.
 
-**Hooks (app chats only; other chats, Discord, the CLI and cron runs are left alone; subagents of app chats inherit the turn rule and self-edit guard, while push notifications and progress nudges skip them)**
+**Hooks (app chats only; other chats, Discord, the CLI and cron runs are left alone; subagents of app chats inherit the turn rule and self-edit guard, while push notifications skip them)**
 - `pre_llm_call`: adds a short turn rule to app chats (acknowledge the newest message before the first
   tool call) and the default delivery target for scheduled jobs created there.
-- `transform_tool_result`: during a long turn, appends a one-line instruction to a tool result asking the
-  agent for a 1–2 sentence progress update (about every few minutes or every few tools).
 - `post_llm_call`, `pre_approval_request`, `on_human_input_request`: queue a push notification for a
   finished reply, an approval waiting for you, or a question the agent asks — only when you have turned
   notifications on.
@@ -386,10 +384,6 @@ surfaces — Discord, cron, the terminal — never receive them.
 
 An optional file at `$HERMES_HOME/data/hermes-mini/app-instructions.md` is appended to that rule.
 Use it for extra operator instructions; the built-in acknowledgement stays.
-
-During a long turn, the plugin also asks the agent for a short progress update every four minutes,
-or every ten tool calls, so a phone user is not left watching a silent screen. It applies to app
-chats only and skips delegated subagents.
 
 ## Push notifications
 
