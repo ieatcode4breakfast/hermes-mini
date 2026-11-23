@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-11-24
+
+### Fixed
+
+- Hermes v0.23.3+ storage-interface compatibility: added a shared session-store adapter (`session_store.py`) used by
+  the hook half (`__init__.py`) and scheduled-job bridge (`bridge.py`). On Hermes v0.23.3+, it reads and appends
+  sessions through Hermes's new `persistence_assembly` / `persistence` interface (falling back cleanly to
+  `hermes_state.SessionDB` on Hermes 0.23.0–0.23.2), keeping scheduled-job deliveries to named side chats and push
+  notification chat titles working where the legacy compatibility wrapper dropped `get_session_title`,
+  `get_session_by_title`, and `search_sessions`. Also updated `tests/test_slash.py` to resolve
+  `describe_skill_invocation` from `session_rules.turns` on Hermes v0.23.3+ (falling back to
+  `agent.skill_commands` on 0.23.0–0.23.2). Needs a gateway restart to load.
+
 ## [0.3.0] — 2026-11-21
 
 ### Added

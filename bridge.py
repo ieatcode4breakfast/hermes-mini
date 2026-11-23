@@ -52,6 +52,7 @@ def _sibling(name: str, filename: str):
 
 mini_core = _sibling("hermes_mini_core", "mini_core.py")
 _policy = _sibling("hermes_mini_message_policy", "message_policy.py")
+_store_mod = _sibling("hermes_mini_session_store", "session_store.py")
 
 log = logging.getLogger("hermes_mini.bridge")
 
@@ -191,9 +192,7 @@ def deliver_text(content: str, target: str = "main") -> dict[str, Any]:
         return {"success": True, "message_id": "suppressed-lifecycle-notice"}
     text = _policy.display_text(text, notice=True)
     try:
-        from hermes_state import SessionDB
-
-        db = SessionDB()
+        db = _store_mod.SessionStore()
         session_id, how = _resolve_session_id(db, target)
     except Exception as exc:  # noqa: BLE001
         log.warning("bridge: chat lookup failed: %s", exc)
@@ -201,9 +200,7 @@ def deliver_text(content: str, target: str = "main") -> dict[str, Any]:
     if not session_id:
         return {"error": "bridge: no chat to deliver to (open the app once)"}
     try:
-        from hermes_state import SessionDB
-
-        row_id = SessionDB().append_message(
+        row_id = _store_mod.SessionStore().append_message(
             session_id=session_id, role="user", content=f"{PREFIX}\n{text[:MAX_LEN]}",
             display_kind=DISPLAY_KIND,
             display_metadata={"source": "hermes-mini-bridge", "target": (target or "main")})

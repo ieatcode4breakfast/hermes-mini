@@ -380,3 +380,161 @@ class RegistrationTest(HookTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+class StrippedSessionDBHooksTest(HookTestCase):
+    def test_session_meta_reads_title_without_get_session_title_method(self):
+        class StrippedSessionDB:
+            def get_session(self, session_id):
+                return {"id": "s1", "title": "Side Chat", "source": "tui"}
+
+        mod = types.ModuleType("hermes_state")
+        mod.SessionDB = StrippedSessionDB
+        sys.modules["hermes_state"] = mod
+        self.assertEqual(self.hooks._session_meta("s1"), ("Side Chat", "tui"))
+
+
+class PersistenceHooksTest(DisposableHome):
+    def setUp(self):
+        super().setUp()
+        self.rows = {}
+        self.latest_rows = []
+        self.opens = 0
+        self.closes = 0
+        self._install_persistence_fakes()
+        self.hooks = load_module("hermes_mini_hooks_persistence", PROJECT_ROOT / "__init__.py")
+        self.push = load_module("hermes_mini_push", PROJECT_ROOT / "push_store.py")
+        self.chats = load_module("hermes_mini_app_chats", PROJECT_ROOT / "app_chats.py")
+
+    def _install_persistence_fakes(self):
+        test_case = self
+
+        class FakeRecord:
+            def __init__(self, row):
+                self._row = dict(row)
+
+            def as_session_row(self):
+                return dict(self._row)
+
+        class FakeWireRow:
+            def __init__(self, row):
+                self._row = dict(row)
+
+            def as_wire_row(self):
+                return dict(self._row)
+
+        class FakeSessions:
+            def get(self, session_id):
+                row = test_case.rows.get(session_id)
+                return FakeRecord(row) if row is not None else None
+
+            def get_by_title(self, title):
+                row = next((r for r in test_case.rows.values() if r.get("title") == title), None)
+                return FakeRecord(row) if row is not None else None
+
+            def search_sessions(self, *, window):
+                return []
+
+        class FakeMessages:
+            def read_transcript(self, session_id, req):
+                return [FakeWireRow(r) for r in test_case.latest_rows]
+
+            def append(self, session_id, message):
+                return 1
+
+        class FakeHandle:
+            def __init__(self):
+                self.sessions = FakeSessions()
+                self.messages = FakeMessages()
+
+            def __enter__(self):
+                test_case.opens += 1
+                return self
+
+            def __exit__(self, *exc):
+                test_case.closes += 1
+
+        pa = types.ModuleType("persistence_assembly")
+        pa.profile_scope = lambda profile=None, *, home=None: ("scope", home)
+        pa.open_persistence = lambda scope: FakeHandle()
+
+        pm = types.ModuleType("persistence.conversation.messages")
+        class FakeNewMessage:
+            def __init__(self, **kw):
+                self.payload = kw
+
+            @classmethod
+            def from_live(cls, payload):
+                return cls(**payload)
+
+        class FakeTranscriptRead:
+            def __init__(self, **kw):
+                self.kw = kw
+
+        class FakeTranscriptView:
+            ACTIVE = "active"
+
+        pm.NewMessage = FakeNewMessage
+        pm.TranscriptRead = FakeTranscriptRead
+        pm.TranscriptView = FakeTranscriptView
+
+        ps = types.ModuleType("persistence.conversation.sessions")
+        class FakeSessionWindow:
+            def __init__(self, *, limit=20):
+                self.limit = limit
+
+        ps.SessionWindow = FakeSessionWindow
+
+        p_pkg = types.ModuleType("persistence")
+        p_conv = types.ModuleType("persistence.conversation")
+        p_pkg.conversation = p_conv
+        p_conv.messages = pm
+        p_conv.sessions = ps
+
+        modules = {
+            "persistence": p_pkg,
+            "persistence.conversation": p_conv,
+            "persistence.conversation.messages": pm,
+            "persistence.conversation.sessions": ps,
+            "persistence_assembly": pa,
+        }
+        sentinel = object()
+        saved = {name: sys.modules.get(name, sentinel) for name in modules}
+        for name, mod in modules.items():
+            sys.modules[name] = mod
+
+        def restore():
+            for name, old_mod in saved.items():
+                if old_mod is sentinel:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = old_mod
+
+        self.addCleanup(restore)
+
+    def test_app_chat_post_llm_and_guard_work_via_persistence_interface(self):
+        self.rows["s1"] = {
+            "id": "s1", "title": "Side Chat", "source": "tui",
+            "parent_session_id": None, "archived": 0,
+        }
+        self.chats.add("s1")
+        self.assertEqual(self.hooks._app_chat("s1"), ("s1", "Side Chat"))
+
+        calls = []
+        original = self.push.notify
+        self.push.notify = lambda *a, **kw: (calls.append((a, kw)) or True)
+        self.addCleanup(setattr, self.push, "notify", original)
+
+        self.latest_rows = [{"finish_reason": "tool_calls", "tool_calls": [{"id": "c1"}]}]
+        self.hooks._post_llm_call(session_id="s1", assistant_response="Still working")
+        self.assertEqual(calls, [])
+
+        self.latest_rows = [{"finish_reason": "stop", "tool_calls": []}]
+        self.hooks._post_llm_call(session_id="s1", assistant_response="All finished.")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0][1], "Side Chat")
+
+        blocked = self.hooks._pre_tool_call(
+            tool_name="write_file", session_id="s1",
+            args={"path": str(PROJECT_ROOT / "__init__.py")},
+        )
+        self.assertEqual(blocked["action"], "block")
+        self.assertEqual(self.opens, self.closes)

@@ -193,3 +193,166 @@ class AppChatsHomeTest(RegistryTestCase):
         self.registry(ids=("chat-a",))
         self.assertEqual(self.chats.home(), "")
         self.assertEqual(self.chats.ids(), frozenset({"chat-a"}))
+class SessionStoreBridgeTest(RegistryTestCase):
+    def _install_fake_modules(self, modules: dict[str, object]):
+        import sys
+        sentinel = object()
+        saved = {name: sys.modules.get(name, sentinel) for name in modules}
+        for name, mod in modules.items():
+            sys.modules[name] = mod
+
+        def restore():
+            for name, old in saved.items():
+                if old is sentinel:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = old
+
+        self.addCleanup(restore)
+
+    def _make_persistence_fakes(self, rows: list[dict]):
+        import types
+        recorded = {"scopes": [], "opens": 0, "closes": 0, "appends": []}
+
+        class FakeRecord:
+            def __init__(self, row):
+                self._row = dict(row)
+
+            def as_session_row(self):
+                return dict(self._row)
+
+        class FakeEntry:
+            def __init__(self, row):
+                self.session = FakeRecord(row)
+
+        class FakeSessions:
+            def get(self, session_id):
+                row = next((r for r in rows if r["id"] == session_id), None)
+                return FakeRecord(row) if row is not None else None
+
+            def get_by_title(self, title):
+                row = next((r for r in rows if r.get("title") == title), None)
+                return FakeRecord(row) if row is not None else None
+
+            def search_sessions(self, *, window):
+                return [FakeEntry(r) for r in rows[:window.limit]]
+
+        class FakeMessages:
+            def read_transcript(self, session_id, req):
+                return []
+
+            def append(self, session_id, message):
+                recorded["appends"].append((session_id, message))
+                return 900 + len(recorded["appends"])
+
+        class FakeHandle:
+            def __init__(self):
+                self.sessions = FakeSessions()
+                self.messages = FakeMessages()
+
+            def __enter__(self):
+                recorded["opens"] += 1
+                return self
+
+            def __exit__(self, *exc):
+                recorded["closes"] += 1
+
+        pa = types.ModuleType("persistence_assembly")
+        pa.profile_scope = lambda profile=None, *, home=None: (recorded["scopes"].append(home) or ("scope", home))
+        pa.open_persistence = lambda scope: FakeHandle()
+
+        pm = types.ModuleType("persistence.conversation.messages")
+        class FakeNewMessage:
+            def __init__(self, **kw):
+                self.payload = kw
+
+            @classmethod
+            def from_live(cls, payload):
+                return cls(**payload)
+
+        class FakeTranscriptRead:
+            def __init__(self, **kw):
+                self.kw = kw
+
+        class FakeTranscriptView:
+            ACTIVE = "active"
+
+        pm.NewMessage = FakeNewMessage
+        pm.TranscriptRead = FakeTranscriptRead
+        pm.TranscriptView = FakeTranscriptView
+
+        ps = types.ModuleType("persistence.conversation.sessions")
+        class FakeSessionWindow:
+            def __init__(self, *, limit=20):
+                self.limit = limit
+
+        ps.SessionWindow = FakeSessionWindow
+
+        p_pkg = types.ModuleType("persistence")
+        p_conv = types.ModuleType("persistence.conversation")
+        p_pkg.conversation = p_conv
+        p_conv.messages = pm
+        p_conv.sessions = ps
+
+        return {
+            "persistence": p_pkg,
+            "persistence.conversation": p_conv,
+            "persistence.conversation.messages": pm,
+            "persistence.conversation.sessions": ps,
+            "persistence_assembly": pa,
+        }, recorded
+
+    def test_deliver_text_uses_persistence_interface_for_named_and_branched_chats(self):
+        rows = [
+            {"id": "home", "title": "Hermes Mini", "archived": 0, "parent_session_id": None},
+            {"id": "side-1", "title": "Reminders", "archived": 0, "parent_session_id": None},
+            {"id": "branch-1", "title": "Branch Check", "archived": 0, "parent_session_id": "side-1"},
+        ]
+        modules, recorded = self._make_persistence_fakes(rows)
+        self._install_fake_modules(modules)
+        self.registry(ids=("home", "side-1", "branch-1"), home="home")
+        bridge = load_module("hermes_mini_bridge_persistence", BRIDGE)
+
+        res1 = bridge.deliver_text("Take meds", target="Reminders")
+        self.assertTrue(res1["success"])
+        self.assertEqual(res1["chat_id"], "side-1")
+        self.assertEqual(res1["resolved_by"], "title")
+        self.assertEqual(res1["message_id"], "901")
+
+        res2 = bridge.deliver_text("Check branch", target="branch check")
+        self.assertTrue(res2["success"])
+        self.assertEqual(res2["chat_id"], "branch-1")
+        self.assertEqual(res2["resolved_by"], "title")
+        self.assertEqual(res2["message_id"], "902")
+
+        self.assertEqual(recorded["opens"], recorded["closes"])
+        self.assertGreaterEqual(recorded["opens"], 4)
+        self.assertTrue(all(h == self.home for h in recorded["scopes"]))
+
+    def test_deliver_text_falls_back_to_legacy_session_db(self):
+        import types
+        rows = [
+            {"id": "home", "title": "Hermes Mini", "archived": 0},
+            {"id": "side-1", "title": "Notes", "archived": 0},
+        ]
+        appended = []
+
+        class LegacyDB(FakeSessionDB):
+            def __init__(self):
+                super().__init__(rows)
+
+            def append_message(self, **kwargs):
+                appended.append(kwargs)
+                return 77
+
+        hs = types.ModuleType("hermes_state")
+        hs.SessionDB = LegacyDB
+        self._install_fake_modules({"hermes_state": hs})
+        self.registry(ids=("home", "side-1"), home="home")
+        bridge = load_module("hermes_mini_bridge_legacy", BRIDGE)
+
+        res = bridge.deliver_text("Hello legacy", target="notes")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["chat_id"], "side-1")
+        self.assertEqual(res["message_id"], "77")
+        self.assertEqual(len(appended), 1)

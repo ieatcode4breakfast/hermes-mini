@@ -144,7 +144,10 @@ class SkillTextMatchesHermesTest(unittest.TestCase):
             '\n\n[Loaded as part of the stacked skill invocation "humanizer".]\n\nBody'
         excerpt = single.replace("the\n\nleak", "the" + sc.SKILL_EXCERPT_JOINT + "tail")
         messages = [single, bare, runtime, quoted, stacked, stacked_bare, excerpt, "hello", "", "[IMPORTANT: other"]
-        expected = [sc.describe_skill_invocation(text, separator=" ") for text in messages]
+        describe = getattr(sc, "describe_skill_invocation", None)
+        if describe is None:
+            from session_rules.turns import describe_skill_invocation as describe
+        expected = [describe(text, separator=" ") for text in messages]
         names = ["Code Review", "claude-code", "Foo_Bar  Baz", "C++ helper", "Ünïcode Skill", "--x--", "a.b"]
         slugs = [sc.slugify_skill_name(name) for name in names]
         script = r'''

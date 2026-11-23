@@ -27,7 +27,7 @@ jobs:
 
       - name: Byte-compile the plugin
         run: |
-          python -m compileall -q __init__.py mini_core.py message_policy.py push_store.py app_chats.py bridge.py \
+          python -m compileall -q __init__.py mini_core.py session_store.py message_policy.py push_store.py app_chats.py bridge.py \
             dashboard/plugin_api.py dashboard/computer_api.py
 
       - name: Byte-compile the tests

@@ -45,6 +45,7 @@ def _sibling(name: str, filename: str):
 
 mini_core = _sibling("hermes_mini_core", "mini_core.py")
 _policy = _sibling("hermes_mini_message_policy", "message_policy.py")
+_store_mod = _sibling("hermes_mini_session_store", "session_store.py")
 
 log = logging.getLogger("hermes_mini.hooks")
 
@@ -107,26 +108,14 @@ def _plain(text: Any) -> str:
 
 
 def _session_meta(session_id: str) -> tuple[str | None, str | None]:
-    """(title, source) from state.db in one cheap read; (None, None) on any failure."""
+    """(title, source) from the session store in one cheap read; (None, None) on any failure."""
     try:
-        from hermes_state import SessionDB
-
-        db = SessionDB()
-        title = None
-        try:
-            title = db.get_session_title(session_id)
-        except Exception:  # noqa: BLE001 - a missing title is normal for young chats
-            log.debug("push: title lookup failed", exc_info=True)
-        source = None
-        try:
-            row = db.get_session(session_id)  # documented read API (hermes_state.SessionDB)
-            if row is not None:
-                source = row.get("source")
-        except Exception:  # noqa: BLE001 - reported to the caller as "unknown, notify anyway"
-            log.debug("push: source lookup failed", exc_info=True)
-        return title, source
+        row = _store_mod.SessionStore().get_session(session_id)
+        if row is not None:
+            return row.get("title"), row.get("source")
+        return None, None
     except Exception:  # noqa: BLE001
-        log.debug("push: SessionDB unavailable", exc_info=True)
+        log.debug("push: session store unavailable", exc_info=True)
         return None, None
 
 
@@ -405,10 +394,8 @@ def _post_llm_call(*args: Any, **kwargs: Any) -> None:
         session, title = chat
         # Check the latest message persisted for this chat is not an intermediate tool-step.
         try:
-            from hermes_state import SessionDB
-
-            db = SessionDB()
-            # SessionDB's public reader: the newest active message only (catalog rule 9: no private db calls).
+            db = _store_mod.SessionStore()
+            # Storage adapter public reader: the newest active message only (catalog rule 9: no private db calls).
             latest = db.get_messages(session, limit=1, latest=True)
             row = latest[-1] if latest else None
             if row is not None:
@@ -474,9 +461,7 @@ def _in_app_chat(*candidates: Any, fail_closed: bool = True) -> bool:
     the database is unreadable. ``fail_closed=False`` (instructions) treats an error as "not an app
     chat"."""
     try:
-        from hermes_state import SessionDB
-
-        db = SessionDB()
+        db = _store_mod.SessionStore()
         for value in candidates:
             session = str(value or "").strip()
             for _ in range(5):

@@ -88,7 +88,7 @@ because restarting the gateway ends its reply. Then open the address, sign in wi
 Hermes login, and use your browser's "Install app" / "Add to Home Screen".
 
 Installing by name uses the Hermes plugin catalog, which pins a reviewed release (currently
-v0.3.0). To get the newest commit on `main` before the catalog catches up, install from GitHub
+v0.3.1). To get the newest commit on `main` before the catalog catches up, install from GitHub
 instead:
 
 ```bash
@@ -314,8 +314,9 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
 - `pre_tool_call`: blocks an app chat from editing the plugin's own files (a self-edit guard).
 
 **Reads**
-- Hermes' chat history and session list (`state.db`, through `SessionDB`; the Inbox and Search queries open it
-  read-only), the scheduled-job list
+- Hermes' chat history and session list (through Hermes' storage interface `persistence_assembly`, with
+  `SessionDB` fallback on Hermes 0.23.0–0.23.2; the Inbox and Search queries open `state.db` read-only), the
+  scheduled-job list
   (Hermes' cron routes), the skill list (Hermes' `/api/skills` route), the model/provider list, and its own data folder.
 
 **Writes**
@@ -326,8 +327,8 @@ plugin surfaces; this is the full list of what it reads, writes, runs and sends.
 - Through Hermes' own gateway methods, only when you explicitly use those UI controls: profile name and
   picture (`profiles.configure` / `profiles.set_asset`) in Edit profile, provider API keys in
   **Providers +**, and `approvals.mode` (`config.set`) in the approval-mode sheet.
-- Through Hermes' `SessionDB.append_message`: appends a message row to `state.db` when a scheduled job
-  delivers to `hermes-mini`.
+- Through Hermes' storage interface (`persistence_assembly`, or `SessionDB.append_message` on Hermes
+  0.23.0–0.23.2): appends a message row to `state.db` when a scheduled job delivers to `hermes-mini`.
 - `$HERMES_HOME/logs/gateway-restart-app.log` when you press the **Restart** button.
 
 **Runs**
