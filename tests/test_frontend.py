@@ -408,6 +408,12 @@ class WebImageFallbackTest(unittest.TestCase):
         attach = app[app.index("function attachMedia("):]
         self.assertLess(attach.index("webImageFallback(bubble)"), attach.index("inlineMediaTags(bubble)"))
 
+    def test_inline_media_limit_notice_and_lazy_observer(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn("const MAX_INLINE_MEDIA = 50;", app)
+        self.assertIn("This app's preview limit has been reached.", app)
+        self.assertIn("inlineMediaObserver", app)
+
 
 class ProviderNoteTest(unittest.TestCase):
     """Providers the app cannot connect get a plain note, never Hermes' terminal hint."""

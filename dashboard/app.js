@@ -3328,7 +3328,7 @@ function refreshBookmarkMarks() {
 // (bare, in `code`, or as MEDIA:/path) is fetched through the dashboard's authenticated
 // /api/fs/read-data-url (the desktop app's path renderer) and shown under the text. Tap = full screen.
 const MEDIA_PATH_RE = /(?:^|[\s`'"(\[]|MEDIA:)((?:\/|~\/)[^\s`'"<>()\[\]]+?\.(?:png|jpe?g|gif|webp))(?=$|[\s`'")\].,;:!?])/gi;
-const MAX_INLINE_MEDIA = 9; // a Markdown reply can put at most this many local pictures inline, same as the grid
+const MAX_INLINE_MEDIA = 50; // a Markdown reply can put at most this many local pictures inline, same as the grid
 const mediaCache = new Map(); // path -> Promise<dataUrl|null>
 
 function mediaPaths(text) {
@@ -3742,7 +3742,40 @@ function inlineMediaTags(bubble) {
 // Pictures past this many in one reply are not fetched: say so under the message instead of dropping them silently.
 function showMediaLimit(bubble, count) {
   if (count <= 0) return;
-  bubble.append(el("div", "media-more", `${count} more picture${count === 1 ? "" : "s"} not shown`));
+  bubble.append(el("div", "media-more", `This app's preview limit has been reached. ${count} picture${count === 1 ? "" : "s"} not shown.`));
+}
+
+const inlineMediaObserver = typeof IntersectionObserver === "function"
+  ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const slot = entry.target;
+      inlineMediaObserver.unobserve(slot);
+      const load = slot._loadInlineMedia;
+      delete slot._loadInlineMedia;
+      if (typeof load === "function") load();
+    }
+  }, { root: null, rootMargin: "600px 0px" })
+  : null;
+
+function loadInlineMediaSlot(bubble, slot) {
+  const path = slot.dataset.mdSrc;
+  if (!path || !slot.isConnected) return;
+  fetchMedia(path).then((url) => {
+    if (!url || !slot.isConnected) return;
+    const img = el("img", "md-img");
+    img.src = url; // a data URL: no raw disk path in the page
+    img.alt = slot.dataset.alt || path.split("/").pop() || "image";
+    img.dataset.mdSrc = path;
+    img.addEventListener("click", () => {
+      // Every picture already in this message makes one gallery, inline and grid alike.
+      const items = [...bubble.querySelectorAll("img.md-img, img.media-img")]
+        .filter((node) => node.src && !node.hidden)
+        .map((node) => ({ url: node.src, alt: node.alt }));
+      openViewer(items, Math.max(0, items.findIndex((item) => item.url === img.src)));
+    });
+    slot.replaceWith(img);
+  });
 }
 
 // A local picture written as Markdown keeps its place: md.js left a span with the path, filled here once the
@@ -3750,21 +3783,12 @@ function showMediaLimit(bubble, count) {
 function hydrateInlineMedia(bubble, slots) {
   for (const slot of slots.slice(0, MAX_INLINE_MEDIA)) {
     const path = slot.dataset.mdSrc;
-    fetchMedia(path).then((url) => {
-      if (!url || !slot.isConnected) return;
-      const img = el("img", "md-img");
-      img.src = url; // a data URL: no raw disk path in the page
-      img.alt = slot.dataset.alt || path.split("/").pop() || "image";
-      img.dataset.mdSrc = path;
-      img.addEventListener("click", () => {
-        // Every picture already in this message makes one gallery, inline and grid alike.
-        const items = [...bubble.querySelectorAll("img.md-img, img.media-img")]
-          .filter((node) => node.src && !node.hidden)
-          .map((node) => ({ url: node.src, alt: node.alt }));
-        openViewer(items, Math.max(0, items.findIndex((item) => item.url === img.src)));
-      });
-      slot.replaceWith(img);
-    });
+    if (!inlineMediaObserver || (path && mediaCache.has(path))) {
+      loadInlineMediaSlot(bubble, slot);
+      continue;
+    }
+    slot._loadInlineMedia = () => loadInlineMediaSlot(bubble, slot);
+    inlineMediaObserver.observe(slot);
   }
 }
 
