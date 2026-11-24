@@ -25,6 +25,15 @@ All notable changes to this project are documented here. The format follows
     reconciles and backfills trees (plus missed step images/URLs) when a turn finishes while disconnected.
   - Needs a dashboard restart to load `/activity` routes and `mode="tree"` narration.
 
+### Changed
+
+- Inline local picture previews (`dashboard/app.js`): raised the per-message inline picture cap from 9 to 50,
+  lazy-loaded uncached images as they approach the viewport via `IntersectionObserver`, and updated the overflow
+  notice to *"This app's preview limit has been reached. N picture(s) not shown."*
+- Universal 16px base typography (`dashboard/style.css`, `dashboard/computer/screen.css`): made `16px/1.5` the
+  standard body font size across phone and desktop (removing the 14px small-screen downgrade) and rescaled
+  headings, secondary controls, code/tables, activity trees, metadata, and the computer viewer proportionally.
+
 ### Removed
 
 - Removed the `transform_tool_result` progress-update hook (which appended a forced progress-update directive every

@@ -620,6 +620,14 @@ class IosComposerZoomTest(unittest.TestCase):
         block = block[:block.index("}\n}") + 3]
         self.assertIn(".composer textarea, .composer textarea:focus { font-size: 16px; }", block)
 
+    def test_universal_16px_base_and_scaled_tiers(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn("body { font: 16px/1.5", css)
+        self.assertNotIn("@media (max-width: 600px) { body { font-size: 14px; } }", css)
+        self.assertIn(".activity-tree {", css)
+        self.assertIn("font-size: 14.5px;", css)
+        self.assertIn(".msg-time { margin: 0 6px; font-size: 13px;", css)
+
 
 class SocketAuthOrderTest(unittest.TestCase):
     def test_gate_is_known_before_the_socket_query_is_chosen(self):

@@ -70,7 +70,7 @@ body.bot-screen-open {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 650;
 }
 /* Ownership label and actions float over the remote desktop inside #bsStage: one absolute row, so the
@@ -106,7 +106,7 @@ body.bot-screen-open {
   padding: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -151,7 +151,7 @@ body.bot-screen-open {
   background: color-mix(in srgb, var(--fg) 8%, var(--bg));
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -171,7 +171,7 @@ body.bot-screen-open {
   /* Neutral grey pills, not the chat purple: a light grey in dark mode, a soft grey in light. */
   background: color-mix(in srgb, var(--fg) 14%, var(--bg));
   color: var(--fg);
-  font-size: 14px; /* regular text size, was 11px bold */
+  font-size: 15px; /* regular text size, was 11px bold */
   font-weight: 500;
   pointer-events: auto; /* the only hit targets in the floating row */
   transition: background-color 140ms ease, transform 150ms var(--ease-spring), filter 140ms ease;
@@ -232,7 +232,7 @@ body.bot-screen-open {
   padding: 7px 12px;
   background: rgba(180, 120, 0, 0.16);
   color: #8a5a00;
-  font-size: 12px;
+  font-size: 13px;
   text-align: center;
   flex: 0 0 auto;
 }
@@ -281,13 +281,13 @@ body.bot-screen-open {
 }
 .bs-overlay h3 {
   margin: 0 0 7px;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 650;
 }
 .bs-overlay p {
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -298,7 +298,7 @@ body.bot-screen-open {
 }
 .bs-overlay .bs-btn:active { transform: scale(0.95); }
 /* Start Screen, the card's one action: centred under its message, sized for a thumb. */
-.bs-overlay .bs-btn { min-height: 44px; padding: 0 22px; border-radius: 999px; font-size: 15px; }
+.bs-overlay .bs-btn { min-height: 44px; padding: 0 22px; border-radius: 999px; font-size: 16px; }
 .bs-overlay .bs-btn[hidden] { display: none; }
 
 .bs-kbd {
@@ -331,10 +331,10 @@ body.bot-screen-open {
 /* Narrow phones: the back control stays the 46px monitor button, and the action group wraps inside itself. */
 @media (max-width: 420px) {
   .bs-bar { min-height: 44px; padding-top: 0; padding-bottom: 0; }
-  .bs-title { font-size: 15px; }
-  .bs-badge { padding: 0; font-size: 10px; }
-  .bs-btn { min-height: 40px; padding: 0 9px; font-size: 11.5px; }
-  .bs-controls .bs-btn, .bs-lease-group .bs-btn { min-height: 30px; padding: 0 11px; font-size: 14px; }
+  .bs-title { font-size: 16px; }
+  .bs-badge { padding: 0; font-size: 11px; }
+  .bs-btn { min-height: 40px; padding: 0 9px; font-size: 12.5px; }
+  .bs-controls .bs-btn, .bs-lease-group .bs-btn { min-height: 30px; padding: 0 11px; font-size: 15px; }
   .bs-controls .bs-icon-btn { padding: 0; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
@@ -416,7 +416,7 @@ body:not(.docked) .bs-title-icon { display: none; }
   touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .bs-pad[hidden] { display: none; }
-.bs-pad-label { font-size: 13px; letter-spacing: 0.04em; color: var(--muted); opacity: 0.6; pointer-events: none; }
+.bs-pad-label { font-size: 14px; letter-spacing: 0.04em; color: var(--muted); opacity: 0.6; pointer-events: none; }
 .bot-screen.bs-chrome-wait .bs-pad, .bot-screen.bs-chrome-wait .bs-help-btn { opacity: 0; visibility: hidden; }
 .bs-pad, .bs-help-btn { transition: opacity 220ms ease-out; }
 /* The ? sits in the pad's top-right corner, but is its own element so its taps never reach the trackpad. */
@@ -439,9 +439,9 @@ body:not(.docked) .bs-title-icon { display: none; }
   border: 0; border-radius: 24px; background: var(--surface); color: var(--fg);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.32);
 }
-.bs-help-card h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
-.bs-help-note { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
-.bs-help-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 18px; font-size: 14px; }
+.bs-help-card h3 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+.bs-help-note { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
+.bs-help-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 18px; font-size: 15px; }
 .bs-help-list dt { font-weight: 600; }
 .bs-help-list dd { margin: 0; color: var(--muted); }
 .bs-help-card .bs-btn { width: 100%; justify-content: center; }
@@ -462,7 +462,7 @@ body:not(.docked) .bs-title-icon { display: none; }
   background: color-mix(in srgb, var(--fg) 84%, var(--bg)); color: var(--bg);
   -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
-  font-size: 14px; font-weight: 500; pointer-events: none;
+  font-size: 15px; font-weight: 500; pointer-events: none;
   opacity: 0; transition: opacity 180ms var(--ease-out), transform 260ms var(--ease-spring);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
