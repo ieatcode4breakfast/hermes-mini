@@ -243,8 +243,10 @@ there is no reply to show.
   for Hermes's live profile approval mode (**Manual**, **Smart**, **Off**) with plain-English
   descriptions. It asks for confirmation before switching to **Off** (explicit deny rules in Hermes
   still apply), and writes Hermes's profile config (`approvals.mode`) through Hermes's gateway (`config.set`).
-- **Live streaming**: replies appear as they arrive, with a short quiet narration line (a soft
-  shimmer slides across it while the agent works) and tool-step progress. Narration uses Hermes' auxiliary model slots and stays silent if that is not
+- **Live streaming**: replies appear as they arrive, with collapsible per-subject activity trees above each
+  reply showing live thinking dots beside the active header, shimmer-highlighted active steps, inline thumbnails
+  for checked or generated pictures, clickable links for web pages opened during each step, and automatic recovery
+  across reloads and disconnects. Narration uses Hermes' auxiliary model slots and stays silent if that is not
   configured.
 - **Steering**: send while a reply is running to steer the current turn.
 - **Approvals and questions**: answer them in the app; an approval can also be approved or denied
@@ -356,7 +358,7 @@ home of the profile serving the request, resolved with Hermes' own helper at req
 |---|---|
 | `$HERMES_HOME/hermes-mini/config.yaml` | Optional public URL and push contact, plus legacy/optional app-local identity fields (the current Edit profile saves name and picture in Hermes' own profile). |
 | `$HERMES_HOME/hermes-mini/assets/` | Legacy/optional app-uploaded picture (the current Edit profile saves to Hermes' own profile assets). |
-| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen/unread markers, inbox read state, bookmarks, gateway restart events, the app-chat registry and recorded main-chat id, push key, subscriptions and muted chats. |
+| `$HERMES_HOME/data/hermes-mini/` | App state: to-dos, pin order, seen/unread markers, inbox read state, bookmarks, activity trees (`activity.json`), gateway restart events, the app-chat registry and recorded main-chat id, push key, subscriptions and muted chats. |
 
 `config.yaml` is written atomically with mode `0600`, and unknown keys are dropped. App settings and
 state are strictly per profile and never cross profiles: a second Hermes profile gets its own settings

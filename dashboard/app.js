@@ -16,6 +16,7 @@ import { createTodo } from "./todo.js";
 import { createSchedules, mentionText } from "./schedules.js";
 import { createInbox } from "./inbox.js";
 import { createBookmarks } from "./bookmarks.js";
+import { createActivity } from "./activity.js";
 import { createSearch } from "./search.js";
 import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js";
 import * as identityApi from "./identity.js";
@@ -160,6 +161,7 @@ const state = {
   resettingMain: false, // a main-chat reset is between its confirmation and its finish
   composerLocked: false, // a reset deleted the old main but no replacement is attached: keep the composer disabled
   homeStartedAt: 0, // creation time of the current main chat (seconds), or Infinity right after creation
+  stoppedByUser: false, // true when the user pressed Stop on the current turn
 };
 
 // The model chip on the composer and its sheet (model.js). A New chat (draft) has no session yet: its pick is sent
@@ -453,7 +455,16 @@ function clearLog({ keepDictation = false } = {}) {
   endEdit(); // a view reset ends an edit; the composer gets its draft back
   cancelJumpScroll(); // a jump never follows the view to another chat or a rebuilt history
   hideJumpButton(true);
+  if (typeof activity !== "undefined") activity.clearLogState();
   els.log.replaceChildren(emptyState);
+}
+
+function lastLogBubbleRow() {
+  const activeRow = state.turn ? state.turn.row : null;
+  for (let node = els.log.lastElementChild; node; node = node.previousElementSibling) {
+    if (node !== activeRow && node.classList.contains("msg") && node.hermesMiniMsg?.text) return node;
+  }
+  return null;
 }
 
 // ---------- HTTP ----------
@@ -1423,6 +1434,8 @@ function finishAttach(openRequests, running, pendingConnection = null, inflight 
   state.stream = null;
   if (running) seedInflight(inflight);
   if (running) touchTurn();
+  if (running) activity.restoreLiveTree({ sid: state.storedId, insertBefore: state.turn ? state.turn.row : null });
+  if (running && state.turn) paintTurn(state.turn);
   state.composerLocked = false;
   state.ready = true;
   updateComposer();
@@ -1590,6 +1603,7 @@ async function deleteSessionFenced(id) {
         query.set("expected_generation", String(snapshot.runtime_generation));
       }
       await api(`/api/sessions/${encodeURIComponent(id)}?${query}`, { method: "DELETE" });
+      await activity.deleteSession(id);
     }
   } catch (error) {
     throw new Error(sessionErrorText(error, "delete"));
@@ -1737,22 +1751,27 @@ function renderHistoryEntries(messages, gatewayEvents = []) {
   const flushEvents = (upTo) => {
     while (pendingEvents.length && pendingEvents[0].ts <= upTo) addGatewayLine(pendingEvents.shift());
   };
-  for (const { message, text, images, files, kind, clarify, skill } of chatEntries(messages, { notices: true })) {
-    const at = Number(message.timestamp) || 0;
-    if (at) flushEvents(at);
+  const rawEntries = chatEntries(messages, { notices: true });
+  const prepared = rawEntries.map((entry) => ({
+    ...entry,
+    role: entry.message.role,
+    rowId: Number.isInteger(entry.message.id) ? entry.message.id : null,
+    ts: Number(entry.message.timestamp) || 0,
+  }));
+  activity.renderHistoryTrees(state.storedId, prepared, (entry) => {
+    const { message, text, images, files, kind, clarify, skill, ts, rowId } = entry;
+    if (ts) flushEvents(ts);
     if (kind === "clarify") {
-      // The saved question(s) come back where they were asked, as the resolved card.
       addResolvedClarify(clarify);
-      continue;
+      return;
     }
     if (kind === "fail") {
       addFailLine(text);
-      continue;
+      return;
     }
-    // The durable row id (messages.id) and the stored time come with each row; both feed Edit and Branch.
     const meta = {
-      rowId: Number.isInteger(message.id) ? message.id : null,
-      ts: Number(message.timestamp) || 0,
+      rowId,
+      ts,
       attached: carriesAttachments(message),
       images,
       files,
@@ -1761,7 +1780,7 @@ function renderHistoryEntries(messages, gatewayEvents = []) {
     if (message.role === "user") addUserBubble(text, [], false, meta);
     else if (kind === "job") addJobBubble(text, meta);
     else addAssistantBubble(text, meta);
-  }
+  });
   flushEvents(Infinity);
 }
 
@@ -1829,12 +1848,16 @@ async function loadHistory(messageCount = null) {
   let data = { messages: [] };
   const home = viewingHome();
   const eventsLoad = home ? fetchGatewayEvents() : Promise.resolve([]);
-  if (messageCount !== 0) {
-    const sid = state.storedId;
+  const sid = !state.viewedUnsent ? state.storedId : null;
+  const activityLoad = sid ? activity.loadSessionTrees(sid) : Promise.resolve([]);
+  if (messageCount !== 0 && sid) {
     [data] = await Promise.all([
       api(`/api/sessions/${encodeURIComponent(sid)}/messages?limit=${HISTORY_PAGE}&order=latest&include_compacted=true`),
       loadMergedParts(sid),
+      activityLoad,
     ]);
+  } else {
+    await activityLoad;
   }
   const gatewayEvents = await eventsLoad;
   state.turn = null;
@@ -4144,7 +4167,15 @@ function paintTurn(turn) {
     turn.content.insertAdjacentHTML("beforeend", renderMarkdown(displayText(turn.text, { streaming: state.streaming })));
     enhance(turn.content);
   }
-  turn.status.hidden = !state.streaming;
+  const treeHidesWait = Boolean(
+    state.streaming
+    && typeof activity !== "undefined"
+    && activity.hasActiveTree()
+    && !turn.text
+    && !(turn.narrationVisible && turn.narration.textContent)
+  );
+  turn.status.hidden = !state.streaming || treeHidesWait;
+  turn.row.hidden = treeHidesWait;
   turn.narration.hidden = !(turn.narrationVisible && turn.narration.textContent);
   if (!turn.text && !state.streaming) turn.row.remove();
   if (near) scrollToBottom(true);
@@ -4198,6 +4229,9 @@ function finishTurn() {
       turn.row.hermesMiniMsg.text = turn.text;
       attachMedia(turn.bubble, turn.text);
       if (!turn.row.querySelector(":scope > .msg-actions")) addMessageActions(turn.row);
+      if (activity.hasPendingAnchor()) {
+        activity.attachBubbleAnchor({ rowEl: turn.row, text: turn.text, rowId: turn.row.hermesMiniMsg.rowId });
+      }
       // A reply that just finished on screen has no row id yet; the Inbox still counts it as seen.
       if (!Number.isInteger(turn.row.hermesMiniMsg.rowId) && !state.readOnly && state.storedId) {
         resolveRowId(turn.row).then((rowId) => {
@@ -4209,6 +4243,7 @@ function finishTurn() {
       }
     }
   }
+  state.stoppedByUser = false;
   state.turn = null;
   updateComposer();
   // A reply that finished on screen is read. One that finished while the app was in the background is not: the page
@@ -4303,6 +4338,7 @@ function narrationPush(event) {
 
 function showNarration(text, turn) {
   if (!text || /^\s*working on it\b/i.test(text)) return; // never show the generic filler, from either layer
+  if (activity.onStatusLine(text)) return;
   const n = state.narration;
   const paint = (node) => {
     node.textContent = text;
@@ -4428,6 +4464,8 @@ function onEvent(event) {
       if (!local && !state.hiddenTurn) void showRemoteUserMessage();
       state.streaming = true;
       state.sealedSegment = "";
+      state.stoppedByUser = false;
+      activity.startTurn(payload.turn_id || null);
       const n = state.narration;
       n.token += 1;
       n.events = [];
@@ -4455,6 +4493,7 @@ function onEvent(event) {
         break;
       }
       const turn = ensureTurn();
+      if (activity.hasActiveTree()) activity.finalizeActiveForBubble({ rowEl: turn.row });
       // Assistant text has started: the narration line steps aside until the next tool round.
       hideNarration();
       turn.text += chunk.text;
@@ -4483,7 +4522,20 @@ function onEvent(event) {
       const seededTail = text && state.turn && state.turn.seeded &&
         squashSpace(displayText(state.turn.text)).endsWith(squashSpace(displayText(text)));
       if (text && !repeat && !seededTail) {
+        if (activity.hasActiveTree()) {
+          activity.finalizeActiveForBubble({ rowEl: ensureTurn().row, matchText: displayText(text) });
+        }
         ensureTurn().text = text;
+      } else if (activity.hasActiveTree()) {
+        if (state.stoppedByUser || payload.status === "aborted" || payload.status === "cancelled") {
+          activity.markStopped({ afterEl: lastLogBubbleRow(), showNote: !text });
+        } else {
+          activity.finalizeActiveForBubble({ rowEl: lastLogBubbleRow(), matchText: state.sealedSegment || "" });
+        }
+        if (state.sealedSegment && state.turn && !state.turn.text.trim()) {
+          state.turn.row.remove();
+          state.turn = null;
+        }
       } else if (state.sealedSegment && state.turn && !state.turn.text.trim()) {
         state.turn.row.remove();
         state.turn = null;
@@ -4508,7 +4560,14 @@ function onEvent(event) {
       if (!text || isSilenceMarker(text) || state.hiddenTurn) break;
       if (!payload.already_streamed) {
         sealSegment();
-        ensureTurn().text = text;
+        const interimTurn = ensureTurn();
+        if (activity.hasActiveTree()) {
+          activity.finalizeActiveForBubble({ rowEl: interimTurn.row, matchText: displayText(text) });
+        }
+        interimTurn.text = text;
+      } else if (activity.hasActiveTree()) {
+        const interimTurn = ensureTurn();
+        activity.finalizeActiveForBubble({ rowEl: interimTurn.row, matchText: displayText(text) });
       }
       sealSegment();
       if (state.streaming) ensureTurn();
@@ -4516,6 +4575,10 @@ function onEvent(event) {
       break;
     }
     case "error": {
+      if (activity.hasActiveTree()) {
+        if (state.stoppedByUser) activity.markStopped({ afterEl: lastLogBubbleRow(), showNote: true });
+        else activity.finalizeActiveForBubble({ rowEl: lastLogBubbleRow() });
+      }
       sysLine(failureText(payload.message || "Something went wrong."));
       finishTurn();
       break;
@@ -4524,13 +4587,15 @@ function onEvent(event) {
       // Tool names are never shown. Text written before the tool becomes its own bubble (sealSegment).
       sealSegment();
       const turn = state.turn || (state.streaming ? ensureTurn() : null);
-      if (turn) showNarration(narrationLabel(payload.name), turn);
-      narrationPush({
-        kind: "tool",
-        name: String(payload.name || ""),
-        args: JSON.stringify(payload.args || {}).slice(0, 200),
-        status: "running",
+      const label = narrationLabel(payload.name);
+      activity.ensureActiveTree({
+        insertBefore: turn ? turn.row : null,
+        afterEl: lastLogBubbleRow(),
+        turnId: state.stream?.turnId || null,
+        label,
       });
+      activity.onToolStart(payload.name, payload.args, label, payload);
+      if (state.turn) paintTurn(state.turn);
       touchTurn();
       break;
     }
@@ -4538,23 +4603,14 @@ function onEvent(event) {
       // Hermes drains pending steers at the end of a tool batch; steers sent after the last tool.complete roll over
       // to the next turn and keep hermesMiniSteer=true so showRemoteUserMessage moves them below the finished reply.
       for (const node of chatRows()) if (node.hermesMiniSteer) node.hermesMiniSteer = false;
-      narrationPush({
-        kind: "tool",
-        name: String(payload.name || ""),
-        args: JSON.stringify(payload.args || {}).slice(0, 200),
-        status: "done",
-        ...(payload.summary ? { summary: String(payload.summary).slice(0, 200) } : {}),
-      });
+      activity.onToolComplete(payload.name, payload.args, payload.summary || "", payload);
       touchTurn();
       break;
     }
     case "reasoning.delta":
     case "thinking.delta": {
       if (typeof payload.text === "string" && payload.text) {
-        const n = state.narration;
-        n.thinking = (n.thinking + payload.text).slice(-400);
-        n.dirty = true;
-        scheduleNarration();
+        activity.onThinking(payload.text);
       }
       touchTurn();
       break;
@@ -4722,6 +4778,9 @@ function sealSegment() {
   if (!turn || !turn.text.trim()) return false;
   state.sealedSegment = displayText(turn.text);
   closeTurnRow(turn);
+  if (activity.hasPendingAnchor()) {
+    activity.attachBubbleAnchor({ rowEl: turn.row, text: state.sealedSegment, rowId: turn.row.hermesMiniMsg?.rowId });
+  }
   return true;
 }
 
@@ -5850,7 +5909,9 @@ async function send() {
   }
 
   state.sending = true;
+  state.stoppedByUser = false;
   state.narration.request = text;
+  activity.setRequest(text);
   clearComposer();
   addUserBubble(skillInfo ? skillLabel(skillInfo) : text, attachments, true, skillInfo ? { skill: skillInfo, attached: true } : {});
   const userRow = els.log.lastElementChild; // the optimistic bubble, removed if the send fails
@@ -5971,9 +6032,11 @@ async function steer() {
 
 async function stop() {
   if (!state.liveSid) return;
+  state.stoppedByUser = true;
   try {
     await rpc("session.interrupt", { session_id: state.liveSid });
   } catch (error) {
+    state.stoppedByUser = false;
     sysLine(`Could not stop: ${errorText(error)}`);
   }
 }
@@ -7080,6 +7143,19 @@ const bookmarks = createBookmarks({
   showToast,
   onChange: refreshBookmarkMarks,
 });
+const activity = createActivity({
+  el,
+  logEl: els.log,
+  api,
+  displayText,
+  nearBottom,
+  scrollToBottom,
+  getStoredId: () => state.storedId,
+  resolveRowId,
+  fetchMedia,
+  openViewer,
+  formatTime: messageTimeLabel,
+});
 // The Search panel: chat titles and message text across the app's chats, read from /search on every query. A chat hit
 // opens that chat; a message hit opens it at that message through the same openTarget the Inbox uses.
 const search = createSearch({
@@ -7718,9 +7794,9 @@ document.addEventListener("visibilitychange", () => {
     if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
     return;
   }
-  // Back on the page: the chat on screen is read, and the list picks up activity that arrived meanwhile
-  //.
+  // Back on the page: the chat on screen is read, and the list picks up activity that arrived meanwhile.
   if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
+  activity.onVisibilityChange();
   refreshDrawerActivity();
   void todo.refresh(); // to-dos may have changed on another device while the app was away
   if (state.wsReady) void approvalUi.refresh();

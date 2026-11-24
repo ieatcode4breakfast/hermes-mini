@@ -18,6 +18,7 @@ It must never break the chat: narration failures answer ``{"line": null}`` and l
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -31,7 +32,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -71,11 +72,15 @@ core = _sibling("hermes_mini_core", "mini_core.py")
 _policy = _sibling("hermes_mini_message_policy", "message_policy.py")
 
 MAX_BODY_BYTES = 8 * 1024
+MAX_NARRATE_BODY_BYTES = 16 * 1024
 MAX_EVENTS = 12
+MAX_TREE_PREVIOUS = 20
 MAX_REQUEST_CHARS = 300
 MAX_ARG_CHARS = 200
 MAX_THINKING_CHARS = 400
 MAX_LINE_CHARS = 90
+MAX_TREE_TITLE_CHARS = 90
+MAX_TREE_STEP_CHARS = 110
 
 
 def _narration_system_prompt() -> str:
@@ -88,8 +93,33 @@ def _narration_system_prompt() -> str:
     )
 
 
-NARRATION_MAX_TOKENS = 80
-NARRATION_TIMEOUT = 8.0
+def _narration_tree_system_prompt(has_title: bool) -> str:
+    name = core.agent_identity()["name"]
+    base = (
+        f"You narrate a collapsible task outline for a non-technical person watching their assistant {name}. "
+        "Write plain everyday English in present continuous tense (for example, 'Comparing features of popular "
+        "self-hosted applications' or 'Checking Bitwarden Docker memory usage and mobile app notes'). "
+        "Never use tool names, code, URLs, file paths, IDs, or jargon, never invent results or numbers, and "
+        "never end lines with ellipses or periods. "
+    )
+    if not has_title:
+        return (
+            base
+            + 'Output ONLY valid JSON matching {"title": "<overall task title, 4-8 words>", '
+            '"step": "<current specific subject or milestone, 5-12 words>"}.'
+        )
+    return (
+        base
+        + "Compare the newest activity against the steps already listed. "
+        "Only add a new row when the assistant has clearly moved to a NEW subject, item, source, or distinct phase "
+        '(such as finishing one app/item and starting the next, or shifting to writing the comparison). '
+        "If it is still doing follow-up checks on the SAME subject already listed, stay quiet. "
+        'Output ONLY valid JSON: either {"step": "<new subject/milestone, 5-12 words>"} or {"step": null}.'
+    )
+
+
+NARRATION_MAX_TOKENS = 120
+NARRATION_TIMEOUT = 10.0
 
 # Web Push endpoints we accept. Everything else is refused so this route cannot be used to make the
 # dashboard POST to arbitrary hosts.
@@ -231,11 +261,126 @@ def _build_user_message(body: dict[str, Any]) -> str:
     return "\n\n".join(parts) or "The assistant is working, between steps."
 
 
+def _clean_activity_line(raw: Any, limit: int = MAX_TREE_STEP_CHARS) -> str | None:
+    """First non-empty line, stripped of markdown/quote wrappers and trailing ellipses/periods."""
+    if not isinstance(raw, str):
+        return None
+    for line in raw.replace("\r", "\n").split("\n"):
+        text = line.strip().lstrip("#>*-• ").strip().strip("\"'`“”‘’*_ ").strip()
+        if text:
+            break
+    else:
+        return None
+    text = " ".join(text.split())
+    while text.endswith(("...", "…", ".")):
+        if text.endswith("..."):
+            text = text[:-3].rstrip()
+        else:
+            text = text[:-1].rstrip()
+    if not text or text.lower().startswith("working on it"):
+        return None
+    if text.lower() in {"null", "none", "no_change", "no change", "same"}:
+        return None
+    if len(text) > limit:
+        text = text[:limit].rstrip()
+    return text or None
+
+
+def _norm_step_key(text: str) -> str:
+    return " ".join(text.lower().rstrip(".,… ").split())
+
+
+def _build_tree_user_message(body: dict[str, Any]) -> str:
+    parts: list[str] = []
+    request = _clip(body.get("request"), MAX_REQUEST_CHARS)
+    if request:
+        parts.append(f"The person asked: {request}")
+    title = _clean_activity_line(body.get("title"), MAX_TREE_TITLE_CHARS)
+    if title:
+        parts.append(f"Current task title: {title}")
+    previous = body.get("previous")
+    if isinstance(previous, list):
+        kept = [_clean_activity_line(item, MAX_TREE_STEP_CHARS) for item in previous[-MAX_TREE_PREVIOUS:]]
+        kept = [item for item in kept if item]
+        if kept:
+            parts.append(
+                "Steps already shown in this tree (do not repeat or rephrase the same subject):\n"
+                + "\n".join(f"- {item}" for item in kept)
+            )
+    lines: list[str] = []
+    events = body.get("events")
+    if isinstance(events, list):
+        for event in events[-MAX_EVENTS:]:
+            if not isinstance(event, dict):
+                continue
+            kind = _clip(event.get("kind"), 20)
+            if kind == "thinking":
+                thought = _clip(event.get("text"), MAX_THINKING_CHARS)
+                if thought:
+                    lines.append(f"- {core.agent_identity()['name']} is thinking: {thought}")
+                continue
+            name = _clip(event.get("name"), 80)
+            if not name:
+                continue
+            status = _clip(event.get("status"), 20) or "running"
+            args = _clip(event.get("args"), MAX_ARG_CHARS)
+            summary = _clip(event.get("summary"), MAX_ARG_CHARS)
+            line = f"- tool {name} ({status})"
+            if args:
+                line += f" args={args}"
+            if summary:
+                line += f" summary={summary}"
+            lines.append(line)
+    if lines:
+        parts.append("Newest activity, oldest first:\n" + "\n".join(lines))
+    return "\n\n".join(parts) or "The assistant is working."
+
+
+def _parse_tree_narration(raw: Any, *, has_title: bool, previous: list[str]) -> tuple[str | None, str | None]:
+    if not isinstance(raw, str):
+        return None, None
+    text = raw.strip()
+    if not text:
+        return None, None
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", text)
+        text = re.sub(r"\n?```\s*$", "", text).strip()
+    data: dict[str, Any] | None = None
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            data = parsed
+    except ValueError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                if isinstance(parsed, dict):
+                    data = parsed
+            except ValueError:
+                data = None
+
+    seen = {_norm_step_key(item) for item in previous if isinstance(item, str) and item.strip()}
+    if data is not None:
+        title = None if has_title else _clean_activity_line(data.get("title"), MAX_TREE_TITLE_CHARS)
+        step = _clean_activity_line(data.get("step"), MAX_TREE_STEP_CHARS)
+        if step and _norm_step_key(step) in seen:
+            step = None
+        return title, step
+
+    step = _clean_activity_line(text, MAX_TREE_STEP_CHARS)
+    if step and _norm_step_key(step) in seen:
+        step = None
+    return None, step
+
+
 @router.post("/narrate")
 async def narrate(request: Request):
+    tree_mode = False
     try:
         raw = await request.body()
-        if len(raw) > MAX_BODY_BYTES:
+        if len(raw) > MAX_NARRATE_BODY_BYTES:
             log.warning("narrate: body too large (%d bytes)", len(raw))
             return _null(413)
         try:
@@ -245,19 +390,25 @@ async def narrate(request: Request):
         if not isinstance(body, dict):
             return _null(400)
 
+        tree_mode = body.get("mode") == "tree"
         events = body.get("events")
         has_events = isinstance(events, list) and any(isinstance(e, dict) and (e.get("name") or e.get("text")) for e in events)
         if not has_events:
-            return _null()  # nothing new to narrate: no model call
+            return JSONResponse({"title": None, "step": None, "line": None}) if tree_mode else _null()
 
         from agent.plugin_llm import PluginLlm  # public plugin API: the host's model access for plugins
+
+        has_title = bool(_clean_activity_line(body.get("title"), MAX_TREE_TITLE_CHARS)) if tree_mode else False
+        previous = [str(p) for p in (body.get("previous") or []) if isinstance(p, str)][-MAX_TREE_PREVIOUS:]
+        sys_prompt = _narration_tree_system_prompt(has_title) if tree_mode else _narration_system_prompt()
+        user_prompt = _build_tree_user_message(body) if tree_mode else _build_user_message(body)
 
         # On the plugin's own auxiliary task (registered in __init__.py, low reasoning), so the call follows the
         # route the person picked for it and no override is needed.
         result = await PluginLlm(plugin_id=core.PLUGIN_ID).acomplete(
             [
-                {"role": "system", "content": _narration_system_prompt()},
-                {"role": "user", "content": _build_user_message(body)},
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
             ],
             max_tokens=NARRATION_MAX_TOKENS,
             timeout=NARRATION_TIMEOUT,
@@ -265,6 +416,10 @@ async def narrate(request: Request):
             purpose="narration",
         )
         content = result.text
+        if tree_mode:
+            title, step = _parse_tree_narration(content, has_title=has_title, previous=previous)
+            return JSONResponse({"title": title, "step": step, "line": step})
+
         line = _clean_line(content)
         if not line:
             log.warning("narrate: model returned no usable line")
@@ -272,7 +427,7 @@ async def narrate(request: Request):
         return JSONResponse({"line": line})
     except Exception as exc:  # noqa: BLE001 - narration must never surface as an error to the client
         log.warning("narrate failed: %s", exc)
-        return _null()
+        return JSONResponse({"title": None, "step": None, "line": None}) if tree_mode else _null()
 
 
 # ---------- Web Push ----------
@@ -378,7 +533,9 @@ async def add_app_chat(request: Request):
 @router.delete("/app-chats/home")
 async def clear_app_home():
     try:
-        _app_chats().set_home("")
+        chats = _app_chats()
+        old_home = chats.home()
+        chats.set_home("")
     except Exception as exc:  # noqa: BLE001
         log.warning("app-chats home clear failed: %s", exc)
         return JSONResponse({"detail": "registry unavailable"}, status_code=503)
@@ -386,6 +543,11 @@ async def clear_app_home():
         core.clear_gateway_events()
     except OSError as exc:
         log.warning("gateway events clear failed: %s", exc)
+    if old_home:
+        try:
+            _delete_session_activity(old_home)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("activity clear failed: %s", exc)
     return JSONResponse({"ok": True, "home": ""})
 
 
@@ -2021,6 +2183,821 @@ async def delete_bookmark(item_id: int):
     finally:
         if conn is not None:
             conn.close()
+    return JSONResponse({"ok": True})
+
+
+# ---------- activity trees (per-turn narration outlines) ----------
+# Stored in data/hermes-mini/activity.json outside Hermes's state.db. Anchor row ids follow replies across context
+# compaction through _drawn_ids just like bookmarks; anchor text + timestamps cover bubbles still unindexed at stop.
+
+MAX_ACTIVITY_SESSIONS = 200
+MAX_ACTIVITY_TREES_PER_SESSION = 200
+MAX_ACTIVITY_STEPS = 60
+MAX_ACTIVITY_STR_CHARS = 160
+MAX_ACTIVITY_STEP_IMAGES = 8
+MAX_ACTIVITY_IMAGE_REF_CHARS = 500
+MAX_ACTIVITY_STEP_URLS = 8
+MAX_ACTIVITY_URL_CHARS = 500
+MAX_ACTIVITY_BODY_BYTES = 48 * 1024
+_ACTIVITY_LOCK = threading.Lock()
+_VALID_ACTIVITY_STATUSES = {"running", "done", "stopped"}
+_ACTIVITY_IMAGE_EXT_RE = re.compile(r"\.(?:png|jpe?g|webp|gif|bmp|avif|svg|ico|tiff?)(?:$|[?#])", re.IGNORECASE)
+_ACTIVITY_URL_IGNORED_TOOLS = {
+    "web_search",
+    "x_search",
+    "vision_analyze",
+    "session_search",
+    "search_files",
+    "image_generate",
+}
+_ACTIVITY_FETCH_HINT_RE = re.compile(
+    r"\b(?:curl|wget|fetch|urlopen|urlretrieve|urllib|requests\.(?:get|post|head|request|Session)|httpx\.(?:get|post|head|request|Client|AsyncClient)|aiohttp|http\.client|read_html|read_csv|read_excel|read_json|web_extract|goto_url|new_tab)\b",
+    re.IGNORECASE,
+)
+_ACTIVITY_WIKI_RAW_HOST_RE = re.compile(r"\.(?:wikipedia|wikimedia|wiktionary|wikisource|wikibooks)\.org$", re.IGNORECASE)
+_ACTIVITY_SEARCH_API_HOSTS = {
+    "api.search.brave.com",
+    "api.tavily.com",
+    "api.exa.ai",
+    "api.firecrawl.dev",
+    "api.perplexity.ai",
+    "serpapi.com",
+    "search.yahoo.com",
+}
+_ACTIVITY_PACKAGE_MIRROR_HOSTS = {
+    "pypi.org",
+    "files.pythonhosted.org",
+    "registry.npmjs.org",
+    "archive.ubuntu.com",
+    "security.ubuntu.com",
+    "deb.debian.org",
+}
+_ACTIVITY_SILENCE_MARKERS = {"NO_REPLY", "HEARTBEAT_OK"}
+
+
+def _clean_activity_image_ref(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    ref = value.strip()
+    if not ref or len(ref) > MAX_ACTIVITY_IMAGE_REF_CHARS or any(ch.isspace() or ord(ch) < 32 for ch in ref):
+        return None
+    if ref.startswith(("https://", "/", "~/")):
+        return ref
+    return None
+
+
+def _clean_activity_url(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    ref = value.strip()
+    if not ref or len(ref) > MAX_ACTIVITY_URL_CHARS or any(ch.isspace() or ord(ch) < 32 for ch in ref):
+        return None
+    if "{" in ref or "}" in ref:
+        return None
+    try:
+        parsed = urlsplit(ref)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in ("http", "https"):
+        return None
+    if parsed.username or parsed.password:
+        return None
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if not host or host == "localhost" or host.endswith((".local", ".internal")):
+        return None
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        if "." not in host:
+            return None
+    else:
+        if not ip.is_global:
+            return None
+    qs = parse_qs(parsed.query or "", keep_blank_values=True)
+    if (
+        _ACTIVITY_WIKI_RAW_HOST_RE.search(host)
+        and (parsed.path or "").lower().endswith("/w/index.php")
+        and any(v.lower() == "raw" for v in qs.get("action", []))
+    ):
+        title = (qs.get("title", [""])[0] or "").strip()
+        if not title or len(title) > 300 or any(ch.isspace() or ord(ch) < 32 or ch in "{}" for ch in title):
+            return None
+        ref = f"https://{host}/wiki/{quote(title.replace(' ', '_'), safe='/:')}"
+        if len(ref) > MAX_ACTIVITY_URL_CHARS:
+            return None
+        try:
+            parsed = urlsplit(ref)
+        except ValueError:
+            return None
+        qs = parse_qs(parsed.query or "", keep_blank_values=True)
+    path_lower = (parsed.path or "").lower()
+    if path_lower == "/api.php" or path_lower.endswith("/api.php") or "action=raw" in (parsed.query or "").lower():
+        return None
+    bare_host = host[4:] if host.startswith("www.") else host
+    if bare_host in _ACTIVITY_SEARCH_API_HOSTS or bare_host in _ACTIVITY_PACKAGE_MIRROR_HOSTS:
+        return None
+    if (re.search(r"(?:^|\.)google\.[a-z.]+$", bare_host) or re.search(r"(?:^|\.)bing\.com$", bare_host)) and re.match(r"^/search(?:/|$)", path_lower):
+        return None
+    if re.search(r"(?:^|\.)duckduckgo\.com$", bare_host) and ("q" in qs or re.match(r"^/(?:html|lite)(?:/|$)", path_lower)):
+        return None
+    return ref
+
+
+def _norm_activity_match(text: str) -> str:
+    return " ".join(str(text or "").split()).lower()[:MAX_ACTIVITY_STR_CHARS].strip()
+
+
+def _match_prefix_score(hay: str, needle: str) -> bool:
+    return bool(hay and needle and (hay.startswith(needle) or needle.startswith(hay)))
+
+
+def _extract_balanced_call_args(code: str, pattern: str) -> list[str]:
+    slices: list[str] = []
+    for match in re.finditer(pattern, code):
+        i = match.end()
+        arg_start = i
+        depth = 1
+        quote = ""
+        triple = False
+        n = len(code)
+        while i < n and depth > 0:
+            ch = code[i]
+            if quote:
+                if ch == "\\":
+                    i += 2
+                    continue
+                if triple:
+                    if code[i : i + 3] == quote * 3:
+                        quote = ""
+                        triple = False
+                        i += 3
+                        continue
+                elif ch == quote:
+                    quote = ""
+                i += 1
+                continue
+            if ch in ("'", '"') and code[i : i + 3] == ch * 3:
+                quote = ch
+                triple = True
+                i += 3
+                continue
+            if ch in ("'", '"'):
+                quote = ch
+                triple = False
+                i += 1
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            i += 1
+        if depth == 0:
+            slices.append(code[arg_start : i - 1])
+    return slices
+
+
+def _extract_quoted_urls(snippet: str) -> list[str]:
+    return [m.group(2) for m in re.finditer(r"""(["'])(https?://[^"'\r\n\\]+)\1""", snippet or "")]
+
+
+def _strip_balanced_call_spans(code: str, pattern: str) -> str:
+    src = code or ""
+    parts: list[str] = []
+    last_end = 0
+    for match in re.finditer(pattern, src):
+        if match.start() < last_end:
+            continue
+        i = match.end()
+        depth = 1
+        quote = ""
+        triple = False
+        n = len(src)
+        while i < n and depth > 0:
+            ch = src[i]
+            if quote:
+                if ch == "\\":
+                    i += 2
+                    continue
+                if triple:
+                    if src[i : i + 3] == quote * 3:
+                        quote = ""
+                        triple = False
+                        i += 3
+                        continue
+                elif ch == quote:
+                    quote = ""
+                i += 1
+                continue
+            if ch in ("'", '"') and src[i : i + 3] == ch * 3:
+                quote = ch
+                triple = True
+                i += 3
+                continue
+            if ch in ("'", '"'):
+                quote = ch
+                triple = False
+                i += 1
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            i += 1
+        if depth == 0:
+            parts.append(src[last_end : match.start()])
+            parts.append(" ")
+            last_end = i
+    parts.append(src[last_end:])
+    return "".join(parts)
+
+
+def _trim_balanced_url(raw: str) -> str:
+    u = re.sub(r"""[,;:.!?'"\\]+$""", "", raw or "")
+    while True:
+        if u.endswith(")") and u.count(")") > u.count("("):
+            u = u[:-1]
+            continue
+        if u.endswith("]") and u.count("]") > u.count("["):
+            u = u[:-1]
+            continue
+        break
+    return re.sub(r"""[,;:.!?'"\\]+$""", "", u)
+
+
+def _extract_fetch_urls_from_text(text: str) -> list[str]:
+    if not isinstance(text, str) or not _ACTIVITY_FETCH_HINT_RE.search(text):
+        return []
+    cleaned = _strip_balanced_call_spans(
+        text,
+        r"\b(?:web_search|x_search|print|console\.log|warnings\.warn|logging\.(?:debug|info|warning|error))\s*\(",
+    )
+    cleaned = re.sub(r"^[ \t]*#.*$", " ", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"(?:^|;|&&|\|\|)[ \t]*echo\b[^;&\n]*", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"""(?:^|\s)(?:-A|--user-agent)(?:\s+|=)(["'])[^\n]*?\1""", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"""user-agent(["']?)\s*[:=]\s*(["'])[^\n]*?\2""", " ", cleaned, flags=re.IGNORECASE)
+    if not _ACTIVITY_FETCH_HINT_RE.search(cleaned):
+        return []
+    out: list[str] = []
+    for m in re.finditer(r"""https?://[^\s"'`<>\\]+""", cleaned):
+        u = _trim_balanced_url(m.group(0))
+        if u:
+            out.append(u)
+    return out
+
+
+def _extract_web_extract_urls_from_code(code: str) -> list[str]:
+    out: list[str] = []
+    for sl in _extract_balanced_call_args(code, r"\bweb_extract\s*\("):
+        out.extend(_extract_quoted_urls(sl))
+        pos = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,|$)", sl)
+        kw = re.search(r"(?:^|,)\s*urls\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,|$)", sl)
+        var_name = (kw and kw.group(1)) or (pos and pos.group(1))
+        if var_name:
+            assign_re = re.compile(
+                rf"""(?:^|[\n;])\s*{re.escape(var_name)}\s*=\s*(\[[\s\S]*?\]|\([\s\S]*?\)|["']https?://[^"'\r\n]+["'])""",
+                re.MULTILINE,
+            )
+            for am in assign_re.finditer(code):
+                out.extend(_extract_quoted_urls(am.group(1)))
+    return out
+
+
+def _parse_tool_result_dict(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    text = raw.strip()
+    if text.startswith("<untrusted_tool_result"):
+        idx = text.find("{")
+        if idx != -1:
+            text = text[idx:]
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:  # noqa: BLE001
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:  # noqa: BLE001
+                return {}
+    return {}
+
+
+def _extract_tool_images_from_call(args: dict[str, Any], result: dict[str, Any]) -> list[str]:
+    meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+    candidates: list[Any] = [
+        args.get("image_path"),
+        args.get("image_url"),
+        result.get("image_path"),
+        result.get("screenshot_path"),
+        result.get("image"),
+        meta.get("image_path"),
+        meta.get("screenshot_path"),
+    ]
+    if isinstance(result.get("images"), list):
+        candidates.extend(result["images"])
+    out: list[str] = []
+    for item in candidates:
+        clean = _clean_activity_image_ref(item)
+        if clean and clean not in out:
+            out.append(clean)
+            if len(out) >= MAX_ACTIVITY_STEP_IMAGES:
+                break
+    return out
+
+
+def _extract_tool_urls_from_call(name: str, args: dict[str, Any], result: dict[str, Any]) -> list[str]:
+    tool = (name or "").strip().lower()
+    if tool in _ACTIVITY_URL_IGNORED_TOOLS:
+        return []
+    meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+    candidates: list[Any] = []
+    if tool in ("web_extract", "web_fetch", "fetch_url"):
+        candidates.append(args.get("url"))
+        if isinstance(args.get("urls"), list):
+            candidates.extend(args["urls"])
+        candidates.append(result.get("url"))
+        if isinstance(result.get("results"), list):
+            for item in result["results"]:
+                if isinstance(item, dict):
+                    candidates.append(item.get("url"))
+    elif tool == "browser_exec":
+        code = args.get("code")
+        if isinstance(code, str):
+            for sl in _extract_balanced_call_args(code, r"\b(?:goto_url|new_tab|open_url|navigate)\s*\("):
+                candidates.extend(_extract_quoted_urls(sl))
+        candidates.extend([args.get("url"), result.get("url"), meta.get("url")])
+    elif tool == "browser_cdp":
+        method = str(args.get("method") or "").strip()
+        if not method or method in ("Page.navigate", "Target.createTarget"):
+            params = args.get("params") if isinstance(args.get("params"), dict) else {}
+            candidates.extend([args.get("url"), params.get("url"), result.get("url")])
+    elif tool in ("browser_navigate", "browser_open"):
+        candidates.append(args.get("url"))
+        if isinstance(args.get("urls"), list):
+            candidates.extend(args["urls"])
+        candidates.append(result.get("url"))
+    elif tool == "terminal":
+        cmd = args.get("command")
+        if isinstance(cmd, str):
+            candidates.extend(_extract_fetch_urls_from_text(cmd))
+    elif tool == "execute_code":
+        code = args.get("code")
+        if isinstance(code, str):
+            candidates.extend(_extract_web_extract_urls_from_code(code))
+            candidates.extend(_extract_fetch_urls_from_text(code))
+    image_refs = set(_extract_tool_images_from_call(args, result))
+    out: list[str] = []
+    for item in candidates:
+        clean = _clean_activity_url(item)
+        if not clean:
+            continue
+        try:
+            if _ACTIVITY_IMAGE_EXT_RE.search(urlsplit(clean).path or ""):
+                continue
+        except ValueError:
+            continue
+        if clean not in image_refs and clean not in out:
+            out.append(clean)
+            if len(out) >= MAX_ACTIVITY_STEP_URLS:
+                break
+    return out
+
+
+def _activity_path() -> Path:
+    return core.data_file("activity.json")
+
+
+def _clean_anchor_id(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _normalize_activity_tree(raw: Any, fallback_id: str = "") -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    tree_id = raw.get("id")
+    if not isinstance(tree_id, str) or not tree_id.strip():
+        tree_id = fallback_id
+    tree_id = tree_id.strip()[:120]
+    if not tree_id or "/" in tree_id:
+        return None
+    status = raw.get("status")
+    if not isinstance(status, str) or status not in _VALID_ACTIVITY_STATUSES:
+        status = "done"
+    raw_steps = raw.get("steps")
+    raw_step_images = raw.get("step_images")
+    raw_step_urls = raw.get("step_urls")
+    steps: list[str] = []
+    step_images: list[list[str]] = []
+    step_urls: list[list[str]] = []
+    has_step_images = isinstance(raw_step_images, list)
+    has_step_urls = isinstance(raw_step_urls, list)
+    if isinstance(raw_steps, list):
+        for idx, item in enumerate(raw_steps[:MAX_ACTIVITY_STEPS]):
+            if isinstance(item, str):
+                cleaned = " ".join(item.split())[:MAX_ACTIVITY_STR_CHARS].strip()
+                if cleaned:
+                    steps.append(cleaned)
+                    if has_step_images:
+                        raw_imgs = raw_step_images[idx] if idx < len(raw_step_images) else []
+                        imgs: list[str] = []
+                        if isinstance(raw_imgs, list):
+                            for candidate in raw_imgs:
+                                clean_ref = _clean_activity_image_ref(candidate)
+                                if clean_ref and clean_ref not in imgs:
+                                    imgs.append(clean_ref)
+                                    if len(imgs) >= MAX_ACTIVITY_STEP_IMAGES:
+                                        break
+                        step_images.append(imgs)
+                    if has_step_urls:
+                        raw_urls = raw_step_urls[idx] if idx < len(raw_step_urls) else []
+                        urls: list[str] = []
+                        if isinstance(raw_urls, list):
+                            for candidate in raw_urls:
+                                clean_url = _clean_activity_url(candidate)
+                                if clean_url and clean_url not in urls:
+                                    urls.append(clean_url)
+                                    if len(urls) >= MAX_ACTIVITY_STEP_URLS:
+                                        break
+                        step_urls.append(urls)
+    title = raw.get("title")
+    clean_title = " ".join(title.split())[:MAX_ACTIVITY_STR_CHARS].strip() if isinstance(title, str) else ""
+    turn_id = raw.get("turn_id")
+    clean_turn_id = turn_id.strip()[:120] if isinstance(turn_id, str) else ""
+    started = raw.get("started_at")
+    ended = raw.get("ended_at")
+    started_at = float(started) if isinstance(started, (int, float)) and not isinstance(started, bool) else 0.0
+    ended_at = float(ended) if isinstance(ended, (int, float)) and not isinstance(ended, bool) else 0.0
+    before_match = raw.get("anchor_before_match")
+    after_match = raw.get("anchor_after_match")
+    return {
+        "id": tree_id,
+        "turn_id": clean_turn_id,
+        "title": clean_title,
+        "steps": steps,
+        "step_images": step_images if any(step_images) else [],
+        "step_urls": step_urls if any(step_urls) else [],
+        "status": status,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "anchor_before_id": _clean_anchor_id(raw.get("anchor_before_id")),
+        "anchor_before_match": (
+            " ".join(before_match.lower().split())[:MAX_ACTIVITY_STR_CHARS].strip()
+            if isinstance(before_match, str)
+            else ""
+        ),
+        "anchor_after_id": _clean_anchor_id(raw.get("anchor_after_id")),
+        "anchor_after_match": (
+            " ".join(after_match.lower().split())[:MAX_ACTIVITY_STR_CHARS].strip()
+            if isinstance(after_match, str)
+            else ""
+        ),
+    }
+
+
+def _read_activity() -> dict[str, list[dict[str, Any]]]:
+    try:
+        data = json.loads(_activity_path().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("activity store unreadable: %s", exc)
+        return {}
+    raw_sessions = data.get("sessions") if isinstance(data, dict) else None
+    if not isinstance(raw_sessions, dict):
+        return {}
+    sessions: dict[str, list[dict[str, Any]]] = {}
+    for sid, raw_list in list(raw_sessions.items())[-MAX_ACTIVITY_SESSIONS:]:
+        if not isinstance(sid, str) or not sid.strip() or not isinstance(raw_list, list):
+            continue
+        trees: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for raw in raw_list[-MAX_ACTIVITY_TREES_PER_SESSION:]:
+            norm = _normalize_activity_tree(raw)
+            if norm and norm["id"] not in seen_ids:
+                seen_ids.add(norm["id"])
+                trees.append(norm)
+        if trees:
+            sessions[sid[:200]] = trees
+    return sessions
+
+
+def _write_activity(sessions: dict[str, list[dict[str, Any]]]) -> None:
+    path = _activity_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"version": 1, "sessions": sessions}), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _delete_session_activity(session_id: str) -> None:
+    if not session_id:
+        return
+    with _ACTIVITY_LOCK:
+        sessions = _read_activity()
+        if session_id in sessions:
+            sessions.pop(session_id, None)
+            _write_activity(sessions)
+
+
+def _valid_activity_session(session_id: str) -> str | None:
+    clean = str(session_id or "").strip()
+    if not clean or len(clean) > 200 or "/" in clean:
+        return None
+    return clean
+
+
+def _merge_step_artifacts(existing: list[list[str]], steps: list[str], extra: list[str], limit: int) -> list[list[str]]:
+    if not steps:
+        return []
+    aligned = [list(existing[i])[:limit] if i < len(existing) and isinstance(existing[i], list) else [] for i in range(len(steps))]
+    seen = {ref for sublist in aligned for ref in sublist}
+    for ref in extra:
+        if ref in seen:
+            continue
+        if len(aligned[-1]) >= limit:
+            break
+        aligned[-1].append(ref)
+        seen.add(ref)
+    return aligned if any(aligned) else []
+
+
+def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    if not any(t.get("status") == "running" for t in trees):
+        return []
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+    except sqlite3.Error:
+        return []
+    if not {"id", "session_id", "role", "content", "timestamp"}.issubset(cols):
+        return []
+    opt_cols = [
+        "tool_calls" if "tool_calls" in cols else "NULL AS tool_calls",
+        "tool_name" if "tool_name" in cols else "NULL AS tool_name",
+        "tool_call_id" if "tool_call_id" in cols else "NULL AS tool_call_id",
+        "display_kind" if "display_kind" in cols else "NULL AS display_kind",
+    ]
+    rows_raw = conn.execute(
+        f"SELECT id, role, content, timestamp, {', '.join(opt_cols)} FROM messages WHERE session_id = ? ORDER BY id ASC",
+        (sid,),
+    ).fetchall()
+    rows = [r for r in rows_raw if (r["display_kind"] or "") != "hidden"]
+    if not rows:
+        return []
+
+    sorted_starts = sorted(float(t.get("started_at") or 0.0) for t in trees if float(t.get("started_at") or 0.0) > 0.0)
+    reconciled: list[dict[str, Any]] = []
+
+    for tree in trees:
+        if tree.get("status") != "running":
+            continue
+        started = float(tree.get("started_at") or 0.0)
+        next_start = next((s for s in sorted_starts if s > started), None)
+
+        # Find index of preceding bubble (`anchor_after`) so we scan strictly forward from there.
+        start_idx = -1
+        after_id = tree.get("anchor_after_id")
+        if isinstance(after_id, int) and after_id > 0:
+            for idx, r in enumerate(rows):
+                if r["id"] == after_id:
+                    start_idx = idx
+                    break
+        if start_idx == -1 and tree.get("anchor_after_match"):
+            needle = _norm_activity_match(tree["anchor_after_match"])
+            best_idx = -1
+            best_dist = float("inf")
+            for idx, r in enumerate(rows):
+                r_ts = float(r["timestamp"] or 0.0)
+                if started > 0.0 and r_ts > 0.0 and abs(r_ts - started) > 1800.0:
+                    continue
+                if _match_prefix_score(_norm_activity_match(r["content"] or ""), needle):
+                    dist = abs(r_ts - started) if (started > 0.0 and r_ts > 0.0) else 0.0
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_idx = idx
+            start_idx = best_idx
+        if start_idx == -1 and started > 0.0:
+            for idx in range(len(rows) - 1, -1, -1):
+                r_ts = float(rows[idx]["timestamp"] or 0.0)
+                if r_ts <= started + 2.0:
+                    start_idx = idx
+                    break
+
+        scan_start = max(0, start_idx + 1)
+        boundary_idx = len(rows)
+        reply_idx: int | None = None
+        next_user_idx: int | None = None
+
+        for idx in range(scan_start, len(rows)):
+            r = rows[idx]
+            r_ts = float(r["timestamp"] or 0.0)
+            if start_idx == -1 and started > 0.0 and r_ts > 0.0 and r_ts < started - 2.0:
+                continue
+            if next_start is not None and r_ts > 0.0 and r_ts >= next_start - 1.0:
+                boundary_idx = idx
+                break
+            role = (r["role"] or "").lower()
+            if role == "user":
+                next_user_idx = idx
+                boundary_idx = idx
+                break
+            if role == "assistant":
+                content_str = (r["content"] or "").strip()
+                if content_str and content_str not in _ACTIVITY_SILENCE_MARKERS:
+                    reply_idx = idx
+                    boundary_idx = idx
+                    break
+
+        if reply_idx is None and next_user_idx is None and next_start is None:
+            continue
+
+        tool_results_by_id: dict[str, dict[str, Any]] = {}
+        for idx in range(scan_start, boundary_idx):
+            r = rows[idx]
+            if (r["role"] or "").lower() == "tool" and r["tool_call_id"]:
+                tool_results_by_id[str(r["tool_call_id"])] = _parse_tool_result_dict(r["content"])
+
+        found_images: list[str] = []
+        found_urls: list[str] = []
+        calls_start = start_idx if start_idx >= 0 else scan_start
+        for idx in range(calls_start, boundary_idx):
+            r = rows[idx]
+            r_ts = float(r["timestamp"] or 0.0)
+            if start_idx == -1 and started > 0.0 and r_ts > 0.0 and r_ts < started - 2.0:
+                continue
+            raw_tcalls = r["tool_calls"]
+            if not isinstance(raw_tcalls, str) or not raw_tcalls.strip():
+                continue
+            try:
+                calls = json.loads(raw_tcalls)
+            except Exception:  # noqa: BLE001
+                continue
+            if not isinstance(calls, list):
+                continue
+            for call in calls:
+                if not isinstance(call, dict):
+                    continue
+                fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+                tname = str(fn.get("name") or "")
+                raw_args = fn.get("arguments")
+                targs: dict[str, Any] = {}
+                if isinstance(raw_args, str) and raw_args.strip():
+                    try:
+                        parsed_args = json.loads(raw_args)
+                        if isinstance(parsed_args, dict):
+                            targs = parsed_args
+                    except Exception:  # noqa: BLE001
+                        pass
+                elif isinstance(raw_args, dict):
+                    targs = raw_args
+                cid = str(call.get("id") or call.get("call_id") or "")
+                tres = tool_results_by_id.get(cid, {})
+                for img in _extract_tool_images_from_call(targs, tres):
+                    if img not in found_images:
+                        found_images.append(img)
+                for u in _extract_tool_urls_from_call(tname, targs, tres):
+                    if u not in found_urls:
+                        found_urls.append(u)
+
+        steps = list(tree.get("steps") or [])
+        if not steps and (found_images or found_urls):
+            steps = [tree.get("title") or "Completed background steps"]
+        tree["steps"] = steps
+        tree["step_images"] = _merge_step_artifacts(tree.get("step_images") or [], steps, found_images, MAX_ACTIVITY_STEP_IMAGES)
+        tree["step_urls"] = _merge_step_artifacts(tree.get("step_urls") or [], steps, found_urls, MAX_ACTIVITY_STEP_URLS)
+
+        if reply_idx is not None:
+            reply_row = rows[reply_idx]
+            tree["status"] = "done"
+            tree["ended_at"] = float(reply_row["timestamp"] or started or 0.0)
+            tree["anchor_before_id"] = int(reply_row["id"])
+            tree["anchor_before_match"] = _norm_activity_match(reply_row["content"] or "")
+        else:
+            tree["status"] = "stopped"
+            last_ts = started
+            if boundary_idx > scan_start:
+                last_ts = float(rows[boundary_idx - 1]["timestamp"] or started or 0.0)
+            tree["ended_at"] = last_ts
+
+        norm = _normalize_activity_tree(tree, fallback_id=tree.get("id", ""))
+        if norm:
+            tree.update(norm)
+            reconciled.append(dict(norm))
+
+    return reconciled
+
+
+@router.get("/activity/{session_id}")
+async def get_activity(session_id: str):
+    sid = _valid_activity_session(session_id)
+    if sid is None:
+        return JSONResponse({"detail": "invalid session id"}, status_code=400)
+    with _ACTIVITY_LOCK:
+        trees = [dict(t) for t in _read_activity().get(sid, [])]
+    has_running = any(t.get("status") == "running" for t in trees)
+    has_anchors = any(
+        isinstance(t.get("anchor_before_id"), int) or isinstance(t.get("anchor_after_id"), int)
+        for t in trees
+    )
+    if trees and (has_running or has_anchors):
+        try:
+            conn = _inbox_conn()
+            try:
+                if has_running:
+                    reconciled = _reconcile_running_trees(sid, trees, conn)
+                    if reconciled:
+                        by_id = {t["id"]: t for t in reconciled}
+                        with _ACTIVITY_LOCK:
+                            sessions = _read_activity()
+                            stored = sessions.get(sid, [])
+                            changed = False
+                            for idx, existing in enumerate(stored):
+                                eid = existing.get("id")
+                                if existing.get("status") == "running" and eid in by_id:
+                                    stored[idx] = by_id[eid]
+                                    changed = True
+                            if changed:
+                                sessions[sid] = stored
+                                _write_activity(sessions)
+                anchor_ids: list[int] = []
+                for tree in trees:
+                    if isinstance(tree.get("anchor_before_id"), int):
+                        anchor_ids.append(tree["anchor_before_id"])
+                    if isinstance(tree.get("anchor_after_id"), int):
+                        anchor_ids.append(tree["anchor_after_id"])
+                if anchor_ids:
+                    drawn = _drawn_ids(conn, sorted(set(anchor_ids)))
+                    for tree in trees:
+                        if isinstance(tree.get("anchor_before_id"), int):
+                            tree["anchor_before_id"] = drawn.get(tree["anchor_before_id"], tree["anchor_before_id"])
+                        if isinstance(tree.get("anchor_after_id"), int):
+                            tree["anchor_after_id"] = drawn.get(tree["anchor_after_id"], tree["anchor_after_id"])
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            log.warning("activity reconcile/anchor lookup failed: %s", exc)
+    trees.sort(key=lambda t: t.get("started_at") or 0.0)
+    return JSONResponse({"trees": trees})
+
+
+@router.put("/activity/{session_id}/{tree_id}")
+async def put_activity_tree(session_id: str, tree_id: str, request: Request):
+    sid = _valid_activity_session(session_id)
+    tid = tree_id.strip()[:120]
+    if sid is None or not tid or "/" in tid:
+        return JSONResponse({"detail": "invalid session or tree id"}, status_code=400)
+    raw = await request.body()
+    if len(raw) > MAX_ACTIVITY_BODY_BYTES:
+        return JSONResponse({"detail": "body too large"}, status_code=413)
+    try:
+        body = json.loads(raw or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse({"detail": "invalid json"}, status_code=400)
+    record = _normalize_activity_tree(body, fallback_id=tid)
+    if record is None:
+        return JSONResponse({"detail": "invalid activity tree"}, status_code=400)
+    record["id"] = tid
+    try:
+        with _ACTIVITY_LOCK:
+            sessions = _read_activity()
+            trees = sessions.get(sid, [])
+            replaced = False
+            for idx, existing in enumerate(trees):
+                if existing.get("id") == tid:
+                    trees[idx] = record
+                    replaced = True
+                    break
+            if not replaced:
+                trees.append(record)
+            trees.sort(key=lambda t: t.get("started_at") or 0.0)
+            sessions[sid] = trees[-MAX_ACTIVITY_TREES_PER_SESSION:]
+            if len(sessions) > MAX_ACTIVITY_SESSIONS:
+                drop = list(sessions.keys())[: len(sessions) - MAX_ACTIVITY_SESSIONS]
+                for key in drop:
+                    sessions.pop(key, None)
+            _write_activity(sessions)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("activity write failed: %s", exc)
+        return JSONResponse({"detail": "could not save activity"}, status_code=500)
+    return JSONResponse({"ok": True, "tree": record})
+
+
+@router.delete("/activity/{session_id}")
+async def delete_activity(session_id: str):
+    sid = _valid_activity_session(session_id)
+    if sid is None:
+        return JSONResponse({"detail": "invalid session id"}, status_code=400)
+    try:
+        _delete_session_activity(sid)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("activity delete failed: %s", exc)
+        return JSONResponse({"detail": "could not delete activity"}, status_code=500)
     return JSONResponse({"ok": True})
 
 

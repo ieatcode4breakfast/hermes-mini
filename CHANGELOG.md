@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Collapsible live activity trees (`dashboard/activity.js`, `POST /narrate` `mode="tree"`, `GET`/`PUT`/`DELETE /activity/{session_id}`):
+  - Groups ongoing work per subject above each reply (starting a fresh tree after any interim message while keeping
+    the opening acknowledgment intact), expanded by default while running and collapsible mid-task (with animated
+    thinking dots to the left of the active header and the live shimmering active step in the collapsed header), then
+    auto-collapsed above the finished reply.
+  - Inline step media & opened links: renders clickable thumbnails inside steps for images inspected or generated
+    during that step (both local paths and HTTPS URLs, opening in the viewer and quietly hiding if missing), and
+    renders clean single-line clickable links under each step for web pages actually opened via `web_extract`/`web_fetch`,
+    the browser tools (`browser_exec`/`browser_cdp`), or direct fetch commands/scripts (normalizing Wikimedia raw
+    article URLs to `/wiki/...` while excluding searches, API endpoints, private hosts, template strings, and duplicate
+    image URLs).
+  - Stopped-run clarity & disconnect recovery: displays muted inactive headers, branch connector lines, a muted stop
+    row (`Stopped`), and an italicized *"You stopped this response"* note with an upright timestamp on manual stop;
+    persists trees in `data/hermes-mini/activity.json` with compaction-safe anchor resolution, and automatically
+    reconciles and backfills trees (plus missed step images/URLs) when a turn finishes while disconnected.
+  - Needs a dashboard restart to load `/activity` routes and `mode="tree"` narration.
+
 ### Removed
 
 - Removed the `transform_tool_result` progress-update hook (which appended a forced progress-update directive every
