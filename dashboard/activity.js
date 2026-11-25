@@ -38,7 +38,19 @@ export function cleanImageRef(raw) {
   let ref = raw.trim();
   if (!ref || ref.length > MAX_IMAGE_REF_CHARS || /[\s\x00-\x1f]/.test(ref)) return null;
   if (ref.startsWith("file://")) ref = ref.slice(7);
-  if (ref.startsWith("https://")) return ref;
+  if (ref.startsWith("https://")) {
+    if (/[{}]/.test(ref)) return null;
+    let parsed;
+    try {
+      parsed = new URL(ref);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== "https:") return null;
+    if (parsed.username || parsed.password) return null;
+    if (isPrivateHost(parsed.hostname)) return null;
+    return ref;
+  }
   if ((ref.startsWith("/") || ref.startsWith("~/")) && IMAGE_EXT_RE.test(ref)) return ref;
   return null;
 }
@@ -638,6 +650,24 @@ export function createActivity(deps = {}) {
   let pendingAnchorTree = null;
   let sessionCache = new Map();
   let renderedIds = new Set();
+  const saveQueues = new Map();
+  const sessionEpoch = new Map();
+  const cancelledTreeIds = new Set();
+
+  function markTreeCancelled(id) {
+    if (!id) return;
+    if (cancelledTreeIds.size > 500) {
+      const oldest = cancelledTreeIds.values().next().value;
+      cancelledTreeIds.delete(oldest);
+    }
+    cancelledTreeIds.add(id);
+  }
+
+  function isTreeCancelled(tree, sid) {
+    if (!tree || !tree.id || !sid) return true;
+    if (cancelledTreeIds.has(tree.id)) return true;
+    return tree.saveEpoch !== undefined && tree.saveEpoch !== (sessionEpoch.get(sid) || 0);
+  }
 
   function createElNode(tag, className, text) {
     if (makeEl) return makeEl(tag, className, text);
@@ -687,21 +717,45 @@ export function createActivity(deps = {}) {
     };
   }
 
-  async function saveTree(tree) {
+  function saveTree(tree) {
     const sid = (tree && tree.sid) || getStoredId();
-    if (!sid || !api || !tree || !tree.id) return;
-    if (!tree.steps.length && !tree.title && tree.status !== "stopped") return;
+    if (!sid || !api || !tree || !tree.id) return Promise.resolve();
+    if (!tree.sid) tree.sid = sid;
+    if (tree.saveEpoch === undefined) tree.saveEpoch = sessionEpoch.get(sid) || 0;
+    if (isTreeCancelled(tree, sid)) return Promise.resolve();
+    if (!tree.steps.length && !tree.title && tree.status !== "stopped") return Promise.resolve();
     const payload = serialize(tree);
     updateCacheRecord(sid, payload);
-    try {
-      await api(`${ACTIVITY_API}/${encodeURIComponent(sid)}/${encodeURIComponent(tree.id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      /* activity persistence is best-effort and must never break a chat */
-    }
+    const key = `${sid}\0${tree.id}`;
+    const entry = saveQueues.get(key) || { pending: null, tree: null, inflight: null };
+    entry.pending = payload;
+    entry.tree = tree;
+    saveQueues.set(key, entry);
+    if (entry.inflight) return entry.inflight;
+    // One PUT at a time per tree: a later save coalesces into the next turn of the loop instead of racing it, so an
+    // older "running" payload can never land after the newer "done" one and re-open a finished outline.
+    entry.inflight = (async () => {
+      try {
+        while (entry.pending) {
+          const body = entry.pending;
+          entry.pending = null;
+          if (isTreeCancelled(entry.tree, sid)) break;
+          try {
+            await api(`${ACTIVITY_API}/${encodeURIComponent(sid)}/${encodeURIComponent(tree.id)}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify(body),
+            });
+          } catch {
+            /* activity persistence is best-effort and must never break a chat */
+          }
+        }
+      } finally {
+        entry.inflight = null;
+        if (!entry.pending) saveQueues.delete(key);
+      }
+    })();
+    return entry.inflight;
   }
 
   function updateCacheRecord(sid, record) {
@@ -857,6 +911,7 @@ export function createActivity(deps = {}) {
     const label = ref.split("/").pop() || "image";
     btn.setAttribute("aria-label", `View ${label}`);
     const img = createElNode("img");
+    img.referrerPolicy = "no-referrer";
     img.src = src;
     img.alt = label;
     img.loading = "lazy";
@@ -889,6 +944,7 @@ export function createActivity(deps = {}) {
         probe.addEventListener("error", () => {
           tree.loadedUrls.set(ref, null);
         });
+        probe.referrerPolicy = "no-referrer";
         probe.src = ref;
         continue;
       }
@@ -905,6 +961,7 @@ export function createActivity(deps = {}) {
   }
 
   function fromSavedRecord(record, sid = "") {
+    const treeSid = sid || "";
     const stoppedNoReply = record.status === "stopped" && !record.anchor_before_id && !record.anchor_before_match;
     const steps = Array.isArray(record.steps) ? record.steps.slice() : [];
     const rawStepImgs = Array.isArray(record.step_images) ? record.step_images : [];
@@ -943,6 +1000,7 @@ export function createActivity(deps = {}) {
       token: 0,
       targetRow: null,
       el: null,
+      saveEpoch: treeSid ? (sessionEpoch.get(treeSid) || 0) : undefined,
     };
     buildTreeDOM(tree);
     return tree;
@@ -1079,9 +1137,10 @@ export function createActivity(deps = {}) {
     }
     treeSeq += 1;
     const afterMeta = resolveBubbleMeta(afterEl);
+    const treeSid = sid || getStoredId() || "";
     const tree = {
       id: `act_${nowMs()}_${treeSeq}`,
-      sid: sid || getStoredId() || "",
+      sid: treeSid,
       turnId: turnId || currentTurnId || "",
       title: "",
       steps: [],
@@ -1111,6 +1170,7 @@ export function createActivity(deps = {}) {
       token: 1,
       targetRow: null,
       el: null,
+      saveEpoch: treeSid ? (sessionEpoch.get(treeSid) || 0) : undefined,
     };
     buildTreeDOM(tree);
     renderedIds.add(tree.id);
@@ -1203,7 +1263,7 @@ export function createActivity(deps = {}) {
     return true;
   }
 
-  function finalizeActiveForBubble({ rowEl = null, matchText = "", rowId = null } = {}) {
+  function finalizeActiveForBubble({ rowEl = null, matchText = "", rowId = null, expectReply = true } = {}) {
     if (!active) return null;
     const tree = active;
     active = null;
@@ -1229,6 +1289,19 @@ export function createActivity(deps = {}) {
     tree.targetRow = rowEl;
     if (matchText) tree.anchorBeforeMatch = normalizeMatch(displayText(matchText));
     if (Number.isInteger(rowId) && rowId > 0) tree.anchorBeforeId = rowId;
+
+    // No reply is coming (a silent completion, an error, or a hidden turn): close the outline in place after the last
+    // bubble, and never leave a pending anchor that would attach it to somebody else's reply.
+    if (!expectReply) {
+      tree.targetRow = null;
+      tree.anchorBeforeMatch = "";
+      tree.anchorBeforeId = null;
+      pendingAnchorTree = null;
+      renderTreeDOM(tree);
+      void saveTree(tree);
+      return tree;
+    }
+
     renderTreeDOM(tree);
 
     if (tree.anchorBeforeMatch || tree.anchorBeforeId) {
@@ -1265,6 +1338,7 @@ export function createActivity(deps = {}) {
           && resolved > 0
           && tree.anchorBeforeId !== resolved
           && (!owningSid || tree.sid === owningSid)
+          && !isTreeCancelled(tree, owningSid)
         ) {
           tree.anchorBeforeId = resolved;
           void saveTree(tree);
@@ -1307,12 +1381,12 @@ export function createActivity(deps = {}) {
     return tree;
   }
 
-  function abandonActive() {
+  function abandonActive({ removeDom = false } = {}) {
     if (active) {
       clearTimer(active);
       active.token += 1;
       active.inflight = false;
-      if (!active.steps.length && active.el) active.el.remove();
+      if ((removeDom || !active.steps.length) && active.el) active.el.remove();
       active = null;
     }
     pendingAnchorTree = null;
@@ -1395,7 +1469,18 @@ export function createActivity(deps = {}) {
 
   async function deleteSession(sid) {
     if (!sid) return;
+    // Bump the epoch first so any queued or delayed save for this chat is refused, then let the PUTs already on the
+    // wire finish before the DELETE: otherwise a late save re-creates a tree after the chat was wiped.
+    sessionEpoch.set(sid, (sessionEpoch.get(sid) || 0) + 1);
     sessionCache.delete(sid);
+    const inflight = [];
+    const prefix = `${sid}\0`;
+    for (const [key, entry] of saveQueues) {
+      if (!key.startsWith(prefix)) continue;
+      entry.pending = null;
+      if (entry.inflight) inflight.push(entry.inflight);
+    }
+    if (inflight.length) await Promise.allSettled(inflight);
     if (!api) return;
     try {
       await api(`${ACTIVITY_API}/${encodeURIComponent(sid)}`, { method: "DELETE" });
@@ -1407,7 +1492,9 @@ export function createActivity(deps = {}) {
   async function pruneSessionFrom(sid, { fromRowId = null, fromTs = null, beforeTs = null } = {}) {
     if (!sid) return;
     const hasBefore = Number.isFinite(beforeTs) && beforeTs > 0;
+    const prunedIds = new Set();
     if (active && (!active.sid || active.sid === sid) && (!hasBefore || (Number(active.startedAt) || 0) <= beforeTs)) {
+      prunedIds.add(active.id);
       clearTimer(active);
       active.token += 1;
       active.inflight = false;
@@ -1419,6 +1506,7 @@ export function createActivity(deps = {}) {
       && (!pendingAnchorTree.sid || pendingAnchorTree.sid === sid)
       && (!hasBefore || (Number(pendingAnchorTree.startedAt) || 0) <= beforeTs)
     ) {
+      prunedIds.add(pendingAnchorTree.id);
       pendingAnchorTree = null;
     }
     const existing = sessionCache.get(sid);
@@ -1439,11 +1527,26 @@ export function createActivity(deps = {}) {
         } else if (!(hasRowId && bId !== null && bId < fromRowId) && hasTs && Number(t.started_at || 0) >= fromTs - 2) {
           drop = true;
         }
-        if (drop) renderedIds.delete(t.id);
-        else kept.push(t);
+        if (drop) {
+          renderedIds.delete(t.id);
+          prunedIds.add(t.id);
+        } else {
+          kept.push(t);
+        }
       }
       sessionCache.set(sid, kept);
     }
+    // A pruned tree's queued save would re-create it server-side; cancel it and let in-flight PUTs land before the
+    // DELETE so nothing is written back after the prune.
+    const inflight = [];
+    for (const id of prunedIds) {
+      markTreeCancelled(id);
+      const entry = saveQueues.get(`${sid}\0${id}`);
+      if (!entry) continue;
+      entry.pending = null;
+      if (entry.inflight) inflight.push(entry.inflight);
+    }
+    if (inflight.length) await Promise.allSettled(inflight);
     if (!api) return;
     const params = new URLSearchParams();
     if (Number.isInteger(fromRowId) && fromRowId > 0) params.set("from_row_id", String(fromRowId));

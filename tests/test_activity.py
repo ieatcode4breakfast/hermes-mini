@@ -28,7 +28,7 @@ NODE_SCRIPT = r"""
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
-const { normalizeMatch, matchTreesToEntries, createActivity, extractToolImages, cleanOpenedUrl, formatUrlLabel, extractToolUrls } = await import(pathToFileURL(process.argv[1]).href);
+const { normalizeMatch, matchTreesToEntries, createActivity, extractToolImages, cleanImageRef, cleanOpenedUrl, formatUrlLabel, extractToolUrls } = await import(pathToFileURL(process.argv[1]).href);
 
 // Minimal DOM node fake to test real UI transitions in Node
 function makeNode(tag, className = '', text = '') {
@@ -193,6 +193,7 @@ assert.equal(act.hasActiveTree(), false);
 
 trailingRow1.hermesMiniMsg.text = 'Finished password managers, checking bookmark apps next.';
 act.attachBubbleAnchor({ rowEl: trailingRow1, text: trailingRow1.hermesMiniMsg.text, rowId: 11 });
+await new Promise((r) => setTimeout(r, 20)); // saves are serialized per tree, so let the queued PUT run
 const putTree1 = calls.filter((c) => c.url.includes('/activity/chat-1/' + t1.id)).at(-1);
 assert.ok(putTree1);
 assert.equal(JSON.parse(putTree1.opts.body).anchor_before_match, normalizeMatch('Finished password managers, checking bookmark apps next.'));
@@ -212,6 +213,7 @@ assert.equal(t2.stoppedEl.hidden, false);
 assert.equal(t2.stoppedNoteEl.hidden, false);
 assert.equal(t2.stoppedNoteEl.textContent, 'You stopped this response 6:31 PM');
 assert.equal(t2.typingEl.hidden, true);
+await new Promise((r) => setTimeout(r, 20));
 const putTree2 = calls.filter((c) => c.url.includes('/activity/chat-1/' + t2.id)).at(-1);
 assert.equal(JSON.parse(putTree2.opts.body).anchor_after_id, 11);
 
@@ -741,6 +743,236 @@ beforeAct.renderHistoryTrees('chat-before', [
 assert.equal(beforePruneLog.children.filter((n) => n.dataset?.treeId === 'new-keep').length, 1);
 assert.equal(beforePruneLog.children.filter((n) => n.dataset?.treeId === 'old-drop').length, 0);
 
+// 9. Strict image-ref validation: private hosts, credentials and template braces rejected; file:// stripped
+assert.equal(cleanImageRef('https://example.com/photo.png'), 'https://example.com/photo.png');
+assert.equal(cleanImageRef('file:///tmp/x.png'), '/tmp/x.png');
+assert.equal(cleanImageRef('/tmp/x.png'), '/tmp/x.png');
+assert.equal(cleanImageRef('https://localhost/a.png'), null);
+assert.equal(cleanImageRef('https://127.0.0.1/a.png'), null);
+assert.equal(cleanImageRef('https://192.168.1.5/a.png'), null);
+assert.equal(cleanImageRef('https://[::1]/a.png'), null);
+assert.equal(cleanImageRef('https://user:pass@example.com/a.png'), null);
+assert.equal(cleanImageRef('https://example.com/{x}.png'), null);
+assert.equal(cleanImageRef('/etc/passwd'), null);
+assert.deepEqual(
+  extractToolImages({ image_path: 'https://localhost/a.png', args: { image_url: 'https://192.168.1.5/b.png' }, result: { image_path: 'https://example.com/ok.png' } }),
+  ['https://example.com/ok.png'],
+);
+
+// 10. expectReply:false clears pendingAnchorTree/anchors so a silent completion never steals the next reply
+const silentLog = makeNode('div', 'log');
+const silentCalls = [];
+const silentAct = createActivity({
+  el: makeNode,
+  logEl: silentLog,
+  api: async (url, opts) => { silentCalls.push({ url, opts }); return { ok: true }; },
+  getStoredId: () => 'chat-silent',
+});
+silentAct.setRequest('Quiet check');
+silentAct.startTurn('t-silent');
+const st = silentAct.ensureActiveTree({ label: 'Checking quietly' });
+silentAct.onStatusLine('Checking quietly');
+assert.equal(silentAct.hasActiveTree(), true);
+const finalized = silentAct.finalizeActiveForBubble({ rowEl: null, expectReply: false });
+assert.equal(finalized.status, 'done');
+assert.equal(finalized.targetRow, null);
+assert.equal(finalized.anchorBeforeMatch, '');
+assert.equal(finalized.anchorBeforeId, null);
+assert.equal(silentAct.hasPendingAnchor(), false);
+assert.equal(silentAct.hasActiveTree(), false);
+await new Promise((r) => setTimeout(r, 20));
+const silentPut = silentCalls.filter((c) => c.opts && c.opts.method === 'PUT').at(-1);
+assert.equal(JSON.parse(silentPut.opts.body).status, 'done');
+assert.equal(JSON.parse(silentPut.opts.body).anchor_before_id, null);
+assert.equal(JSON.parse(silentPut.opts.body).anchor_before_match, '');
+
+// matchTreesToEntries: that unanchored done tree sits after its preceding bubble, never on the next turn's reply
+const afterEntries = [
+  { role: 'user', rowId: 300, ts: 3000, text: 'Quiet check' },
+  { role: 'assistant', rowId: 301, ts: 3002, text: 'Checking quietly.' },
+  { role: 'user', rowId: 310, ts: 4000, text: 'New question' },
+  { role: 'assistant', rowId: 311, ts: 4010, text: 'New answer' },
+];
+const silentTree = {
+  id: 'silent-tree', status: 'done', title: 'Quiet check', steps: ['Checking quietly'],
+  started_at: 3001, ended_at: 3050, anchor_after_id: 301, anchor_after_match: 'checking quietly.',
+};
+const silentPlaced = matchTreesToEntries([silentTree], afterEntries, new Set(), { isOldestPage: true });
+assert.equal(silentPlaced.before.size, 0);
+assert.equal(silentPlaced.after.get(1)?.[0]?.id, 'silent-tree');
+
+// abandonActive({ removeDom: true }) drops an active tree that already has steps from the DOM
+const abandonLog = makeNode('div', 'log');
+const abandonAct = createActivity({ el: makeNode, logEl: abandonLog, api: async () => ({ ok: true }), getStoredId: () => 'chat-abandon' });
+abandonAct.ensureActiveTree({ label: 'Working on it' });
+abandonAct.onStatusLine('Working on it');
+assert.equal(abandonLog.children.length, 1);
+abandonAct.abandonActive({ removeDom: true });
+assert.equal(abandonLog.children.length, 0);
+assert.equal(abandonAct.hasActiveTree(), false);
+
+// 11. saveTree serializes/coalesces PUTs: a delayed first PUT cannot let "running" land after "done"
+const queueCalls = [];
+let queueStart = 0;
+let queueDelayed = true;
+let livePuts = 0;
+let maxLivePuts = 0;
+const queueAct = createActivity({
+  el: makeNode,
+  logEl: makeNode('div', 'log'),
+  api: async (url, opts) => {
+    const body = opts && opts.body ? JSON.parse(opts.body) : null;
+    const call = { url, method: (opts && opts.method) || 'GET', body };
+    queueCalls.push(call);
+    if (opts && opts.method === 'PUT') {
+      call.start = ++queueStart;
+      livePuts += 1;
+      maxLivePuts = Math.max(maxLivePuts, livePuts);
+      if (queueDelayed) {
+        queueDelayed = false;
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      livePuts -= 1;
+    }
+    return { ok: true };
+  },
+  getStoredId: () => 'chat-queue',
+});
+queueAct.setRequest('Serialized saves');
+queueAct.startTurn('t-queue');
+const qt = queueAct.ensureActiveTree({ label: 'Working' });
+// Trigger a run-time save (still "running"), then finalize to "done" while that PUT is still in flight.
+queueAct.onStatusLine('First step');
+await new Promise((r) => setTimeout(r, 5));
+queueAct.onStatusLine('Second step');
+queueAct.finalizeActiveForBubble({ rowEl: null, expectReply: false });
+await new Promise((r) => setTimeout(r, 250));
+const queuePuts = queueCalls.filter((c) => c.method === 'PUT');
+assert.ok(queuePuts.length >= 2, 'expected at least two serialized PUTs');
+assert.equal(qt.status, 'done');
+assert.equal(queuePuts[queuePuts.length - 1].body.status, 'done');
+assert.equal(maxLivePuts, 1, 'PUTs for one tree must be serialized, never concurrent');
+assert.deepEqual(queuePuts.map((c) => c.body.status).slice(-1), ['done']);
+
+// 12. deleteSession / pruneSessionFrom wait for in-flight PUTs before DELETE, and a delayed resolveRowId save
+//     cannot resurrect a deleted tree
+const delCalls = [];
+let resolveHold = null;
+const delAct = createActivity({
+  el: makeNode,
+  logEl: makeNode('div', 'log'),
+  api: async (url, opts) => {
+    const method = (opts && opts.method) || 'GET';
+    delCalls.push({ url, method });
+    if (method === 'PUT') await new Promise((r) => setTimeout(r, 60));
+    return { ok: true };
+  },
+  getStoredId: () => 'chat-del',
+  resolveRowId: async () => {
+    await new Promise((r) => { resolveHold = r; });
+    return 404;
+  },
+});
+delAct.setRequest('Deleting chat');
+delAct.startTurn('t-del');
+const dt = delAct.ensureActiveTree({ label: 'Working' });
+delAct.onStatusLine('Step');
+const delReply = makeNode('div', 'msg assistant', 'Reply');
+delReply.hermesMiniMsg = { text: 'Reply', rowId: null };
+delAct.finalizeActiveForBubble({ rowEl: delReply });
+delAct.attachBubbleAnchor({ rowEl: delReply, text: 'Reply' });
+await new Promise((r) => setTimeout(r, 10));
+const delPromise = delAct.deleteSession('chat-del');
+if (resolveHold) resolveHold();
+await delPromise;
+await new Promise((r) => setTimeout(r, 120));
+const delDeleteIdx = delCalls.findIndex((c) => c.method === 'DELETE');
+assert.ok(delDeleteIdx !== -1);
+const putsBeforeDelete = delCalls.slice(0, delDeleteIdx).filter((c) => c.method === 'PUT').length;
+const putsAfterDelete = delCalls.slice(delDeleteIdx).filter((c) => c.method === 'PUT').length;
+assert.ok(putsBeforeDelete >= 1);
+assert.equal(putsAfterDelete, 0, 'no save may resurrect a deleted tree');
+
+// pruneSessionFrom: the DELETE is sent only after the pruned tree's in-flight PUT settles, and no save revives it
+const pruneWaitCalls = [];
+const pruneWaitAct = createActivity({
+  el: makeNode,
+  logEl: makeNode('div', 'log'),
+  api: async (url, opts) => {
+    const method = (opts && opts.method) || 'GET';
+    pruneWaitCalls.push({ url, method });
+    if (method === 'PUT') await new Promise((r) => setTimeout(r, 60));
+    if (method === 'GET' && url.includes('/activity/')) {
+      return { trees: [{ id: 'pw-1', status: 'done', title: 'T', steps: ['s'], started_at: 110, ended_at: 115, anchor_before_id: 12 }] };
+    }
+    return { ok: true };
+  },
+  getStoredId: () => 'chat-prune-wait',
+});
+await pruneWaitAct.loadSessionTrees('chat-prune-wait');
+const pwt = pruneWaitAct.ensureActiveTree({ label: 'Pruning me' });
+pruneWaitAct.onStatusLine('Doing work');
+await new Promise((r) => setTimeout(r, 5));
+await pruneWaitAct.pruneSessionFrom('chat-prune-wait', { fromRowId: 10, fromTs: 100 });
+const pwDeleteIdx = pruneWaitCalls.findIndex((c) => c.method === 'DELETE');
+assert.ok(pwDeleteIdx !== -1);
+assert.ok(pruneWaitCalls.slice(0, pwDeleteIdx).filter((c) => c.method === 'PUT').length >= 1);
+assert.equal(pruneWaitCalls.slice(pwDeleteIdx).filter((c) => c.method === 'PUT').length, 0, 'no save may revive a pruned tree');
+assert.equal(pruneWaitAct.hasActiveTree(), false);
+assert.equal(pwt.sid, 'chat-prune-wait');
+
+// 13. referrerPolicy is assigned BEFORE src on both the probe and the rendered thumbnail
+const refLog = makeNode('div', 'log');
+const refImgs = [];
+const refSrcOrder = [];
+const refAct = createActivity({
+  el: (tag, className, text) => {
+    const node = makeNode(tag, className, text);
+    if (tag === 'img') {
+      let srcVal = '';
+      Object.defineProperty(node, 'src', {
+        get() { return srcVal; },
+        set(v) {
+          srcVal = String(v);
+          refSrcOrder.push({ src: srcVal, policy: node.referrerPolicy });
+        },
+        configurable: true,
+      });
+      refImgs.push(node);
+    }
+    return node;
+  },
+  logEl: refLog,
+  api: async (url) => (url.endsWith('/narrate') ? { step: null } : { ok: true }),
+  getStoredId: () => 'chat-ref',
+  fetchMedia: async (ref) => `data:image/png;base64,${ref}`,
+  isHidden: () => false,
+});
+const refTail = makeNode('div', 'msg assistant');
+refLog.append(refTail);
+refAct.startTurn('t-ref');
+refAct.ensureActiveTree({ insertBefore: refTail, label: 'Looking at remote picture' });
+refAct.onToolComplete('vision_analyze', { image_url: 'https://example.com/pic.png' }, 'ok', { image_path: 'https://example.com/pic.png' });
+refAct.onStatusLine('Looking at remote picture');
+await new Promise((r) => setTimeout(r, 20));
+const refProbe = refImgs.find((n) => n.src === 'https://example.com/pic.png');
+assert.ok(refProbe, 'probe img for the https thumbnail must exist');
+assert.equal(refProbe.referrerPolicy, 'no-referrer');
+// Fire the probe's load event: the same render pass (no narration change) appends the thumbnail.
+for (const fn of refProbe.listeners.load || []) fn({});
+await new Promise((r) => setTimeout(r, 20));
+assert.ok(refImgs.length >= 2, 'rendered thumbnail img must exist after the probe loads');
+assert.ok(refImgs.every((n) => n.referrerPolicy === 'no-referrer'));
+assert.ok(refSrcOrder.length >= 2);
+assert.ok(refSrcOrder.every((e) => e.policy === 'no-referrer'), 'referrerPolicy must be set before src');
+
+queueAct.abandonActive();
+silentAct.abandonActive();
+abandonAct.abandonActive();
+delAct.abandonActive();
+pruneWaitAct.abandonActive();
+refAct.abandonActive();
+
 act.abandonActive();
 actImg.abandonActive();
 apiWithSaved.abandonActive();
@@ -783,6 +1015,25 @@ class ActivityFrontendTest(unittest.TestCase):
         self.assertIn(".activity-typing", css)
         self.assertIn(".msg[hidden]", css)
         self.assertIn("treeHidesWait", app)
+
+    def test_app_guards_hidden_turns_and_closes_outlines_without_reply(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        # Hidden turns touch nothing the drawing layer owns.
+        for case in ("tool.start", "tool.complete", "reasoning.delta", "thinking.delta", "status.update"):
+            start = app.index(f'case "{case}":')
+            self.assertIn("if (state.hiddenTurn) break;", app[start:start + 200], case)
+        # A hidden completion abandons the outline with its DOM; a silent one closes it in place.
+        hidden_block = app[app.index('case "message.complete":'):]
+        self.assertIn("activity.abandonActive({ removeDom: true });", hidden_block)
+        self.assertIn("activity.finalizeActiveForBubble({ rowEl: null, expectReply: false });", hidden_block)
+        # A seeded tail finalizes against the on-screen row so finishTurn attaches text + durable row id.
+        self.assertIn("activity.finalizeActiveForBubble({ rowEl: state.turn.row });", hidden_block)
+        self.assertIn("showNote: !text || Boolean(repeat)", hidden_block)
+        # The error path never leaves a stray pending anchor.
+        err = app[app.index('case "error":'):]
+        self.assertIn("activity.finalizeActiveForBubble({ rowEl: null, expectReply: false });", err[err.index("activity.hasActiveTree"):])
+        sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")
+        self.assertIn('const CACHE = "hermes-mini-v111";', sw)
 
 
 @unittest.skipUnless(HAVE_FASTAPI, "FastAPI is not installed in this environment")
@@ -1340,6 +1591,173 @@ class ActivityRouteTest(DisposableHome):
         self.assertEqual(res.json()["removed"], 1)
         remaining = self.client.get("/api/plugins/hermes-mini/activity/chat-before").json()["trees"]
         self.assertEqual([t["id"] for t in remaining], ["new"])
+
+    def _db_with_mid_run_compaction(self, sid: str, *, with_reply: bool) -> None:
+        """A turn whose first half is archived by compaction into later active copies of the same display slots."""
+        conn = sqlite3.connect(self.home / "state.db")
+        self.addCleanup(conn.close)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,"
+            " tool_calls TEXT, tool_name TEXT, tool_call_id TEXT, timestamp REAL, display_kind TEXT,"
+            " active INTEGER DEFAULT 1, compacted INTEGER DEFAULT 0, message_uid TEXT, display_order INTEGER)"
+        )
+        conn.execute("CREATE TABLE session_turn_leases (conversation_id TEXT, expires_at REAL, acquired_at REAL)")
+        conn.execute("INSERT INTO sessions VALUES (?, 'Compacted turn', 0)", (sid,))
+
+        def insert(mid, role, content, ts, *, uid_order=None, active=1, compacted=0, tool_calls=None):
+            uid, order = uid_order if uid_order else (None, None)
+            conn.execute(
+                "INSERT INTO messages (id, session_id, role, content, tool_calls, timestamp, active, compacted,"
+                " message_uid, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (mid, sid, role, content, tool_calls, ts, active, compacted, uid, order),
+            )
+
+        # Pre-compaction originals (archived): user prompt, opening ack, and a tool call.
+        insert(10, "user", "Plan the migration", 1000.0, uid_order=("u-q", 1), active=0, compacted=1)
+        insert(11, "assistant", "On it — checking the repo.", 1001.0, uid_order=("u-ack", 2), active=0, compacted=1)
+        insert(
+            12,
+            "assistant",
+            "",
+            1002.0,
+            uid_order=("u-tool1", 3),
+            active=0,
+            compacted=1,
+            tool_calls=json.dumps([
+                {"id": "c-pre-1", "function": {"name": "vision_analyze", "arguments": json.dumps({"image_url": "https://upload.wikimedia.org/pre.png"})}},
+                {"id": "c-pre-2", "function": {"name": "browser_exec", "arguments": json.dumps({"code": 'goto_url("https://example.com/pre-page")'})}},
+            ]),
+        )
+        insert(13, "tool", json.dumps({"success": True}), 1003.0, uid_order=("u-tool1r", 3), active=0, compacted=1)
+        # Carried-forward active copies in the same display slots (higher ids, active=1, compacted=0).
+        insert(20, "user", "Plan the migration", 1000.0, uid_order=("u-q", 1))
+        insert(21, "assistant", "On it — checking the repo.", 1001.0, uid_order=("u-ack", 2))
+        insert(
+            22,
+            "assistant",
+            "",
+            1002.0,
+            uid_order=("u-tool1", 3),
+            tool_calls=json.dumps([
+                {"id": "c-pre-1", "function": {"name": "vision_analyze", "arguments": json.dumps({"image_url": "https://upload.wikimedia.org/pre.png"})}},
+                {"id": "c-pre-2", "function": {"name": "browser_exec", "arguments": json.dumps({"code": 'goto_url("https://example.com/pre-page")'})}},
+            ]),
+        )
+        insert(23, "tool", json.dumps({"success": True}), 1003.0, uid_order=("u-tool1r", 3))
+        # Post-compaction tools.
+        insert(
+            30,
+            "assistant",
+            "",
+            1010.0,
+            uid_order=("u-tool2", 4),
+            tool_calls=json.dumps([
+                {"id": "c-post-1", "function": {"name": "vision_analyze", "arguments": json.dumps({"image_url": "https://upload.wikimedia.org/post.png"})}},
+                {"id": "c-post-2", "function": {"name": "web_extract", "arguments": json.dumps({"urls": ["https://example.com/post-page"]})}},
+            ]),
+        )
+        insert(31, "tool", json.dumps({"success": True}), 1011.0, uid_order=("u-tool2r", 4))
+        if with_reply:
+            insert(40, "assistant", "Migration plan is ready.", 1020.0, uid_order=("u-reply", 5))
+        conn.commit()
+
+    def test_compaction_copies_collapse_by_display_slot_and_recover_anchor_after(self):
+        self._db_with_mid_run_compaction("chat-mid-done", with_reply=True)
+        # anchor_after points at the archived opening ack (id 11); it is drawn as its active copy (21).
+        self.client.put("/api/plugins/hermes-mini/activity/chat-mid-done/t-done", json={
+            "id": "t-done",
+            "title": "Migration run",
+            "steps": ["Checking the repo"],
+            "status": "running",
+            "started_at": 1001.5,
+            "anchor_after_id": 11,
+        })
+        got = self.client.get("/api/plugins/hermes-mini/activity/chat-mid-done").json()["trees"][0]
+        self.assertEqual(got["status"], "done")
+        self.assertEqual(got["ended_at"], 1020.0)
+        self.assertEqual(got["anchor_before_id"], 40)
+        # Both pre- and post-compaction artifacts are backfilled exactly once.
+        self.assertEqual(got["step_images"], [[
+            "https://upload.wikimedia.org/pre.png",
+            "https://upload.wikimedia.org/post.png",
+        ]])
+        self.assertEqual(got["step_urls"], [[
+            "https://example.com/pre-page",
+            "https://example.com/post-page",
+        ]])
+
+    def test_compaction_copies_keep_turn_running_without_final_reply(self):
+        self._db_with_mid_run_compaction("chat-mid-live", with_reply=False)
+        self.client.put("/api/plugins/hermes-mini/activity/chat-mid-live/t-live", json={
+            "id": "t-live",
+            "title": "Migration run",
+            "steps": ["Checking the repo"],
+            "status": "running",
+            "started_at": 1001.5,
+            "anchor_after_id": 11,
+        })
+        got = self.client.get("/api/plugins/hermes-mini/activity/chat-mid-live").json()["trees"][0]
+        self.assertEqual(got["status"], "running")
+        self.assertIsNone(got["anchor_before_id"])
+
+    def test_put_is_monotonic_and_preserves_anchors(self):
+        base = {
+            "id": "t-mono",
+            "title": "Monotonic",
+            "steps": ["Step"],
+            "started_at": 100.0,
+        }
+        done = self.client.put("/api/plugins/hermes-mini/activity/chat-mono/t-mono", json={
+            **base, "status": "done", "ended_at": 150.0,
+            "anchor_before_id": 42, "anchor_before_match": "the answer",
+            "anchor_after_id": 7, "anchor_after_match": "the question",
+        })
+        self.assertEqual(done.status_code, 200)
+
+        late_running = self.client.put("/api/plugins/hermes-mini/activity/chat-mono/t-mono", json={
+            **base, "status": "running", "ended_at": 0.0,
+        })
+        self.assertEqual(late_running.status_code, 200)
+        self.assertEqual(late_running.json()["tree"]["status"], "done")
+        stored = self.client.get("/api/plugins/hermes-mini/activity/chat-mono").json()["trees"][0]
+        self.assertEqual(stored["status"], "done")
+        self.assertEqual(stored["anchor_before_id"], 42)
+        self.assertEqual(stored["ended_at"], 150.0)
+
+        # A same-status update with no anchors/ended_at keeps what the server already has.
+        self.client.put("/api/plugins/hermes-mini/activity/chat-mono/t-mono", json={
+            **base, "status": "done", "ended_at": 0.0, "steps": ["Step", "Step 2"],
+        })
+        merged = self.client.get("/api/plugins/hermes-mini/activity/chat-mono").json()["trees"][0]
+        self.assertEqual(merged["status"], "done")
+        self.assertEqual(merged["steps"], ["Step", "Step 2"])
+        self.assertEqual(merged["anchor_before_id"], 42)
+        self.assertEqual(merged["anchor_before_match"], "the answer")
+        self.assertEqual(merged["anchor_after_id"], 7)
+        self.assertEqual(merged["anchor_after_match"], "the question")
+        self.assertEqual(merged["ended_at"], 150.0)
+
+    def test_activity_image_refs_require_public_https_without_credentials(self):
+        self.client.put("/api/plugins/hermes-mini/activity/chat-imgref/t", json={
+            "id": "t",
+            "title": "Image refs",
+            "steps": ["Shots"],
+            "step_images": [[
+                "https://localhost/a.png",
+                "https://127.0.0.1/a.png",
+                "https://192.168.1.10/a.png",
+                "https://user:pass@example.com/a.png",
+                "https://example.com/{x}.png",
+                "/etc/passwd",
+                "file:///tmp/x.png",
+                "https://example.com/ok.png",
+            ]],
+            "status": "done",
+            "started_at": 100.0,
+        })
+        got = self.client.get("/api/plugins/hermes-mini/activity/chat-imgref").json()["trees"][0]
+        self.assertEqual(got["step_images"], [["/tmp/x.png", "https://example.com/ok.png"]])
 
 
 if __name__ == "__main__":

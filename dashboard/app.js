@@ -4548,6 +4548,10 @@ function onEvent(event) {
         // A hidden turn, or "NO_REPLY" and friends (the agent chose not to answer, usually a background-task
         // check-in): show nothing.
         const hidden = state.hiddenTurn;
+        // Nothing will ever anchor these outlines to a reply: drop a hidden turn's outline with its DOM, and close a
+        // silent completion in place so no spinner is left behind.
+        if (hidden) activity.abandonActive({ removeDom: true });
+        else if (activity.hasActiveTree()) activity.finalizeActiveForBubble({ rowEl: null, expectReply: false });
         const turn = state.turn;
         if (turn && turn.row) turn.row.remove();
         state.turn = null;
@@ -4567,11 +4571,17 @@ function onEvent(event) {
           activity.finalizeActiveForBubble({ rowEl: ensureTurn().row, matchText: displayText(text) });
         }
         ensureTurn().text = text;
+      } else if (seededTail && state.turn) {
+        // The reply is already on screen from inflight; finishTurn()'s attachBubbleAnchor then pins the outline to this
+        // row by text and durable row id instead of guessing from the sealed segment.
+        if (activity.hasActiveTree()) {
+          activity.finalizeActiveForBubble({ rowEl: state.turn.row });
+        }
       } else if (activity.hasActiveTree()) {
         if (state.stoppedByUser || payload.status === "aborted" || payload.status === "cancelled") {
-          activity.markStopped({ afterEl: lastLogBubbleRow(), showNote: !text });
+          activity.markStopped({ afterEl: lastLogBubbleRow(), showNote: !text || Boolean(repeat) });
         } else {
-          activity.finalizeActiveForBubble({ rowEl: lastLogBubbleRow(), matchText: state.sealedSegment || "" });
+          activity.finalizeActiveForBubble({ rowEl: null, expectReply: false });
         }
         if (state.sealedSegment && state.turn && !state.turn.text.trim()) {
           state.turn.row.remove();
@@ -4618,13 +4628,14 @@ function onEvent(event) {
     case "error": {
       if (activity.hasActiveTree()) {
         if (state.stoppedByUser) activity.markStopped({ afterEl: lastLogBubbleRow(), showNote: true });
-        else activity.finalizeActiveForBubble({ rowEl: lastLogBubbleRow() });
+        else activity.finalizeActiveForBubble({ rowEl: null, expectReply: false });
       }
       sysLine(failureText(payload.message || "Something went wrong."));
       finishTurn();
       break;
     }
     case "tool.start": {
+      if (state.hiddenTurn) break;
       // Tool names are never shown. Text written before the tool becomes its own bubble (sealSegment).
       sealSegment();
       const turn = state.turn || (state.streaming ? ensureTurn() : null);
@@ -4641,6 +4652,7 @@ function onEvent(event) {
       break;
     }
     case "tool.complete": {
+      if (state.hiddenTurn) break;
       // Hermes drains pending steers at the end of a tool batch; steers sent after the last tool.complete roll over
       // to the next turn and keep hermesMiniSteer=true so showRemoteUserMessage moves them below the finished reply.
       for (const node of chatRows()) if (node.hermesMiniSteer) node.hermesMiniSteer = false;
@@ -4650,6 +4662,7 @@ function onEvent(event) {
     }
     case "reasoning.delta":
     case "thinking.delta": {
+      if (state.hiddenTurn) break;
       if (typeof payload.text === "string" && payload.text) {
         activity.onThinking(payload.text);
       }
@@ -4660,6 +4673,7 @@ function onEvent(event) {
       touchTurn();
       break;
     case "status.update": {
+      if (state.hiddenTurn) break;
       // Most status lines (heartbeats, goal and loop verdicts, process notices) stay hidden. Compaction and a resumed
       // turn show in the narration line, so a long pause reads as work instead of a hung reply.
       const line = statusLine(payload);

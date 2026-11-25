@@ -2236,14 +2236,47 @@ _ACTIVITY_PACKAGE_MIRROR_HOSTS = {
 _ACTIVITY_SILENCE_MARKERS = {"NO_REPLY", "HEARTBEAT_OK"}
 
 
+def _is_public_url_host(host: str) -> bool:
+    """A host the app may link to: not local, not a private range, and a real domain name."""
+    if not host or host == "localhost" or host.endswith((".local", ".internal")):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        if "." not in host:
+            return False
+    else:
+        if not ip.is_global:
+            return False
+    return True
+
+
 def _clean_activity_image_ref(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     ref = value.strip()
     if not ref or len(ref) > MAX_ACTIVITY_IMAGE_REF_CHARS or any(ch.isspace() or ord(ch) < 32 for ch in ref):
         return None
-    if ref.startswith(("https://", "/", "~/")):
+    if ref.startswith("file://"):
+        ref = ref[7:]
+    if ref.startswith("https://"):
+        if "{" in ref or "}" in ref:
+            return None
+        try:
+            parsed = urlsplit(ref)
+        except ValueError:
+            return None
+        if parsed.scheme.lower() != "https":
+            return None
+        if parsed.username or parsed.password:
+            return None
+        if not _is_public_url_host((parsed.hostname or "").lower().rstrip(".")):
+            return None
         return ref
+    if ref.startswith(("/", "~/")):
+        if _ACTIVITY_IMAGE_EXT_RE.search(ref):
+            return ref
+        return None
     return None
 
 
@@ -2264,16 +2297,8 @@ def _clean_activity_url(value: Any) -> str | None:
     if parsed.username or parsed.password:
         return None
     host = (parsed.hostname or "").lower().rstrip(".")
-    if not host or host == "localhost" or host.endswith((".local", ".internal")):
+    if not _is_public_url_host(host):
         return None
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        if "." not in host:
-            return None
-    else:
-        if not ip.is_global:
-            return None
     qs = parse_qs(parsed.query or "", keep_blank_values=True)
     if (
         _ACTIVITY_WIKI_RAW_HOST_RE.search(host)
@@ -2849,23 +2874,57 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
         "_compressed_summary" if "_compressed_summary" in cols else "0 AS _compressed_summary",
         "active" if "active" in cols else "1 AS active",
         "compacted" if "compacted" in cols else "0 AS compacted",
+        "display_order" if "display_order" in cols else "NULL AS display_order",
+        "message_uid" if "message_uid" in cols else "NULL AS message_uid",
     ]
     rows_raw = conn.execute(
         f"SELECT id, role, content, timestamp, {', '.join(opt_cols)} FROM messages WHERE session_id = ? ORDER BY id ASC",
         (sid,),
     ).fetchall()
-    rows = [
+    visible = [
         r
         for r in rows_raw
         if (r["display_kind"] or "").strip().lower() != "hidden"
         and not (r["active"] == 0 and (r["compacted"] or 0) == 0)
         and not _model_only(r["display_metadata"])
     ]
+
+    # A compaction copies earlier messages into new rows in the same display slot: the chat draws one bubble per slot,
+    # so collapse each slot to the copy it draws (active first, then highest id) before scanning. Scanning the archived
+    # copies as separate rows made a pre-compaction tool run look like a second turn.
+    grouped: dict[tuple[str, int], dict[str, Any]] = {}
+    for r in visible:
+        if r["display_order"] is not None:
+            key = ("slot", int(r["display_order"]))
+            sort_order = int(r["display_order"])
+        else:
+            key = ("id", int(r["id"]))
+            sort_order = int(r["id"])
+        entry = grouped.get(key)
+        if entry is None:
+            grouped[key] = {"sort_order": sort_order, "members": [r]}
+        else:
+            entry["members"].append(r)
+    slots: list[tuple[int, Any, list[sqlite3.Row]]] = []
+    for entry in grouped.values():
+        members = entry["members"]
+        winner = max(members, key=lambda r: (int(r["active"] or 0), int(r["id"])))
+        slots.append((entry["sort_order"], winner, members))
+    slots.sort(key=lambda item: (item[0], int(item[1]["id"])))
+    rows = [winner for _, winner, _ in slots]
+    slot_members = [members for _, _, members in slots]
     if not rows:
         return []
 
     sorted_starts = sorted(float(t.get("started_at") or 0.0) for t in trees if float(t.get("started_at") or 0.0) > 0.0)
     reconciled: list[dict[str, Any]] = []
+
+    after_ids = {
+        int(t["anchor_after_id"])
+        for t in trees
+        if t.get("status") == "running" and isinstance(t.get("anchor_after_id"), int) and int(t["anchor_after_id"]) > 0
+    }
+    drawn_after = _drawn_ids(conn, sorted(after_ids)) if after_ids else {}
 
     for tree in trees:
         if tree.get("status") != "running":
@@ -2877,8 +2936,11 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
         start_idx = -1
         after_id = tree.get("anchor_after_id")
         if isinstance(after_id, int) and after_id > 0:
-            for idx, r in enumerate(rows):
-                if r["id"] == after_id:
+            resolved_after = drawn_after.get(after_id, after_id)
+            for idx in range(len(rows)):
+                if int(rows[idx]["id"]) == resolved_after or any(
+                    int(m["id"]) in (after_id, resolved_after) for m in slot_members[idx]
+                ):
                     start_idx = idx
                     break
         if start_idx == -1 and tree.get("anchor_after_match"):
@@ -2941,51 +3003,51 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
 
         tool_results_by_id: dict[str, dict[str, Any]] = {}
         for idx in range(scan_start, boundary_idx):
-            r = rows[idx]
-            if (r["role"] or "").lower() == "tool" and r["tool_call_id"]:
-                tool_results_by_id[str(r["tool_call_id"])] = _parse_tool_result_dict(r["content"])
+            for m in slot_members[idx]:
+                if (m["role"] or "").lower() == "tool" and m["tool_call_id"]:
+                    tool_results_by_id[str(m["tool_call_id"])] = _parse_tool_result_dict(m["content"])
 
         found_images: list[str] = []
         found_urls: list[str] = []
         calls_start = start_idx if start_idx >= 0 else scan_start
         for idx in range(calls_start, boundary_idx):
-            r = rows[idx]
-            r_ts = float(r["timestamp"] or 0.0)
-            if start_idx == -1 and started > 0.0 and r_ts > 0.0 and r_ts < started - 2.0:
-                continue
-            raw_tcalls = r["tool_calls"]
-            if not isinstance(raw_tcalls, str) or not raw_tcalls.strip():
-                continue
-            try:
-                calls = json.loads(raw_tcalls)
-            except Exception:  # noqa: BLE001
-                continue
-            if not isinstance(calls, list):
-                continue
-            for call in calls:
-                if not isinstance(call, dict):
+            for m in slot_members[idx]:
+                r_ts = float(m["timestamp"] or 0.0)
+                if start_idx == -1 and started > 0.0 and r_ts > 0.0 and r_ts < started - 2.0:
                     continue
-                fn = call.get("function") if isinstance(call.get("function"), dict) else {}
-                tname = str(fn.get("name") or "")
-                raw_args = fn.get("arguments")
-                targs: dict[str, Any] = {}
-                if isinstance(raw_args, str) and raw_args.strip():
-                    try:
-                        parsed_args = json.loads(raw_args)
-                        if isinstance(parsed_args, dict):
-                            targs = parsed_args
-                    except Exception:  # noqa: BLE001
-                        pass
-                elif isinstance(raw_args, dict):
-                    targs = raw_args
-                cid = str(call.get("id") or call.get("call_id") or "")
-                tres = tool_results_by_id.get(cid, {})
-                for img in _extract_tool_images_from_call(targs, tres):
-                    if img not in found_images:
-                        found_images.append(img)
-                for u in _extract_tool_urls_from_call(tname, targs, tres):
-                    if u not in found_urls:
-                        found_urls.append(u)
+                raw_tcalls = m["tool_calls"]
+                if not isinstance(raw_tcalls, str) or not raw_tcalls.strip():
+                    continue
+                try:
+                    calls = json.loads(raw_tcalls)
+                except Exception:  # noqa: BLE001
+                    continue
+                if not isinstance(calls, list):
+                    continue
+                for call in calls:
+                    if not isinstance(call, dict):
+                        continue
+                    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+                    tname = str(fn.get("name") or "")
+                    raw_args = fn.get("arguments")
+                    targs: dict[str, Any] = {}
+                    if isinstance(raw_args, str) and raw_args.strip():
+                        try:
+                            parsed_args = json.loads(raw_args)
+                            if isinstance(parsed_args, dict):
+                                targs = parsed_args
+                        except Exception:  # noqa: BLE001
+                            pass
+                    elif isinstance(raw_args, dict):
+                        targs = raw_args
+                    cid = str(call.get("id") or call.get("call_id") or "")
+                    tres = tool_results_by_id.get(cid, {})
+                    for img in _extract_tool_images_from_call(targs, tres):
+                        if img not in found_images:
+                            found_images.append(img)
+                    for u in _extract_tool_urls_from_call(tname, targs, tres):
+                        if u not in found_urls:
+                            found_urls.append(u)
 
         steps = list(tree.get("steps") or [])
         if not steps and (found_images or found_urls):
@@ -3097,6 +3159,16 @@ async def put_activity_tree(session_id: str, tree_id: str, request: Request):
             replaced = False
             for idx, existing in enumerate(trees):
                 if existing.get("id") == tid:
+                    # A late "running" save must never roll back a tree the server already closed; a browser tab
+                    # resuming after a reload can otherwise resurrect a spinner over a finished outline.
+                    if existing.get("status") in ("done", "stopped") and record.get("status") == "running":
+                        return JSONResponse({"ok": True, "tree": existing})
+                    if existing.get("status") in ("done", "stopped") and record.get("status") == existing.get("status"):
+                        for field in ("anchor_before_id", "anchor_before_match", "anchor_after_id", "anchor_after_match"):
+                            if not record.get(field) and existing.get(field):
+                                record[field] = existing[field]
+                        if float(record.get("ended_at") or 0.0) <= 0.0 < float(existing.get("ended_at") or 0.0):
+                            record["ended_at"] = existing["ended_at"]
                     trees[idx] = record
                     replaced = True
                     break

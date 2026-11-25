@@ -42,6 +42,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Activity-tree audit follow-ups (`dashboard/plugin_api.py`, `dashboard/activity.js`, `dashboard/app.js`, `dashboard/sw.js`):
+  - Compaction-safe disconnect recovery collapses compaction copies by display slot and resolves `anchor_after_id` to
+    the row the chat actually draws, so a turn interrupted by a mid-run compaction still finds its real reply (and
+    stops being reported as `stopped` while it is still running).
+  - Silent completions (`NO_REPLY` and friends), hidden turns, errors, and repeated-acknowledgment completions now close
+    their outline cleanly — no stuck spinner, no abandoned pending anchor, and no outline stuck to the next turn's reply.
+  - Outline saves are serialized and coalesced per tree, cancelled on delete/prune (waiting for in-flight `PUT`s before
+    `DELETE`), and the server refuses to roll a finished tree back to `running` or to drop existing anchors/timestamps.
+  - Activity thumbnail URLs now require a public HTTPS host with no credentials (and no template braces) on both the
+    server and the client, and thumbnail probes/images send `referrerPolicy="no-referrer"`.
 - Activity-tree hardening (`dashboard/plugin_api.py`, `dashboard/activity.js`, `dashboard/app.js`):
   - Server-side disconnect recovery now ignores soft-deleted rows, mid-turn steers, scheduled job deliveries,
     background/subagent completion notices, model switches, system notices, hidden compaction summaries, and
