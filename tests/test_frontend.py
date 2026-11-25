@@ -996,5 +996,15 @@ class NewChatMainPromotionTest(unittest.TestCase):
         self.assertIn("void registerAppChat(chatId);", send)
 
 
+class JumpLatestOffsetTest(unittest.TestCase):
+    def test_jump_latest_clears_visible_model_tab(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn(
+            ".composer:has(.composer-tabs > .model-tab:not([hidden])):not(:has(.tray:not([hidden]), .edit-bar:not([hidden]))) .jump-latest",
+            css,
+        )
+        self.assertIn("bottom: calc(100% + 30px);", css)
+
+
 if __name__ == "__main__":
     unittest.main()

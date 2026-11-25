@@ -862,6 +862,11 @@ textarea::-webkit-scrollbar { display: none; }
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity 170ms ease, transform 170ms ease, visibility 0s linear 170ms;
 }
+/* When the shared model/approval tab (28px tall, rising 23px above .composer) is visible without a tray or edit bar above it,
+   lift the down-arrow so it clears the tab with 7px breathing room above it. */
+.composer:has(.composer-tabs > .model-tab:not([hidden])):not(:has(.tray:not([hidden]), .edit-bar:not([hidden]))) .jump-latest {
+  bottom: calc(100% + 30px);
+}
 .jump-latest.shown {
   opacity: 1; visibility: visible; transform: translateX(-50%);
   pointer-events: auto;

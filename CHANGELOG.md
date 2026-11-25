@@ -51,6 +51,8 @@ All notable changes to this project are documented here. The format follows
   - Activity trees and background row-id lookups stay pinned to their owning chat across fast chat switches;
     editing an earlier message prunes discarded trees with an upper submission-time bound; and the 200-session
     activity store cap uses least-recently-used eviction while exempting the active main chat.
+- Jump-to-latest button spacing (`dashboard/style.css`): lifted `.jump-latest` to sit 7px clear above the
+  composer's model/approval tab when shown (without a tray or edit bar open) so it no longer overlaps the tab.
 
 ## [0.3.1] — 2026-11-24
 
