@@ -21,6 +21,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -2661,6 +2662,18 @@ def _normalize_activity_tree(raw: Any, fallback_id: str = "") -> dict[str, Any] 
     }
 
 
+def _trim_activity_sessions(sessions: dict[str, list[dict[str, Any]]], *, keep_sid: str = "") -> None:
+    if len(sessions) <= MAX_ACTIVITY_SESSIONS:
+        return
+    protected = {s for s in (_home_id(), keep_sid) if s}
+    for key in list(sessions.keys()):
+        if len(sessions) <= MAX_ACTIVITY_SESSIONS:
+            break
+        if key in protected:
+            continue
+        sessions.pop(key, None)
+
+
 def _read_activity() -> dict[str, list[dict[str, Any]]]:
     try:
         data = json.loads(_activity_path().read_text(encoding="utf-8"))
@@ -2673,7 +2686,7 @@ def _read_activity() -> dict[str, list[dict[str, Any]]]:
     if not isinstance(raw_sessions, dict):
         return {}
     sessions: dict[str, list[dict[str, Any]]] = {}
-    for sid, raw_list in list(raw_sessions.items())[-MAX_ACTIVITY_SESSIONS:]:
+    for sid, raw_list in raw_sessions.items():
         if not isinstance(sid, str) or not sid.strip() or not isinstance(raw_list, list):
             continue
         trees: list[dict[str, Any]] = []
@@ -2685,6 +2698,7 @@ def _read_activity() -> dict[str, list[dict[str, Any]]]:
                 trees.append(norm)
         if trees:
             sessions[sid[:200]] = trees
+    _trim_activity_sessions(sessions)
     return sessions
 
 
@@ -2704,6 +2718,74 @@ def _delete_session_activity(session_id: str) -> None:
         if session_id in sessions:
             sessions.pop(session_id, None)
             _write_activity(sessions)
+
+
+def _prune_session_activity(session_id: str, *, from_row_id: int | None = None, from_ts: float | None = None) -> int:
+    if not session_id:
+        return 0
+    if from_row_id is None and (from_ts is None or from_ts <= 0):
+        _delete_session_activity(session_id)
+        return 0
+    with _ACTIVITY_LOCK:
+        snapshot = list(_read_activity().get(session_id, []))
+    if not snapshot:
+        return 0
+    cutoff_ts = float(from_ts) if (from_ts is not None and from_ts > 0) else 0.0
+    anchor_ids: list[int] = []
+    for tree in snapshot:
+        if isinstance(tree.get("anchor_before_id"), int):
+            anchor_ids.append(tree["anchor_before_id"])
+        if isinstance(tree.get("anchor_after_id"), int):
+            anchor_ids.append(tree["anchor_after_id"])
+    drawn: dict[int, int] = {}
+    if from_row_id is not None or anchor_ids:
+        try:
+            conn = _inbox_conn()
+            try:
+                if from_row_id is not None:
+                    row = conn.execute(
+                        "SELECT timestamp FROM messages WHERE session_id = ? AND id = ?",
+                        (session_id, from_row_id),
+                    ).fetchone()
+                    if row is not None:
+                        db_ts = float(row["timestamp"] or 0.0)
+                        if db_ts > 0.0:
+                            cutoff_ts = min(cutoff_ts, db_ts) if cutoff_ts > 0.0 else db_ts
+                if anchor_ids:
+                    drawn = _drawn_ids(conn, sorted(set(anchor_ids)))
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            log.warning("activity prune lookup failed: %s", exc)
+
+    def _should_prune(tree: dict[str, Any]) -> bool:
+        raw_b = tree.get("anchor_before_id")
+        raw_a = tree.get("anchor_after_id")
+        b_id = drawn.get(raw_b, raw_b) if isinstance(raw_b, int) else None
+        a_id = drawn.get(raw_a, raw_a) if isinstance(raw_a, int) else None
+        if from_row_id is not None:
+            if (b_id is not None and b_id >= from_row_id) or (a_id is not None and a_id >= from_row_id):
+                return True
+            if b_id is not None and b_id < from_row_id:
+                return False
+        if cutoff_ts > 0.0 and float(tree.get("started_at") or 0.0) >= cutoff_ts - 2.0:
+            return True
+        return False
+
+    with _ACTIVITY_LOCK:
+        sessions = _read_activity()
+        current = sessions.get(session_id, [])
+        if not current:
+            return 0
+        kept = [tree for tree in current if not _should_prune(tree)]
+        removed = len(current) - len(kept)
+        if removed > 0:
+            if kept:
+                sessions[session_id] = kept
+            else:
+                sessions.pop(session_id, None)
+            _write_activity(sessions)
+        return removed
 
 
 def _valid_activity_session(session_id: str) -> str | None:
@@ -2728,6 +2810,18 @@ def _merge_step_artifacts(existing: list[list[str]], steps: list[str], extra: li
     return aligned if any(aligned) else []
 
 
+def _is_turn_starting_user_row(row: sqlite3.Row) -> bool:
+    kind = (row["display_kind"] or "").strip().lower()
+    if kind in USER_SKIP_KINDS_SET or kind in {"steer", "job_delivery"}:
+        return False
+    content = (row["content"] or "").strip()
+    if LEGACY_HEARTBEAT_RE.match(content) or STEER_WRAP_RE.search(content):
+        return False
+    if content.startswith("[System:"):
+        return False
+    return True
+
+
 def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite3.Connection) -> list[dict[str, Any]]:
     if not any(t.get("status") == "running" for t in trees):
         return []
@@ -2742,12 +2836,19 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
         "tool_name" if "tool_name" in cols else "NULL AS tool_name",
         "tool_call_id" if "tool_call_id" in cols else "NULL AS tool_call_id",
         "display_kind" if "display_kind" in cols else "NULL AS display_kind",
+        "active" if "active" in cols else "1 AS active",
+        "compacted" if "compacted" in cols else "0 AS compacted",
     ]
     rows_raw = conn.execute(
         f"SELECT id, role, content, timestamp, {', '.join(opt_cols)} FROM messages WHERE session_id = ? ORDER BY id ASC",
         (sid,),
     ).fetchall()
-    rows = [r for r in rows_raw if (r["display_kind"] or "") != "hidden"]
+    rows = [
+        r
+        for r in rows_raw
+        if (r["display_kind"] or "").strip().lower() != "hidden"
+        and not (r["active"] == 0 and (r["compacted"] or 0) == 0)
+    ]
     if not rows:
         return []
 
@@ -2792,6 +2893,7 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
         scan_start = max(0, start_idx + 1)
         boundary_idx = len(rows)
         reply_idx: int | None = None
+        failed_idx: int | None = None
         next_user_idx: int | None = None
 
         for idx in range(scan_start, len(rows)):
@@ -2804,17 +2906,24 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
                 break
             role = (r["role"] or "").lower()
             if role == "user":
+                if not _is_turn_starting_user_row(r):
+                    continue
                 next_user_idx = idx
                 boundary_idx = idx
                 break
             if role == "assistant":
+                kind = (r["display_kind"] or "").strip().lower()
+                if kind == "failed_turn":
+                    failed_idx = idx
+                    boundary_idx = idx
+                    break
                 content_str = (r["content"] or "").strip()
                 if content_str and content_str not in _ACTIVITY_SILENCE_MARKERS:
                     reply_idx = idx
                     boundary_idx = idx
                     break
 
-        if reply_idx is None and next_user_idx is None and next_start is None:
+        if reply_idx is None and failed_idx is None and next_user_idx is None and next_start is None:
             continue
 
         tool_results_by_id: dict[str, dict[str, Any]] = {}
@@ -2878,6 +2987,11 @@ def _reconcile_running_trees(sid: str, trees: list[dict[str, Any]], conn: sqlite
             tree["ended_at"] = float(reply_row["timestamp"] or started or 0.0)
             tree["anchor_before_id"] = int(reply_row["id"])
             tree["anchor_before_match"] = _norm_activity_match(reply_row["content"] or "")
+        elif failed_idx is not None:
+            tree["status"] = "done"
+            tree["ended_at"] = float(rows[failed_idx]["timestamp"] or started or 0.0)
+            tree["anchor_before_id"] = None
+            tree["anchor_before_match"] = ""
         else:
             tree["status"] = "stopped"
             last_ts = started
@@ -2976,11 +3090,9 @@ async def put_activity_tree(session_id: str, tree_id: str, request: Request):
             if not replaced:
                 trees.append(record)
             trees.sort(key=lambda t: t.get("started_at") or 0.0)
+            sessions.pop(sid, None)
             sessions[sid] = trees[-MAX_ACTIVITY_TREES_PER_SESSION:]
-            if len(sessions) > MAX_ACTIVITY_SESSIONS:
-                drop = list(sessions.keys())[: len(sessions) - MAX_ACTIVITY_SESSIONS]
-                for key in drop:
-                    sessions.pop(key, None)
+            _trim_activity_sessions(sessions, keep_sid=sid)
             _write_activity(sessions)
     except Exception as exc:  # noqa: BLE001
         log.warning("activity write failed: %s", exc)
@@ -2989,16 +3101,27 @@ async def put_activity_tree(session_id: str, tree_id: str, request: Request):
 
 
 @router.delete("/activity/{session_id}")
-async def delete_activity(session_id: str):
+async def delete_activity(
+    session_id: str,
+    from_row_id: int | None = None,
+    from_ts: float | None = None,
+):
     sid = _valid_activity_session(session_id)
     if sid is None:
         return JSONResponse({"detail": "invalid session id"}, status_code=400)
+    if from_row_id is not None and from_row_id <= 0:
+        return JSONResponse({"detail": "invalid row id"}, status_code=400)
+    if from_ts is not None and (math.isnan(from_ts) or math.isinf(from_ts) or from_ts < 0):
+        return JSONResponse({"detail": "invalid timestamp"}, status_code=400)
     try:
-        _delete_session_activity(sid)
+        if from_row_id is None and from_ts is None:
+            _delete_session_activity(sid)
+            return JSONResponse({"ok": True})
+        removed = _prune_session_activity(sid, from_row_id=from_row_id, from_ts=from_ts)
+        return JSONResponse({"ok": True, "removed": removed})
     except Exception as exc:  # noqa: BLE001
         log.warning("activity delete failed: %s", exc)
         return JSONResponse({"detail": "could not delete activity"}, status_code=500)
-    return JSONResponse({"ok": True})
 
 
 # ---------- search ----------

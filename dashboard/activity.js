@@ -421,11 +421,16 @@ function timestampDistance(tree, entryTs) {
   return Math.abs(entryTs - ref);
 }
 
-export function matchTreesToEntries(trees, entries, renderedIds = new Set()) {
+export function matchTreesToEntries(trees, entries, renderedIds = new Set(), { isOldestPage = false } = {}) {
   const before = new Map();
   const after = new Map();
   if (!Array.isArray(trees) || !Array.isArray(entries) || !entries.length) {
     return { before, after };
+  }
+  let minEntryTs = 0;
+  for (const e of entries) {
+    const ts = Number(e?.ts) || 0;
+    if (ts > 0 && (!minEntryTs || ts < minEntryTs)) minEntryTs = ts;
   }
 
   const pushAt = (map, idx, tree) => {
@@ -572,6 +577,13 @@ export function matchTreesToEntries(trees, entries, renderedIds = new Set()) {
     }
     if (!placed && tree.status === "stopped") {
       const ref = Number(tree.started_at) || 0;
+      if (ref > 0 && minEntryTs > 0 && ref < minEntryTs - 2) {
+        if (isOldestPage) {
+          pushAt(before, 0, tree);
+          renderedIds.add(tree.id);
+        }
+        continue;
+      }
       let idx = -1;
       for (let i = entries.length - 1; i >= 0; i -= 1) {
         const ts = Number(entries[i].ts) || 0;
@@ -580,9 +592,11 @@ export function matchTreesToEntries(trees, entries, renderedIds = new Set()) {
           break;
         }
       }
-      if (idx === -1) idx = entries.length - 1;
       if (idx !== -1) {
         pushAt(after, idx, tree);
+        renderedIds.add(tree.id);
+      } else if (isOldestPage) {
+        pushAt(before, 0, tree);
         renderedIds.add(tree.id);
       }
     }
@@ -665,7 +679,7 @@ export function createActivity(deps = {}) {
   }
 
   async function saveTree(tree) {
-    const sid = getStoredId();
+    const sid = (tree && tree.sid) || getStoredId();
     if (!sid || !api || !tree || !tree.id) return;
     if (!tree.steps.length && !tree.title && tree.status !== "stopped") return;
     const payload = serialize(tree);
@@ -881,7 +895,7 @@ export function createActivity(deps = {}) {
     }
   }
 
-  function fromSavedRecord(record) {
+  function fromSavedRecord(record, sid = "") {
     const stoppedNoReply = record.status === "stopped" && !record.anchor_before_id && !record.anchor_before_match;
     const steps = Array.isArray(record.steps) ? record.steps.slice() : [];
     const rawStepImgs = Array.isArray(record.step_images) ? record.step_images : [];
@@ -890,6 +904,7 @@ export function createActivity(deps = {}) {
     const stepUrls = steps.map((_, idx) => (Array.isArray(rawStepUrls[idx]) ? rawStepUrls[idx].slice(0, MAX_STEP_URLS) : []));
     const tree = {
       id: record.id,
+      sid: sid || "",
       turnId: record.turn_id || "",
       title: record.title || "",
       steps,
@@ -1048,7 +1063,7 @@ export function createActivity(deps = {}) {
     };
   }
 
-  function ensureActiveTree({ insertBefore = null, afterEl = null, turnId = null, label = "" } = {}) {
+  function ensureActiveTree({ insertBefore = null, afterEl = null, turnId = null, label = "", sid = null } = {}) {
     if (active && active.status === "running") {
       if (label) startPlaceholder(label);
       return active;
@@ -1057,6 +1072,7 @@ export function createActivity(deps = {}) {
     const afterMeta = resolveBubbleMeta(afterEl);
     const tree = {
       id: `act_${nowMs()}_${treeSeq}`,
+      sid: sid || getStoredId() || "",
       turnId: turnId || currentTurnId || "",
       title: "",
       steps: [],
@@ -1228,12 +1244,19 @@ export function createActivity(deps = {}) {
       tree.anchorBeforeId = rowId;
       if (target && target.hermesMiniMsg && !Number.isInteger(target.hermesMiniMsg.rowId)) target.hermesMiniMsg.rowId = rowId;
     } else if (meta.rowId) tree.anchorBeforeId = meta.rowId;
+    const owningSid = tree.sid || getStoredId() || "";
+    if (!tree.sid && owningSid) tree.sid = owningSid;
     pendingAnchorTree = null;
     void saveTree(tree);
 
     if (!tree.anchorBeforeId && target && resolveRowId) {
-      resolveRowId(target).then((resolved) => {
-        if (Number.isInteger(resolved) && resolved > 0 && tree.anchorBeforeId !== resolved) {
+      resolveRowId(target, owningSid).then((resolved) => {
+        if (
+          Number.isInteger(resolved)
+          && resolved > 0
+          && tree.anchorBeforeId !== resolved
+          && (!owningSid || tree.sid === owningSid)
+        ) {
           tree.anchorBeforeId = resolved;
           void saveTree(tree);
         }
@@ -1307,14 +1330,14 @@ export function createActivity(deps = {}) {
     }
   }
 
-  function renderHistoryTrees(sid, entries, appendEntryFn) {
+  function renderHistoryTrees(sid, entries, appendEntryFn, opts = {}) {
     const trees = (sid && sessionCache.get(sid)) || [];
-    const { before, after } = matchTreesToEntries(trees, entries, renderedIds);
+    const { before, after } = matchTreesToEntries(trees, entries, renderedIds, opts);
     for (let i = 0; i < entries.length; i += 1) {
       const beforeList = before.get(i);
       if (beforeList) {
         for (const rec of beforeList) {
-          const node = fromSavedRecord(rec).el;
+          const node = fromSavedRecord(rec, sid || "").el;
           if (logEl) logEl.append(node);
         }
       }
@@ -1322,7 +1345,7 @@ export function createActivity(deps = {}) {
       const afterList = after.get(i);
       if (afterList) {
         for (const rec of afterList) {
-          const node = fromSavedRecord(rec).el;
+          const node = fromSavedRecord(rec, sid || "").el;
           if (logEl) logEl.append(node);
         }
       }
@@ -1334,7 +1357,7 @@ export function createActivity(deps = {}) {
     const trees = (key && sessionCache.get(key)) || [];
     const runningRec = [...trees].reverse().find((t) => t && t.status === "running");
     if (!runningRec || active) return null;
-    const restored = fromSavedRecord(runningRec);
+    const restored = fromSavedRecord(runningRec, key || "");
     restored.collapsed = false;
     restored.showStoppedNote = false;
     renderTreeDOM(restored);
@@ -1372,6 +1395,44 @@ export function createActivity(deps = {}) {
     }
   }
 
+  async function pruneSessionFrom(sid, { fromRowId = null, fromTs = null } = {}) {
+    if (!sid) return;
+    if (active && (!active.sid || active.sid === sid)) {
+      abandonActive();
+    } else if (pendingAnchorTree && (!pendingAnchorTree.sid || pendingAnchorTree.sid === sid)) {
+      abandonActive();
+    }
+    const existing = sessionCache.get(sid);
+    if (Array.isArray(existing)) {
+      const hasRowId = Number.isInteger(fromRowId) && fromRowId > 0;
+      const hasTs = Number.isFinite(fromTs) && fromTs > 0;
+      const kept = [];
+      for (const t of existing) {
+        const bId = Number.isInteger(t.anchor_before_id) ? t.anchor_before_id : null;
+        const aId = Number.isInteger(t.anchor_after_id) ? t.anchor_after_id : null;
+        let drop = false;
+        if (hasRowId && ((bId !== null && bId >= fromRowId) || (aId !== null && aId >= fromRowId))) {
+          drop = true;
+        } else if (!(hasRowId && bId !== null && bId < fromRowId) && hasTs && Number(t.started_at || 0) >= fromTs - 2) {
+          drop = true;
+        }
+        if (drop) renderedIds.delete(t.id);
+        else kept.push(t);
+      }
+      sessionCache.set(sid, kept);
+    }
+    if (!api) return;
+    const params = new URLSearchParams();
+    if (Number.isInteger(fromRowId) && fromRowId > 0) params.set("from_row_id", String(fromRowId));
+    if (Number.isFinite(fromTs) && fromTs > 0) params.set("from_ts", String(fromTs));
+    const qs = params.toString();
+    try {
+      await api(`${ACTIVITY_API}/${encodeURIComponent(sid)}${qs ? `?${qs}` : ""}`, { method: "DELETE" });
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     setRequest,
     startTurn,
@@ -1393,6 +1454,7 @@ export function createActivity(deps = {}) {
     clearLogState,
     onVisibilityChange,
     deleteSession,
+    pruneSessionFrom,
     _debugActive: () => active,
   };
 }

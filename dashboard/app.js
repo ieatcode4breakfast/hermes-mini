@@ -1745,7 +1745,7 @@ function belongsToView(params) {
 const HISTORY_PAGE = 500;
 const older = { sid: null, offset: 0, minId: Infinity, done: true, busy: false, gen: 0 };
 
-function renderHistoryEntries(messages, gatewayEvents = []) {
+function renderHistoryEntries(messages, gatewayEvents = [], { isOldestPage = false } = {}) {
   // Gateway stops and starts (main chat only) go in by time, between the rows around them.
   const pendingEvents = gatewayEvents.slice().sort((a, b) => a.ts - b.ts);
   const flushEvents = (upTo) => {
@@ -1780,7 +1780,7 @@ function renderHistoryEntries(messages, gatewayEvents = []) {
     if (message.role === "user") addUserBubble(text, [], false, meta);
     else if (kind === "job") addJobBubble(text, meta);
     else addAssistantBubble(text, meta);
-  });
+  }, { isOldestPage });
   flushEvents(Infinity);
 }
 
@@ -1874,7 +1874,7 @@ async function loadHistory(messageCount = null) {
   // existed), and older pages carry no lines.
   const pageStart = rows.length ? Math.min(...rows.map((m) => Number(m.timestamp) || Infinity)) : (state.homeStartedAt || Infinity);
   state.gatewaySeenTs = gatewayEvents.reduce((high, e) => Math.max(high, e.ts), 0);
-  renderHistoryEntries(rows, gatewayEvents.filter((e) => e.ts >= pageStart));
+  renderHistoryEntries(rows, gatewayEvents.filter((e) => e.ts >= pageStart), { isOldestPage: rows.length < HISTORY_PAGE });
   // A chat opens at its newest message, so that is the one seen first (Inbox read tracker, the person, 8 Nov 2026). A deep
   // link lands on its own message instead; the visible-row observer marks that one.
   if (!pendingTarget) markInboxNewest();
@@ -1908,6 +1908,7 @@ async function loadOlder() {
     if (gen !== older.gen) return false; // the chat changed or reloaded meanwhile
     const rows = (data.messages || []).filter((m) => !Number.isInteger(m.id) || m.id < older.minId);
     older.offset += HISTORY_PAGE;
+    const isOldestPage = (data.messages || []).length < HISTORY_PAGE;
     if (!(data.messages || []).length) {
       older.done = true;
       return false;
@@ -1917,7 +1918,7 @@ async function loadOlder() {
     const prevHeight = els.log.scrollHeight;
     const prevTop = els.log.scrollTop;
     const marker = els.log.lastChild;
-    renderHistoryEntries(rows);
+    renderHistoryEntries(rows, [], { isOldestPage });
     // The render appended at the end; move the new nodes to the top, just under the hidden greeting.
     const added = [];
     for (let node = marker ? marker.nextSibling : els.log.firstChild; node; node = node.nextSibling) added.push(node);
@@ -2939,15 +2940,22 @@ function chatRows() {
 // read, and the match is made by role and text: the k-th same-text message on screen must be the k-th same-text row on
 // the server, and the counts must agree. For assistant replies with tool preambles, matches the suffix of the combined
 // text or the turn's latest assistant row. Retries briefly to absorb SQLite commit latency.
-async function resolveRowId(row, attempts = 3) {
+async function resolveRowId(row, attempts = 3, expectedSid = null) {
   const meta = row.hermesMiniMsg;
   if (meta.rowId) return meta.rowId;
-  const sameInView = chatRows().filter((node) => node.hermesMiniMsg.role === meta.role && sameText(node.hermesMiniMsg.text, meta.text));
+  const sid = expectedSid || state.storedId;
+  if (!sid) throw new Error("this message has no chat yet.");
+  const sameInView = row.isConnected
+    ? chatRows().filter((node) => node.hermesMiniMsg.role === meta.role && sameText(node.hermesMiniMsg.text, meta.text))
+    : [];
   const index = sameInView.indexOf(row);
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (!row.isConnected || state.storedId !== sid) {
+      throw new Error("chat changed");
+    }
     try {
-      const data = await api(`/api/sessions/${encodeURIComponent(state.storedId)}/messages?limit=500&order=latest&include_compacted=true`);
+      const data = await api(`/api/sessions/${encodeURIComponent(sid)}/messages?limit=500&order=latest&include_compacted=true`);
       const allRoleStored = chatEntries(data.messages || []).filter((entry) => entry.message.role === meta.role);
 
       // 1. Direct match by sameText
@@ -3149,7 +3157,10 @@ async function submitEdit() {
     if (!proceed) return;
   }
   const sid = state.liveSid;
+  const editStoredId = state.storedId;
+  const editTs = Number(row.hermesMiniMsg?.ts) || 0;
   state.sending = true;
+  let truncatedAtRowId = null;
   try {
     const rowId = await resolveRowId(row);
     state.localStartAt = Date.now(); // the message.start that follows is ours, not another device's
@@ -3160,11 +3171,15 @@ async function submitEdit() {
       truncate_before_row_id: rowId,
       ...(deep ? { confirm_deep_truncate: true } : {}),
     });
+    truncatedAtRowId = rowId;
   } catch (error) {
     sysLine(`Could not edit this message: ${errorText(error)}`);
     return;
   } finally {
     state.sending = false;
+  }
+  if (editStoredId && truncatedAtRowId !== null) {
+    void activity.pruneSessionFrom(editStoredId, { fromRowId: truncatedAtRowId, fromTs: editTs });
   }
   if (state.editing === edit) endEdit();
   if (!row.isConnected || state.liveSid !== sid) return; // the view moved on while the edit was in flight
@@ -4258,10 +4273,11 @@ function finishTurn() {
       }
       // A reply that just finished on screen has no row id yet; the Inbox still counts it as seen.
       if (!Number.isInteger(turn.row.hermesMiniMsg.rowId) && !state.readOnly && state.storedId) {
-        resolveRowId(turn.row).then((rowId) => {
+        const finishSid = state.storedId;
+        resolveRowId(turn.row, 3, finishSid).then((rowId) => {
           if (Number.isInteger(rowId) && rowId > 0) {
             markInboxRead(rowId, { immediate: true });
-            watchInboxRow(turn.row);
+            if (turn.row.isConnected) watchInboxRow(turn.row);
           }
         }).catch(() => {});
       }
@@ -7175,7 +7191,7 @@ const activity = createActivity({
   nearBottom,
   scrollToBottom,
   getStoredId: () => state.storedId,
-  resolveRowId,
+  resolveRowId: (row, sid) => resolveRowId(row, 3, sid),
   fetchMedia,
   openViewer,
   formatTime: messageTimeLabel,

@@ -570,12 +570,111 @@ const stillRunning = matchTreesToEntries([staleTree], staleEntries.slice(0, 2), 
 assert.equal(stillRunning.before.size, 0);
 assert.equal(stillRunning.after.size, 0);
 
+// 7. Page-scoped stopped-tree placement, cross-chat ownership & edit pruning
+const oldStopped = {
+  id: 't-old-stop',
+  status: 'stopped',
+  title: 'Old interrupted task',
+  steps: ['Step 1'],
+  started_at: 500,
+  ended_at: 520,
+  anchor_after_match: 'old prompt here',
+};
+const newestPageEntries = [
+  { role: 'user', rowId: 50, ts: 2000, text: 'latest question' },
+  { role: 'assistant', rowId: 51, ts: 2010, text: 'latest reply' },
+];
+const pageRendered = new Set();
+const newestPageMatch = matchTreesToEntries([oldStopped], newestPageEntries, pageRendered, { isOldestPage: false });
+assert.equal(newestPageMatch.before.size, 0);
+assert.equal(newestPageMatch.after.size, 0);
+assert.equal(pageRendered.has('t-old-stop'), false);
+
+// Scrolling up to the page containing the preceding message places the stopped tree after that message
+const olderPageEntries = [
+  { role: 'user', rowId: 10, ts: 498, text: 'old prompt here' },
+  { role: 'user', rowId: 11, ts: 600, text: 'unrelated later prompt' },
+];
+const olderPageMatch = matchTreesToEntries([oldStopped], olderPageEntries, pageRendered, { isOldestPage: true });
+assert.equal(olderPageMatch.after.get(0)?.[0]?.id, 't-old-stop');
+assert.equal(pageRendered.has('t-old-stop'), true);
+
+// Orphaned stopped tree on the very oldest page still places at top instead of dumping at bottom
+const orphanStop = { id: 't-orphan-stop', status: 'stopped', title: 'Orphaned stop', steps: ['A'], started_at: 100 };
+const orphanMatch = matchTreesToEntries([orphanStop], newestPageEntries, new Set(), { isOldestPage: true });
+assert.equal(orphanMatch.before.get(0)?.[0]?.id, 't-orphan-stop');
+assert.equal(orphanMatch.after.size, 0);
+
+// Cross-chat race: switching currentSid while resolveRowId is pending still saves chat-A tree to chat-A only
+let activeSid = 'chat-A';
+const crossCalls = [];
+const crossLog = makeNode('div', 'log');
+const crossAct = createActivity({
+  el: makeNode,
+  logEl: crossLog,
+  api: async (url, opts) => {
+    crossCalls.push({ url, method: (opts && opts.method) || 'GET', body: opts && opts.body ? JSON.parse(opts.body) : null });
+    return { ok: true };
+  },
+  getStoredId: () => activeSid,
+  resolveRowId: async (_target, sidArg) => {
+    activeSid = 'chat-B';
+    await new Promise((r) => setTimeout(r, 15));
+    return sidArg === 'chat-A' ? 77 : 99;
+  },
+});
+crossAct.setRequest('Question in A');
+crossAct.startTurn('turn-A');
+crossAct.ensureActiveTree({ label: 'Checking in A' });
+crossAct.onStatusLine('Checking item in A');
+const replyInA = makeNode('div', 'msg assistant', 'Reply A');
+replyInA.hermesMiniMsg = { role: 'assistant', text: 'Reply A', rowId: null };
+crossAct.finalizeActiveForBubble({ rowEl: replyInA });
+crossAct.attachBubbleAnchor({ rowEl: replyInA, text: 'Reply A' });
+await new Promise((r) => setTimeout(r, 40));
+const crossPuts = crossCalls.filter((c) => c.method === 'PUT');
+assert.ok(crossPuts.length >= 2);
+assert.ok(crossPuts.every((c) => c.url.includes('/activity/chat-A/')));
+assert.ok(crossPuts.some((c) => c.body && c.body.anchor_before_id === 77));
+assert.equal(crossCalls.some((c) => c.url.includes('/activity/chat-B/')), false);
+
+// Edit pruning removes cache + running active tree and hits DELETE with from_row_id/from_ts
+const pruneCalls = [];
+const pruneLog = makeNode('div', 'log');
+const pruneAct = createActivity({
+  el: makeNode,
+  logEl: pruneLog,
+  api: async (url, opts) => {
+    pruneCalls.push({ url, method: (opts && opts.method) || 'GET' });
+    if ((opts && opts.method) === 'DELETE') return { ok: true };
+    return {
+      trees: [
+        { id: 'p-keep', status: 'done', title: 'Early', steps: ['Step 1'], started_at: 40, ended_at: 45, anchor_before_id: 5 },
+        { id: 'p-drop', status: 'done', title: 'Truncated', steps: ['Step 2'], started_at: 110, ended_at: 115, anchor_before_id: 12 },
+      ],
+    };
+  },
+  getStoredId: () => 'chat-prune',
+});
+await pruneAct.loadSessionTrees('chat-prune');
+await pruneAct.pruneSessionFrom('chat-prune', { fromRowId: 10, fromTs: 100 });
+assert.ok(pruneCalls.some((c) => c.method === 'DELETE' && c.url.includes('/activity/chat-prune?from_row_id=10&from_ts=100')));
+pruneAct.renderHistoryTrees('chat-prune', [
+  { role: 'user', rowId: 4, ts: 35, text: 'Earlier prompt' },
+  { role: 'assistant', rowId: 5, ts: 45, text: 'Earlier answer' },
+  { role: 'user', rowId: 20, ts: 200, text: 'Edited prompt' },
+], (entry) => pruneLog.append(makeNode('div', `msg ${entry.role}`, entry.text)), { isOldestPage: true });
+assert.equal(pruneLog.children.filter((n) => n.dataset?.treeId === 'p-keep').length, 1);
+assert.equal(pruneLog.children.filter((n) => n.dataset?.treeId === 'p-drop').length, 0);
+
 act.abandonActive();
 actImg.abandonActive();
 apiWithSaved.abandonActive();
 actUrl.abandonActive();
 urlHistApi.abandonActive();
 staleApi.abandonActive();
+crossAct.abandonActive();
+pruneAct.abandonActive();
 """
 
 
@@ -1002,6 +1101,113 @@ class ActivityRouteTest(DisposableHome):
         res = self.client.delete("/api/plugins/hermes-mini/app-chats/home")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(self.client.get("/api/plugins/hermes-mini/activity/home-1").json()["trees"], [])
+
+    def test_reconcile_skips_non_turn_user_rows_soft_deleted_and_handles_failed_turn(self):
+        conn = sqlite3.connect(self.home / "state.db")
+        self.addCleanup(conn.close)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,"
+            " tool_calls TEXT, tool_name TEXT, tool_call_id TEXT, timestamp REAL, display_kind TEXT,"
+            " active INTEGER DEFAULT 1, compacted INTEGER DEFAULT 0, message_uid TEXT, display_order INTEGER)"
+        )
+        conn.execute("INSERT INTO sessions VALUES ('chat-steered', 'Steered', 0)")
+        conn.execute("INSERT INTO sessions VALUES ('chat-still-steered', 'Still steered', 0)")
+        conn.execute("INSERT INTO sessions VALUES ('chat-failed', 'Failed', 0)")
+
+        # 1. Steered + job_delivery + background completions mid-turn still recover to the final reply
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (10, 'chat-steered', 'user', 'Check servers', 1000.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (11, 'chat-steered', 'assistant', 'Checking your servers.', 1002.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (12, 'chat-steered', 'user', 'Also check disk', 'steer', 1005.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (13, 'chat-steered', 'user', '[Scheduled job] ok', 'job_delivery', 1006.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (14, 'chat-steered', 'user', 'bg done', 'process_complete', 1007.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (15, 'chat-steered', 'user', 'subagent done', 'async_delegation_complete', 1008.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (16, 'chat-steered', 'user', '[System: note]', 1009.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (17, 'chat-steered', 'assistant', 'Everything looks healthy.', 1020.0)")
+
+        # 2. Active run with steer & job delivery stays running when no final reply yet
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (20, 'chat-still-steered', 'user', 'Long task', 2000.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (21, 'chat-still-steered', 'assistant', 'On it now.', 2001.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (22, 'chat-still-steered', 'user', 'Be brief', 'steer', 2004.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (23, 'chat-still-steered', 'user', '[Scheduled job] ping', 'job_delivery', 2005.0)")
+
+        # 3. Soft-deleted edit leftovers ignored, and failed_turn closes quietly (done, unanchored) instead of stopped
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (30, 'chat-failed', 'user', 'Run report', 3000.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (31, 'chat-failed', 'assistant', 'Starting report.', 3001.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, active, compacted, timestamp) VALUES (32, 'chat-failed', 'user', 'Erased edit', 0, 0, 3003.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_kind, timestamp) VALUES (33, 'chat-failed', 'assistant', 'Timed out', 'failed_turn', 3010.0)")
+        conn.commit()
+
+        self.client.put("/api/plugins/hermes-mini/activity/chat-steered/t-1", json={
+            "title": "Server check", "steps": ["Checking host"], "status": "running", "started_at": 1003.0,
+            "anchor_after_match": "checking your servers.",
+        })
+        self.client.put("/api/plugins/hermes-mini/activity/chat-still-steered/t-2", json={
+            "title": "Long task", "steps": ["Working"], "status": "running", "started_at": 2002.0,
+            "anchor_after_match": "on it now.",
+        })
+        self.client.put("/api/plugins/hermes-mini/activity/chat-failed/t-3", json={
+            "title": "Report run", "steps": ["Fetching metrics"], "status": "running", "started_at": 3002.0,
+            "anchor_after_match": "starting report.",
+        })
+
+        got_steered = self.client.get("/api/plugins/hermes-mini/activity/chat-steered").json()["trees"][0]
+        self.assertEqual(got_steered["status"], "done")
+        self.assertEqual(got_steered["anchor_before_id"], 17)
+
+        got_still = self.client.get("/api/plugins/hermes-mini/activity/chat-still-steered").json()["trees"][0]
+        self.assertEqual(got_still["status"], "running")
+
+        got_failed = self.client.get("/api/plugins/hermes-mini/activity/chat-failed").json()["trees"][0]
+        self.assertEqual(got_failed["status"], "done")
+        self.assertEqual(got_failed["ended_at"], 3010.0)
+        self.assertIsNone(got_failed["anchor_before_id"])
+        self.assertEqual(got_failed["anchor_before_match"], "")
+
+    def test_delete_activity_partial_prune_for_edit_truncation(self):
+        conn = sqlite3.connect(self.home / "state.db")
+        self.addCleanup(conn.close)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, timestamp REAL, display_kind TEXT, active INTEGER DEFAULT 1, compacted INTEGER DEFAULT 0, message_uid TEXT, display_order INTEGER)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (5, 'chat-edit', 'assistant', 'First reply', 50.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp, active, compacted) VALUES (10, 'chat-edit', 'user', 'Edited prompt', 100.0, 0, 0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp, active, compacted) VALUES (15, 'chat-edit', 'assistant', 'Truncated reply', 150.0, 0, 0)")
+        conn.commit()
+
+        self.client.put("/api/plugins/hermes-mini/activity/chat-edit/t1", json={
+            "title": "First task", "steps": ["S1"], "status": "done", "started_at": 45.0, "ended_at": 50.0, "anchor_before_id": 5,
+        })
+        self.client.put("/api/plugins/hermes-mini/activity/chat-edit/t2", json={
+            "title": "Second task", "steps": ["S2"], "status": "done", "started_at": 105.0, "ended_at": 150.0, "anchor_after_id": 10, "anchor_before_id": 15,
+        })
+        self.client.put("/api/plugins/hermes-mini/activity/chat-edit/t3", json={
+            "title": "Third task", "steps": ["S3"], "status": "stopped", "started_at": 160.0,
+        })
+
+        res = self.client.delete("/api/plugins/hermes-mini/activity/chat-edit?from_row_id=10&from_ts=100")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["removed"], 2)
+        remaining = self.client.get("/api/plugins/hermes-mini/activity/chat-edit").json()["trees"]
+        self.assertEqual([t["id"] for t in remaining], ["t1"])
+
+        res_all = self.client.delete("/api/plugins/hermes-mini/activity/chat-edit")
+        self.assertEqual(res_all.status_code, 200)
+        self.assertEqual(self.client.get("/api/plugins/hermes-mini/activity/chat-edit").json()["trees"], [])
+
+    def test_activity_lru_eviction_and_main_chat_protection(self):
+        self.client.post("/api/plugins/hermes-mini/app-chats", json={"id": "home-main", "home": True})
+        with mock.patch.object(self.api, "MAX_ACTIVITY_SESSIONS", 3):
+            self.client.put("/api/plugins/hermes-mini/activity/home-main/th", json={"title": "Home", "steps": ["H"], "status": "done", "started_at": 10.0})
+            self.client.put("/api/plugins/hermes-mini/activity/side-1/t1", json={"title": "Side 1", "steps": ["1"], "status": "done", "started_at": 20.0})
+            self.client.put("/api/plugins/hermes-mini/activity/side-2/t2", json={"title": "Side 2", "steps": ["2"], "status": "done", "started_at": 30.0})
+            # Re-touch side-1 so side-2 becomes least recently used (after protected home-main)
+            self.client.put("/api/plugins/hermes-mini/activity/side-1/t1b", json={"title": "Side 1b", "steps": ["1b"], "status": "done", "started_at": 40.0})
+            self.client.put("/api/plugins/hermes-mini/activity/side-3/t3", json={"title": "Side 3", "steps": ["3"], "status": "done", "started_at": 50.0})
+
+            self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/home-main").json()["trees"]), 1)
+            self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/side-1").json()["trees"]), 2)
+            self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/side-2").json()["trees"]), 0)
+            self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/side-3").json()["trees"]), 1)
 
 
 if __name__ == "__main__":
