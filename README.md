@@ -174,7 +174,7 @@ in Hermes itself (through its profile methods), so every Hermes client sees them
 keeps its own copy of a picture it has already shown; pick the picture there too to update it.
 
 If Hermes has no model configured yet, there is no reply to show until one is connected from the
-model tab or in Hermes; history, to-dos and the inbox still work.
+model picker on the message box or in Hermes; history, to-dos and the inbox still work.
 
 Reading the page and every capability probe are pure reads. Opening the app may create its own
 state files under `$HERMES_HOME/data/hermes-mini/`, and it records the default delivery target once
@@ -182,7 +182,7 @@ state files under `$HERMES_HOME/data/hermes-mini/`, and it records the default d
 
 ### Configure a model
 
-Use the model tab on the input box: it lists Hermes's connected providers and their models, lets a
+Use the model picker at the bottom right of the message box: it lists Hermes's connected providers and their models, lets a
 pick switch the chat (and become the default for new chats), and sets the reasoning level and, where
 the model supports it, fast mode. **Providers +** lists every provider Hermes supports and saves or
 updates an API key through Hermes. A provider that signs in with an account, and a custom endpoint, cannot
@@ -236,16 +236,19 @@ there is no reply to show.
 - **Tools tray**: the hammer-and-screwdriver button folds the Edit profile, Computer, Bookmarks and To-do buttons away under
   it and brings them back; folded is the default, remembered per device. On a computer, while
   the computer view is open, its button stays out under Tools even when the tray is folded.
-- **Model and provider picker**: a tab on the input box's top edge shows the chat's model and reasoning
-  level. Friendly names are used throughout — the tab, the sheet, the picker and the "Switched to" line read
-  "DeepSeek v4.1 Flash" instead of the raw model id. The sheet lists Hermes's connected providers and
-  their models (search, prices where Hermes has them), with a five-bar reasoning level meter and fast
-  mode where the model supports it; a pick switches the chat and becomes the default for new chats.
-  **Providers +** can add or update a provider's API key through Hermes. On the right half of that same
-  shared top-edge tab sits an **Approval mode** icon button (a shield): tapping it opens a bottom sheet
-  for Hermes's live profile approval mode (**Manual**, **Smart**, **Off**) with plain-English
+- **Model and provider picker**: a two-row message card keeps the `+` button, input field, dictation, and Send on
+  the top row, and places a transparent control bar underneath inside the card. Aligned at the bottom right sits
+  the model picker showing the chat's model and reasoning level. Friendly names are used throughout — the
+  button, the sheet, the picker and the "Switched to" line read "DeepSeek v4.1 Flash" instead of the raw model id.
+  The sheet lists Hermes's connected providers and their models (search, prices where Hermes has them), with a
+  five-bar reasoning level meter and fast mode where the model supports it; a pick switches the chat and becomes
+  the default for new chats. **Providers +** can add or update a provider's API key through Hermes. On the bottom
+  left of that same bar sits the **Approval mode** button showing neutral **`Approvals:`** text followed by a
+  status shield icon (turning the icon red without any resting background fill when **Off**): tapping it opens a
+  bottom sheet for Hermes's live profile approval mode (**Manual**, **Smart**, **Off**) with plain-English
   descriptions. It asks for confirmation before switching to **Off** (explicit deny rules in Hermes
-  still apply), and writes Hermes's profile config (`approvals.mode`) through Hermes's gateway (`config.set`).
+  still apply), shows a red *"Approvals off"* toast (or green when enabled), and writes Hermes's profile config
+  (`approvals.mode`) through Hermes's gateway (`config.set`).
 - **Live streaming**: replies appear as they arrive, with collapsible per-subject activity trees above each
   reply showing live thinking dots beside the active header, shimmer-highlighted active steps, inline thumbnails
   for checked or generated pictures, clickable links for web pages opened during each step, and automatic recovery

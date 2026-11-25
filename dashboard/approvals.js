@@ -176,7 +176,7 @@ export function createApprovalPicker({ rpc, confirmDialog, showToast, chip }) {
       if (VALID.has(saved)) mode = saved;
       paintChip();
       const label = modeInfo(mode).label;
-      showToast(mode === "off" ? "Approvals off" : `Approvals: ${label}`, "success");
+      showToast(mode === "off" ? "Approvals off" : `Approvals: ${label}`, mode === "off" ? "error" : "success");
       close();
     } catch (error) {
       showToast(errorText(error), "error");

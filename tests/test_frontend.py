@@ -286,6 +286,10 @@ class DockedOverlaysTest(unittest.TestCase):
         self.assertIn('scrim.setAttribute("popover", "manual");', approvals)
         self.assertIn('key: "approvals.mode"', approvals)
         self.assertIn("Turn off approvals?", approvals)
+        self.assertIn(
+            'showToast(mode === "off" ? "Approvals off" : `Approvals: ${label}`, mode === "off" ? "error" : "success");',
+            approvals,
+        )
 
 
 
@@ -996,14 +1000,59 @@ class NewChatMainPromotionTest(unittest.TestCase):
         self.assertIn("void registerAppChat(chatId);", send)
 
 
-class JumpLatestOffsetTest(unittest.TestCase):
-    def test_jump_latest_clears_visible_model_tab(self):
-        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
-        self.assertIn(
-            ".composer:has(.composer-tabs > .model-tab:not([hidden])):not(:has(.tray:not([hidden]), .edit-bar:not([hidden]))) .jump-latest",
-            css,
+class ComposerBottomBarTest(unittest.TestCase):
+    """Top row holds attach, input, dictation, and send; bottom row holds Approvals: + icon left and model right."""
+
+    def test_markup_orders_main_row_above_approval_prefix_icon_and_model(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        row = html[html.index('<div class="row">', html.index('<footer class="composer">')):html.index('<div id="readonlyBar"')]
+        self.assertNotIn("composer-tabs", row)
+        self.assertLess(row.index('<div class="composer-main">'), row.index('<div class="composer-bar">'))
+        main = row[row.index('<div class="composer-main">'):row.index('<input id="photo"')]
+        self.assertLess(main.index('id="attach"'), main.index('<textarea id="input"'))
+        self.assertLess(main.index('<textarea id="input"'), main.index('id="dictateHud"'))
+        self.assertLess(main.index('id="dictateHud"'), main.index('id="micBtn"'))
+        self.assertLess(main.index('id="micBtn"'), main.index('id="send"'))
+        bar = row[row.index('<div class="composer-bar">'):]
+        self.assertLess(bar.index('id="approvalChip"'), bar.index('id="modelChip"'))
+        chip = bar[bar.index('id="approvalChip"'):bar.index('id="modelChip"')]
+        self.assertLess(
+            chip.index('<span class="approval-tab-prefix">Approvals:</span>'),
+            chip.index('<span class="approval-tab-icon" aria-hidden="true"></span>'),
         )
-        self.assertIn("bottom: calc(100% + 30px);", css)
+        self.assertNotIn("approval-tab-label", chip)
+        self.assertNotIn("approval-tab-text", chip)
+
+    def test_styles_align_approval_left_and_model_right(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertNotIn("composer-tabs", css)
+        self.assertNotIn(".composer-left", css)
+        self.assertNotIn(".composer-right", css)
+        self.assertNotIn(".composer .row.wide", css)
+        self.assertIn(".composer-main {", css)
+        self.assertIn(".composer-bar {", css)
+        self.assertIn("gap: 6px; padding: 0 4px;", css)
+        self.assertIn("margin: 0 0 0 auto;", css)
+        model_tab_block = css[css.index(".model-tab {"):css.index(".model-tab:active")]
+        self.assertIn("background: transparent; color: var(--muted);", model_tab_block)
+        self.assertNotIn("color-mix(in srgb, var(--fg) 6%, transparent)", model_tab_block)
+        approval_tab_block = css[css.index(".approval-tab {"):css.index(".approval-tab[hidden]")]
+        self.assertIn("border: 0; border-radius: 999px;", approval_tab_block)
+        self.assertIn("background: transparent; color: var(--muted);", approval_tab_block)
+        self.assertNotIn("approval-tab-label", css)
+        self.assertNotIn("approval-tab-text", css)
+        self.assertIn(".approval-tab-prefix { white-space: nowrap; color: var(--muted); transition: color 150ms ease; }", css)
+        self.assertIn(".approval-tab.is-off { color: var(--danger); }", css)
+        self.assertIn(".composer .row textarea { position: relative; z-index: 1; }", css)
+        self.assertIn(".composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main {", css)
+        self.assertIn(".log { padding-bottom: 16px; }", css)
+        self.assertIn("bottom: calc(100% + 10px);", css)
+        self.assertIn('const rowRect = els.attach.closest(".row")?.getBoundingClientRect() || r;', app)
+        autosize_block = app[app.index("function autosize()"):app.index("// New chat opens a local draft")]
+        self.assertNotIn('"wide"', autosize_block)
+        self.assertIn("if ((state.dictating || state.transcribing) && !el.value)", autosize_block)
+        self.assertIn('el.style.height = "";', autosize_block)
 
 
 class TodoParentRowActionsTest(unittest.TestCase):

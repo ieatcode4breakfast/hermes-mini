@@ -362,8 +362,8 @@ els.log.addEventListener("load", scheduleJumpUpdate, true); // newly loaded pict
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GREET_GAP = 16; // px between the name pill and the greeting box
-const COMP_GAP = 38; // px between the greeting box and the composer box (clears the 28px model tab above it)
-const COMP_REF_H = 66; // single-line composer height so multiline growth expands downward without shifting the avatar
+const COMP_GAP = 20; // px between the greeting box and the two-row composer card
+const COMP_REF_H = 98; // single-line two-row composer height so multiline growth expands downward without shifting the avatar
 const ID_SCALE = 1.5; // the identity block's size in the empty state
 const AVATAR_PX = 64; // avatar layout size (.avatar width and height)
 const AV_OVERHANG = (ID_SCALE - 1) * AVATAR_PX / 2; // px the scaled avatar rises above its layout box (16)
@@ -6099,24 +6099,17 @@ async function stop() {
 // Grow with the text up to the CSS max-height (7 lines), then scroll inside with the scrollbar hidden.
 // box-sizing is border-box, so the border has to be added to scrollHeight or the box is always 2px short.
 function autosize() {
-  queueMicrotask(syncMentions); // the box may have grown or moved to the wide layout
+  queueMicrotask(syncMentions);
   const el = els.input;
-  const row = el.closest(".row");
-  // Gemini-style: once the text needs a second line, the box takes the composer's full width and
-  // "+" / Send drop to a row underneath. The decision is always measured in the one-row layout (class off), so text
-  // that fits only in the wider box cannot flip back and forth; the class toggles and the height settle in one
-  // synchronous pass, so nothing paints in between.
-  if (row) row.classList.remove("wide");
+  if ((state.dictating || state.transcribing) && !el.value) {
+    el.style.height = "";
+    el.style.overflowY = "hidden";
+    return;
+  }
   el.style.height = "auto";
   const cs = getComputedStyle(el);
   const border = el.offsetHeight - el.clientHeight;
-  const oneLine = (parseFloat(cs.lineHeight) || 20) + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  const multi = el.value.includes("\n") || el.scrollHeight > oneLine + 2 || Boolean((state.dictating || state.transcribing) && el.value.length > 0);
-  if (row && multi) {
-    row.classList.add("wide");
-    el.style.height = "auto";
-  }
-  const max = parseFloat(cs.maxHeight) || 162;
+  const max = parseFloat(cs.maxHeight) || 170;
   const want = el.scrollHeight + border;
   el.style.height = `${Math.min(want, max)}px`;
   el.style.overflowY = want > max ? "auto" : "hidden";
@@ -6891,11 +6884,12 @@ const attachMenu = document.getElementById("attachMenu");
 function placeAttachMenu() {
   const wrap = els.attach.parentElement || els.attach;
   const r = wrap.getBoundingClientRect();
+  const rowRect = els.attach.closest(".row")?.getBoundingClientRect() || r;
   const edge = 8;
   const w = attachMenu.offsetWidth;
   const h = attachMenu.offsetHeight;
   const left = Math.min(Math.max(edge, r.left), Math.max(edge, window.innerWidth - w - edge));
-  const top = Math.max(edge, Math.min(r.top - 14 - h, window.innerHeight - h - edge));
+  const top = Math.max(edge, Math.min(rowRect.top - 10 - h, window.innerHeight - h - edge));
   attachMenu.style.left = `${left}px`;
   attachMenu.style.top = `${top}px`;
 }

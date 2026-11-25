@@ -862,11 +862,6 @@ textarea::-webkit-scrollbar { display: none; }
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity 170ms ease, transform 170ms ease, visibility 0s linear 170ms;
 }
-/* When the shared model/approval tab (28px tall, rising 23px above .composer) is visible without a tray or edit bar above it,
-   lift the down-arrow so it clears the tab with 7px breathing room above it. */
-.composer:has(.composer-tabs > .model-tab:not([hidden])):not(:has(.tray:not([hidden]), .edit-bar:not([hidden]))) .jump-latest {
-  bottom: calc(100% + 30px);
-}
 .jump-latest.shown {
   opacity: 1; visibility: visible; transform: translateX(-50%);
   pointer-events: auto;
@@ -884,21 +879,35 @@ textarea::-webkit-scrollbar { display: none; }
   .jump-latest, .jump-latest.shown { transition: none; }
 }
 .composer .row {
-  gap: 4px; padding: 5px; border-radius: 27px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  padding: 6px 8px; border-radius: 24px;
   background: var(--surface); border: 0;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
 }
+.composer-main {
+  display: flex; align-items: flex-end; gap: 4px;
+}
+.composer-bar {
+  display: flex; align-items: center; gap: 6px; padding: 0 4px; min-height: 30px;
+}
+.composer-bar:not(:has(> :not([hidden]))) { display: none; }
 /* The chat-title caption under the name pill is switched off by request. */
 #caption { display: none !important; }
+.composer .icon-btn, .composer .send { width: 38px; height: 38px; }
+.composer .icon-btn svg, .composer .send svg { width: 19px; height: 19px; }
 .composer .icon-btn { border: 0; background: transparent; }
 .composer .icon-btn:hover:not(:disabled), .composer .icon-btn.open { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 /* A disabled composer button reads as disabled: "+" while dictating or transcribing, the mic while the recording is
    transcribed. Their explicit colour overrides the browser's own grey-out, so dim them here. */
 .composer .icon-btn:disabled { opacity: 0.4; cursor: default; }
-/* scroll-padding keeps the caret line level with "+"/send when the input scrolls; the mask fades the clipped top line. */
+/* Top-row input beside "+", mic and Send; scroll-padding keeps the caret clear of the top fade mask. */
 .composer textarea, .composer textarea:focus {
-  border: 0; background: transparent; border-radius: 0; padding: 10px 6px; scroll-padding-block: 10px;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px); mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+  flex: 1 1 auto; min-width: 0; box-sizing: border-box;
+  border: 0; background: transparent; border-radius: 0;
+  padding: 8px 6px; scroll-padding-block: 8px;
+  line-height: 22px; height: 38px; min-height: 38px; max-height: 170px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 8px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 8px);
 }
 /* iPhone and iPad Safari zoom the page into any text field whose text is under 16px when it is focused (phones use
    14px here). The message box takes 16px on Apple touch devices only (-webkit-touch-callout exists only there), so
@@ -913,7 +922,7 @@ textarea::-webkit-scrollbar { display: none; }
 .composer .send { border: 0; }
 /* Voice dictation: recording UI for the configured speech-to-text provider. */
 .composer .mic-btn {
-  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%;
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
   border: 0; background: transparent; color: var(--fg);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; padding: 0;
@@ -929,16 +938,26 @@ textarea::-webkit-scrollbar { display: none; }
   opacity: 0.55; pointer-events: none;
   animation: pulse-transcribing 0.8s ease-in-out infinite;
 }
-.composer .row.dictating > textarea {
+.composer .row.dictating textarea {
   pointer-events: none; user-select: none; opacity: 0.55;
 }
-.composer .row.dictating:not(.wide) > textarea {
-  flex: 0 0 0; width: 0; min-width: 0; padding-left: 0; padding-right: 0; opacity: 0; overflow: hidden;
+.composer .row.dictating textarea:placeholder-shown {
+  flex: 0 0 0; width: 0; min-width: 0; padding: 0; opacity: 0; overflow: hidden;
 }
+.composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main {
+  display: grid; grid-template-columns: auto 1fr auto auto;
+  grid-template-areas: "input input input input" "attach hud mic send";
+  row-gap: 4px; align-items: center;
+}
+.composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main > .attach-wrap { grid-area: attach; }
+.composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main > textarea { grid-area: input; padding-left: 10px; padding-right: 10px; }
+.composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main > .dictate-hud { grid-area: hud; }
+.composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main > .mic-btn { grid-area: mic; }
+.composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main > .send { grid-area: send; }
 .dictate-hud {
   display: flex; align-items: center; gap: 10px;
-  flex: 1 1 auto; min-width: 0; height: 42px;
-  padding: 0 2px 0 8px;
+  flex: 1 1 auto; min-width: 0; height: 38px;
+  padding: 0 2px 0 6px;
 }
 .dictate-hud[hidden] { display: none !important; }
 .dictate-cancel {
@@ -987,17 +1006,6 @@ textarea::-webkit-scrollbar { display: none; }
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.65; transform: scale(1.06); }
 }
-/* Two rows once the text wraps (app.js autosize, the person, 8 Nov 2026): the box spans the composer, "+" and Send sit
-   underneath at the left and right edges, like Gemini. */
-.composer .row.wide {
-  display: grid; grid-template-columns: auto 1fr auto auto; grid-template-areas: "input input input input" "attach hud mic send";
-  row-gap: 2px; border-radius: 24px;
-}
-.composer .row.wide > .attach-wrap { grid-area: attach; }
-.composer .row.wide > textarea { grid-area: input; padding-left: 12px; padding-right: 12px; }
-.composer .row.wide > .dictate-hud { grid-area: hud; }
-.composer .row.wide > .mic-btn { grid-area: mic; }
-.composer .row.wide > .send { grid-area: send; }
 .media { margin-top: 8px; }
 /* Pictures past the per-message limit (app.js showMediaLimit): say so instead of dropping them silently. */
 .media-more { margin-top: 6px; font-size: 13px; color: var(--muted); }
@@ -2357,12 +2365,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 /* ---------- Model chip and sheet (model.js) ----------
    Same language as the drawer and dialogs: flat rows with a 14px radius and a tint on press, 12px muted group heads,
    the dialog's outlined field and pill button, one shadowed surface. No cards, badges or tinted selections. */
-/* Model tab: rides on the input box's top edge at the right, like a browser tab. It sits behind the box (z-index -1 in
-   the row's stacking context) so the box's shadow runs under it and the two read as one shape; the ::before/::after
-   flares are the tab's concave feet. The rest of the row's top edge stays clear. The log gets the tab's height as
-   extra bottom room so the last line never sits behind it. */
-/* For the tab to sit truly behind the box, the box's fill and shadow move to a ::after layer inside the row's stacking
-   context: tab (-2), then the box (-1) with its real shadow falling across the tab, then the row's content. */
+/* Frosted input container drawn on ::after so .mention-layer stays layered behind the textarea text. */
 .composer .row { position: relative; z-index: 1; background: transparent; box-shadow: none; }
 .app.drop-target .composer .row { background: transparent; }
 .composer .row::after {
@@ -2377,62 +2380,46 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
   box-shadow: var(--elev-shadow-hover), 0 6px 26px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .app.drop-target .composer .row::after { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
-.log { padding-bottom: calc(16px + 26px); }
-/* One shared top-edge tab joined to the composer pill: model picker on the left, approval mode on the right. */
-:root { --model-tab: #e6e7ec; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --model-tab: #2a2c33; } }
-:root[data-theme="dark"] { --model-tab: #2a2c33; }
-.composer-tabs {
-  --tab-bg: var(--model-tab);
-  position: absolute; bottom: calc(100% - 1px); right: 26px; z-index: -2;
-  display: inline-flex; align-items: stretch; max-width: calc(100% - 60px); height: 28px;
-  border-radius: 12px 12px 0 0; background: var(--tab-bg);
-}
-.composer-tabs:not(:has(> :not([hidden]))), .composer-tabs:has(> .model-tab[hidden]) { display: none; }
-.composer-tabs::before, .composer-tabs::after {
-  content: ""; position: absolute; bottom: 0; width: 12px; height: 12px; pointer-events: none; background: var(--tab-bg);
-}
-.composer-tabs::before {
-  left: -11px;
-  -webkit-mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px);
-}
-.composer-tabs::after {
-  right: -11px;
-  -webkit-mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px);
-}
-.composer .row.wide > .composer-tabs { grid-area: auto; }
-.approval-tab, .model-tab {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 4px; height: 100%; margin: 0; padding: 0 11px 2px;
-  border: 0; background: transparent; color: var(--muted);
+.log { padding-bottom: 16px; }
+/* Bottom row inside the composer card: "Approvals:" + icon on the left, model selector aligned right. */
+.model-tab {
+  position: relative; flex: 0 1 auto; min-width: 0; max-width: 260px; height: 30px;
+  display: inline-flex; align-items: center; gap: 4px; margin: 0 0 0 auto; padding: 0 10px;
+  border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted);
   font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: color 150ms ease, background-color 150ms ease;
+  transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
 }
-.model-tab { flex: 0 1 auto; min-width: 0; max-width: 300px; border-radius: 12px 0 0 0; }
-.approval-tab { flex: 0 0 auto; padding: 0 11px 2px 9px; border-radius: 0 12px 0 0; }
-.model-tab:only-child, .model-tab:has(+ .approval-tab[hidden]) { border-radius: 12px 12px 0 0; }
-.model-tab[hidden] + .approval-tab { border-radius: 12px 12px 0 0; }
-.model-tab:not([hidden]) + .approval-tab:not([hidden])::before {
-  content: ""; position: absolute; left: 0; top: 7px; bottom: 9px; width: 1px;
-  background: color-mix(in srgb, var(--fg) 14%, transparent); pointer-events: none;
+.model-tab:active, .approval-tab:active { transform: scale(0.96); }
+.approval-tab {
+  position: relative; flex: 0 0 auto; margin: 0; height: 30px;
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 10px;
+  border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
 }
 .approval-tab[hidden] { display: none; }
 .approval-tab-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-.approval-tab-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
-.approval-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.approval-tab-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.approval-tab-prefix { white-space: nowrap; color: var(--muted); transition: color 150ms ease; }
 .approval-tab.is-off { color: var(--danger); }
 :where(:root[data-input="mouse"]) .approval-tab:hover,
-:where(:root[data-input="mouse"]) .model-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(:root[data-input="mouse"]) .approval-tab.is-off:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+:where(:root[data-input="mouse"]) .model-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+:where(:root[data-input="mouse"]) .approval-tab:hover .approval-tab-prefix,
+.approval-tab[aria-expanded="true"] .approval-tab-prefix { color: var(--fg); }
+:where(:root[data-input="mouse"]) .approval-tab.is-off:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .approval-tab[aria-expanded="true"],
-.model-tab[aria-expanded="true"] { color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.approval-tab.is-off[aria-expanded="true"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.model-tab[aria-expanded="true"] { color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.approval-tab.is-off[aria-expanded="true"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
 .model-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-tab-meta { white-space: nowrap; }
+.model-tab-meta { flex: 0 0 auto; white-space: nowrap; }
 .model-tab-meta::before { content: "·"; margin-right: 4px; }
 .model-tab[hidden], .model-tab-meta[hidden] { display: none; }
-.model-tab-caret { width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; transition: transform 220ms var(--ease-spring); }
-.model-tab[aria-expanded="true"] .model-tab-caret { transform: rotate(180deg); }
+@media (max-width: 420px) {
+  .composer-bar { gap: 4px; }
+  .model-tab, .approval-tab { padding: 0 9px; font-size: 12.5px; }
+}
 
 .approval-sheet { max-height: min(70vh, 420px); }
 .approval-list { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 6px; overflow-y: auto; }
@@ -2595,19 +2582,19 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .provider-command:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
-  .model-sheet, .model-sheet.open, .model-provider::after, .model-tab-caret, .approval-tab-caret, .model-option, .approval-option, .model-add { transition: none; }
+  .model-sheet, .model-sheet.open, .model-provider::after, .approval-tab, .approval-tab-prefix, .model-tab, .model-option, .approval-option, .model-add { transition: none; }
   .model-refresh.spin svg, .identity:not(.flying):not(.lowering) .avatar, .card:not(.resolved), .todo-check.checked, .inbox-new, .tray .item { animation: none; }
   .audio-bar, .audio-play, .audio-down { transition: none; }
   .audio-card.loading-meta .audio-bar { animation: none; }
   .avatar, .media-img, .file-attach, .menu-icon, .jump-latest, .push-btn, .theme-switch button { transition: none; }
-  .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
+  .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .approval-tab:active, .model-tab:active, .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
 }
 
 /* Schedule mentions in the draft (app.js syncMentions): a layer behind the (transparent) textarea with the same box and
    text, the text invisible, painting a pill and a clock under each mention, so the typed name stays the text colour. It
    never takes a tap. */
 .composer .row { position: relative; }
-.composer .row > textarea { position: relative; z-index: 1; } /* the text above the mention layer */
+.composer .row textarea { position: relative; z-index: 1; } /* the text above the mention layer */
 .mention-layer {
   position: absolute; z-index: 0; margin: 0; overflow: hidden; pointer-events: none; color: transparent;
   white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; border-style: solid; border-color: transparent;

@@ -27,6 +27,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Two-row message composer card and red approvals-off alert (`dashboard/index.html`, `dashboard/style.css`,
+  `dashboard/app.js`, `dashboard/approvals.js`, `dashboard/sw.js`):
+  - Replaced the top-edge browser-style model/approval tab with an integrated bottom action row inside the composer
+    card while keeping `+`, the expanding message box, dictation, and Send on the top row.
+  - Placed neutral **`Approvals:`** text beside the status shield icon on the bottom left (turning only the icon red
+    with no resting background fill when **Off**, and showing a red *"Approvals off"* toast upon disabling) and aligned
+    the transparent model picker pill on the bottom right.
+  - Fixed empty-box voice dictation and transcription so collapsing the placeholder field keeps the composer at its
+    normal single-line height instead of wrapping the placeholder vertically.
 - Direct to-do row actions, header counter, and delete confirmation (`dashboard/todo.js`, `dashboard/index.html`,
   `dashboard/style.css`):
   - Replaced the active top-level to-do `⋮` row menu and separate static untracked badge with direct **Track** /
