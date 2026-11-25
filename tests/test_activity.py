@@ -667,6 +667,80 @@ pruneAct.renderHistoryTrees('chat-prune', [
 assert.equal(pruneLog.children.filter((n) => n.dataset?.treeId === 'p-keep').length, 1);
 assert.equal(pruneLog.children.filter((n) => n.dataset?.treeId === 'p-drop').length, 0);
 
+// 8. Unanchored done trees respect anchor_after + user boundaries, and pruneSessionFrom honors beforeTs
+const unanchoredAckEntries = [
+  { role: 'user', rowId: 100, ts: 1000, text: 'Plan two days in Antipolo' },
+  { role: 'assistant', rowId: 101, ts: 1004, text: 'Got it — two days in Antipolo with a car.' },
+  { role: 'assistant', rowId: 102, ts: 1080, text: 'Day 1 starts at Pinto Art Museum.' },
+];
+const unanchoredTree = {
+  id: 't-unanchored-ack',
+  status: 'done',
+  title: 'Planning road trip',
+  steps: ['Checking attractions'],
+  started_at: 1003,
+  ended_at: 1075,
+  anchor_after_match: 'got it — two days in antipolo with a car.',
+};
+const placedUnanchored = matchTreesToEntries([unanchoredTree], unanchoredAckEntries, new Set(), { isOldestPage: true });
+assert.equal(placedUnanchored.before.get(2)?.[0]?.id, 't-unanchored-ack');
+assert.equal(placedUnanchored.before.has(1), false);
+
+// Failed turn without reply and without saved error row must NOT cross user turn to steal next reply
+const failedCrossTurnEntries = [
+  { role: 'user', rowId: 200, ts: 2000, text: 'Run failing report' },
+  { role: 'assistant', rowId: 201, ts: 2002, text: 'Starting report.' },
+  { role: 'user', rowId: 202, ts: 2050, text: 'Never mind, say hi' },
+  { role: 'assistant', rowId: 203, ts: 2055, text: 'Hello!' },
+];
+const unanchoredFailed = {
+  id: 't-failed-no-reply',
+  status: 'done',
+  title: 'Report run',
+  steps: ['Pulling metrics'],
+  started_at: 2003,
+  ended_at: 2020,
+  anchor_after_id: 201,
+  anchor_after_match: 'starting report.',
+};
+const placedFailed = matchTreesToEntries([unanchoredFailed], failedCrossTurnEntries, new Set(), { isOldestPage: true });
+assert.equal(placedFailed.before.size, 0);
+assert.equal(placedFailed.after.get(1)?.[0]?.id, 't-failed-no-reply');
+
+// pruneSessionFrom with beforeTs keeps a brand-new replacement turn active & in cache
+const beforePruneCalls = [];
+const beforePruneLog = makeNode('div', 'log');
+const beforeAct = createActivity({
+  el: makeNode,
+  logEl: beforePruneLog,
+  nowMs: () => 505000,
+  api: async (url, opts) => {
+    beforePruneCalls.push({ url, method: (opts && opts.method) || 'GET' });
+    if ((opts && opts.method) === 'DELETE') return { ok: true };
+    return {
+      trees: [
+        { id: 'old-drop', status: 'done', title: 'Old edit target', steps: ['Old'], started_at: 110, ended_at: 115, anchor_before_id: 12 },
+        { id: 'new-keep', status: 'done', title: 'New replacement', steps: ['New'], started_at: 505, ended_at: 510 },
+      ],
+    };
+  },
+  getStoredId: () => 'chat-before',
+});
+await beforeAct.loadSessionTrees('chat-before');
+beforeAct.ensureActiveTree({ label: 'Running replacement turn' });
+await beforeAct.pruneSessionFrom('chat-before', { fromRowId: 10, fromTs: 100, beforeTs: 500 });
+assert.equal(beforeAct.hasActiveTree(), true);
+assert.ok(beforePruneCalls.some((c) => c.method === 'DELETE' && c.url.includes('/activity/chat-before?from_row_id=10&from_ts=100&before_ts=500')));
+const afterBeforeLog = makeNode('div', 'log');
+const beforeRendered = [];
+beforeAct.renderHistoryTrees('chat-before', [
+  { role: 'user', rowId: 20, ts: 504, text: 'Edited prompt' },
+  { role: 'assistant', rowId: 21, ts: 510, text: 'Replacement answer' },
+], (entry) => beforeRendered.push(entry.text), { isOldestPage: true });
+// old-drop is pruned; new-keep survives in cache and renders before replacement answer
+assert.equal(beforePruneLog.children.filter((n) => n.dataset?.treeId === 'new-keep').length, 1);
+assert.equal(beforePruneLog.children.filter((n) => n.dataset?.treeId === 'old-drop').length, 0);
+
 act.abandonActive();
 actImg.abandonActive();
 apiWithSaved.abandonActive();
@@ -675,6 +749,7 @@ urlHistApi.abandonActive();
 staleApi.abandonActive();
 crossAct.abandonActive();
 pruneAct.abandonActive();
+beforeAct.abandonActive();
 """
 
 
@@ -1208,6 +1283,63 @@ class ActivityRouteTest(DisposableHome):
             self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/side-1").json()["trees"]), 2)
             self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/side-2").json()["trees"]), 0)
             self.assertEqual(len(self.client.get("/api/plugins/hermes-mini/activity/side-3").json()["trees"]), 1)
+
+    def test_reconcile_ignores_compaction_and_model_only_and_delete_honors_before_ts(self):
+        conn = sqlite3.connect(self.home / "state.db")
+        self.addCleanup(conn.close)
+        conn.execute("CREATE TABLE sessions (id TEXT, title TEXT, archived INTEGER)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,"
+            " tool_calls TEXT, tool_name TEXT, tool_call_id TEXT, timestamp REAL, display_kind TEXT,"
+            " display_metadata TEXT, _compressed_summary INTEGER DEFAULT 0,"
+            " active INTEGER DEFAULT 1, compacted INTEGER DEFAULT 0, message_uid TEXT, display_order INTEGER)"
+        )
+        conn.execute("INSERT INTO sessions VALUES ('chat-compact-done', 'Compacted done', 0)")
+        conn.execute("INSERT INTO sessions VALUES ('chat-compact-live', 'Compacted live', 0)")
+
+        # Mid-turn compaction summary (user + assistant) + model_only must NOT stop scan or masquerade as reply
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (1, 'chat-compact-done', 'user', 'Analyze repo', 1000.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (2, 'chat-compact-done', 'assistant', 'Reading repository.', 1002.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, _compressed_summary, timestamp, active, compacted) VALUES (3, 'chat-compact-done', 'user', '[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted.', 1, 1005.0, 0, 1)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, _compressed_summary, timestamp, active, compacted) VALUES (4, 'chat-compact-done', 'assistant', '[CONTEXT COMPACTION — REFERENCE ONLY] Summary text.', 1, 1006.0, 0, 1)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_metadata, timestamp) VALUES (5, 'chat-compact-done', 'user', 'Synthetic prompt', ?, 1007.0)", (json.dumps({"model_only": True}),))
+        conn.execute("INSERT INTO messages (id, session_id, role, content, display_metadata, timestamp) VALUES (6, 'chat-compact-done', 'assistant', 'Synthetic note', ?, 1008.0)", (json.dumps({"model_only": True}),))
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (7, 'chat-compact-done', 'assistant', 'Full analysis complete.', 1020.0)")
+
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (20, 'chat-compact-live', 'user', 'Still working', 2000.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (21, 'chat-compact-live', 'assistant', 'Starting work.', 2001.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (22, 'chat-compact-live', 'user', '[CONTEXT COMPACTION — REFERENCE ONLY] Mid-run summary.', 2005.0)")
+        conn.execute("INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (23, 'chat-compact-live', 'assistant', '[CONTEXT COMPACTION — REFERENCE ONLY] Assistant summary.', 2006.0)")
+        conn.commit()
+
+        self.client.put("/api/plugins/hermes-mini/activity/chat-compact-done/t1", json={
+            "title": "Repo check", "steps": ["Scanning"], "status": "running", "started_at": 1003.0,
+            "anchor_after_match": "reading repository.",
+        })
+        self.client.put("/api/plugins/hermes-mini/activity/chat-compact-live/t2", json={
+            "title": "Live work", "steps": ["Running"], "status": "running", "started_at": 2002.0,
+            "anchor_after_match": "starting work.",
+        })
+
+        got_done = self.client.get("/api/plugins/hermes-mini/activity/chat-compact-done").json()["trees"][0]
+        self.assertEqual(got_done["status"], "done")
+        self.assertEqual(got_done["anchor_before_id"], 7)
+
+        got_live = self.client.get("/api/plugins/hermes-mini/activity/chat-compact-live").json()["trees"][0]
+        self.assertEqual(got_live["status"], "running")
+
+        # before_ts preserves a newly started replacement turn tree while pruning old truncated trees
+        self.client.put("/api/plugins/hermes-mini/activity/chat-before/old", json={
+            "title": "Old", "steps": ["Old step"], "status": "done", "started_at": 110.0,
+        })
+        self.client.put("/api/plugins/hermes-mini/activity/chat-before/new", json={
+            "title": "New", "steps": ["New step"], "status": "running", "started_at": 505.0,
+        })
+        res = self.client.delete("/api/plugins/hermes-mini/activity/chat-before?from_row_id=10&from_ts=100&before_ts=500")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["removed"], 1)
+        remaining = self.client.get("/api/plugins/hermes-mini/activity/chat-before").json()["trees"]
+        self.assertEqual([t["id"] for t in remaining], ["new"])
 
 
 if __name__ == "__main__":

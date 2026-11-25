@@ -454,26 +454,31 @@ export function matchTreesToEntries(trees, entries, renderedIds = new Set(), { i
     return best;
   };
 
+  const findAfterIndex = (tree) => {
+    if (Number.isInteger(tree.anchor_after_id) && tree.anchor_after_id > 0) {
+      const idx = entries.findIndex((e) => e.rowId === tree.anchor_after_id);
+      if (idx !== -1) return idx;
+    }
+    if (tree.anchor_after_match) {
+      const needle = normalizeMatch(tree.anchor_after_match);
+      const matches = [];
+      for (let i = 0; i < entries.length; i += 1) {
+        const e = entries[i];
+        const dist = timestampDistance(tree, Number(e.ts) || 0);
+        if (tree.started_at && e.ts && dist > 1800) continue;
+        if (matchPrefixScore(normalizeMatch(e.text), needle)) matches.push(i);
+      }
+      return pickBestIndex(matches, tree);
+    }
+    return -1;
+  };
+
   for (const tree of trees) {
     if (!tree || !tree.id || renderedIds.has(tree.id)) continue;
     const hasSteps = Array.isArray(tree.steps) && tree.steps.length > 0;
     if (!hasSteps && !tree.title && tree.status !== "stopped") continue;
     if (tree.status === "running") {
-      let afterIdx = -1;
-      if (Number.isInteger(tree.anchor_after_id) && tree.anchor_after_id > 0) {
-        afterIdx = entries.findIndex((e) => e.rowId === tree.anchor_after_id);
-      }
-      if (afterIdx === -1 && tree.anchor_after_match) {
-        const needle = normalizeMatch(tree.anchor_after_match);
-        const matches = [];
-        for (let i = 0; i < entries.length; i += 1) {
-          const e = entries[i];
-          const dist = timestampDistance(tree, Number(e.ts) || 0);
-          if (tree.started_at && e.ts && dist > 1800) continue;
-          if (matchPrefixScore(normalizeMatch(e.text), needle)) matches.push(i);
-        }
-        afterIdx = pickBestIndex(matches, tree);
-      }
+      const afterIdx = findAfterIndex(tree);
       let replyIdx = -1;
       if (afterIdx !== -1) {
         for (let i = afterIdx + 1; i < entries.length; i += 1) {
@@ -536,10 +541,32 @@ export function matchTreesToEntries(trees, entries, renderedIds = new Set(), { i
           placed = true;
         }
       }
-      if (!placed && tree.status === "done" && !tree.anchor_before_match && tree.started_at > 0) {
-        const idx = entries.findIndex(
-          (e) => e.role === "assistant" && e.ts && e.ts >= tree.started_at - 2 && e.ts <= Math.max((tree.ended_at || tree.started_at) + 120, tree.started_at + 1800),
-        );
+      if (!placed && tree.status === "done" && !tree.anchor_before_id && !tree.anchor_before_match && tree.started_at > 0) {
+        const afterIdx = findAfterIndex(tree);
+        const maxTs = Math.max((tree.ended_at || tree.started_at) + 120, tree.started_at + 1800);
+        let idx = -1;
+        if (afterIdx !== -1) {
+          for (let i = afterIdx + 1; i < entries.length; i += 1) {
+            const e = entries[i];
+            if (e.role === "user") break;
+            const ets = Number(e.ts) || 0;
+            if (e.role === "assistant" && (!ets || ets <= maxTs)) {
+              idx = i;
+              break;
+            }
+          }
+        } else if (!tree.anchor_after_id && !tree.anchor_after_match) {
+          for (let i = 0; i < entries.length; i += 1) {
+            const e = entries[i];
+            const ets = Number(e.ts) || 0;
+            if (ets && ets < tree.started_at - 2) continue;
+            if (e.role === "user" && ets && ets > tree.started_at + 2) break;
+            if (e.role === "assistant" && ets && ets <= maxTs) {
+              idx = i;
+              break;
+            }
+          }
+        }
         if (idx !== -1) {
           pushAt(before, idx, tree);
           renderedIds.add(tree.id);
@@ -551,29 +578,11 @@ export function matchTreesToEntries(trees, entries, renderedIds = new Set(), { i
     if (placed) continue;
 
     // 2. Place after the preceding bubble (typical for stopped runs with no following assistant reply).
-    if (Number.isInteger(tree.anchor_after_id) && tree.anchor_after_id > 0) {
-      const idx = entries.findIndex((e) => e.rowId === tree.anchor_after_id);
-      if (idx !== -1) {
-        pushAt(after, idx, tree);
-        renderedIds.add(tree.id);
-        placed = true;
-      }
-    }
-    if (!placed && tree.anchor_after_match) {
-      const needle = normalizeMatch(tree.anchor_after_match);
-      const matches = [];
-      for (let i = 0; i < entries.length; i += 1) {
-        const e = entries[i];
-        const dist = timestampDistance(tree, Number(e.ts) || 0);
-        if (tree.started_at && e.ts && dist > 1800) continue;
-        if (matchPrefixScore(normalizeMatch(e.text), needle)) matches.push(i);
-      }
-      const best = pickBestIndex(matches, tree);
-      if (best !== -1) {
-        pushAt(after, best, tree);
-        renderedIds.add(tree.id);
-        placed = true;
-      }
+    const afterIdx = findAfterIndex(tree);
+    if (afterIdx !== -1) {
+      pushAt(after, afterIdx, tree);
+      renderedIds.add(tree.id);
+      placed = true;
     }
     if (!placed && tree.status === "stopped") {
       const ref = Number(tree.started_at) || 0;
@@ -1395,12 +1404,22 @@ export function createActivity(deps = {}) {
     }
   }
 
-  async function pruneSessionFrom(sid, { fromRowId = null, fromTs = null } = {}) {
+  async function pruneSessionFrom(sid, { fromRowId = null, fromTs = null, beforeTs = null } = {}) {
     if (!sid) return;
-    if (active && (!active.sid || active.sid === sid)) {
-      abandonActive();
-    } else if (pendingAnchorTree && (!pendingAnchorTree.sid || pendingAnchorTree.sid === sid)) {
-      abandonActive();
+    const hasBefore = Number.isFinite(beforeTs) && beforeTs > 0;
+    if (active && (!active.sid || active.sid === sid) && (!hasBefore || (Number(active.startedAt) || 0) <= beforeTs)) {
+      clearTimer(active);
+      active.token += 1;
+      active.inflight = false;
+      if (!active.steps.length && active.el) active.el.remove();
+      active = null;
+    }
+    if (
+      pendingAnchorTree
+      && (!pendingAnchorTree.sid || pendingAnchorTree.sid === sid)
+      && (!hasBefore || (Number(pendingAnchorTree.startedAt) || 0) <= beforeTs)
+    ) {
+      pendingAnchorTree = null;
     }
     const existing = sessionCache.get(sid);
     if (Array.isArray(existing)) {
@@ -1408,6 +1427,10 @@ export function createActivity(deps = {}) {
       const hasTs = Number.isFinite(fromTs) && fromTs > 0;
       const kept = [];
       for (const t of existing) {
+        if (hasBefore && Number(t.started_at || 0) > beforeTs) {
+          kept.push(t);
+          continue;
+        }
         const bId = Number.isInteger(t.anchor_before_id) ? t.anchor_before_id : null;
         const aId = Number.isInteger(t.anchor_after_id) ? t.anchor_after_id : null;
         let drop = false;
@@ -1425,6 +1448,7 @@ export function createActivity(deps = {}) {
     const params = new URLSearchParams();
     if (Number.isInteger(fromRowId) && fromRowId > 0) params.set("from_row_id", String(fromRowId));
     if (Number.isFinite(fromTs) && fromTs > 0) params.set("from_ts", String(fromTs));
+    if (hasBefore) params.set("before_ts", String(beforeTs));
     const qs = params.toString();
     try {
       await api(`${ACTIVITY_API}/${encodeURIComponent(sid)}${qs ? `?${qs}` : ""}`, { method: "DELETE" });

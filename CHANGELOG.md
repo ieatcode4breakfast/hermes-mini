@@ -40,6 +40,18 @@ All notable changes to this project are documented here. The format follows
   four minutes or ten tool calls in app chats). Long turns now rely on the opening acknowledgment, live narration
   line, and any interim updates the agent writes naturally. Needs a gateway restart to take effect.
 
+### Fixed
+
+- Activity-tree hardening (`dashboard/plugin_api.py`, `dashboard/activity.js`, `dashboard/app.js`):
+  - Server-side disconnect recovery now ignores soft-deleted rows, mid-turn steers, scheduled job deliveries,
+    background/subagent completion notices, model switches, system notices, hidden compaction summaries, and
+    model-only entries, and closes failed turns cleanly without false *"You stopped this response"* labels.
+  - History placement no longer dumps stopped trees from older pages onto the newest message, and unanchored
+    completed/failed trees stay within their own turn (after the opening acknowledgment and before any later user turn).
+  - Activity trees and background row-id lookups stay pinned to their owning chat across fast chat switches;
+    editing an earlier message prunes discarded trees with an upper submission-time bound; and the 200-session
+    activity store cap uses least-recently-used eviction while exempting the active main chat.
+
 ## [0.3.1] — 2026-11-24
 
 ### Fixed

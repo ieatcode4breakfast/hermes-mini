@@ -3159,6 +3159,7 @@ async function submitEdit() {
   const sid = state.liveSid;
   const editStoredId = state.storedId;
   const editTs = Number(row.hermesMiniMsg?.ts) || 0;
+  const editSubmittedAt = Date.now() / 1000;
   state.sending = true;
   let truncatedAtRowId = null;
   try {
@@ -3179,7 +3180,7 @@ async function submitEdit() {
     state.sending = false;
   }
   if (editStoredId && truncatedAtRowId !== null) {
-    void activity.pruneSessionFrom(editStoredId, { fromRowId: truncatedAtRowId, fromTs: editTs });
+    void activity.pruneSessionFrom(editStoredId, { fromRowId: truncatedAtRowId, fromTs: editTs, beforeTs: editSubmittedAt });
   }
   if (state.editing === edit) endEdit();
   if (!row.isConnected || state.liveSid !== sid) return; // the view moved on while the edit was in flight
