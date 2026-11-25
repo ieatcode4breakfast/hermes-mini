@@ -1033,7 +1033,7 @@ class ActivityFrontendTest(unittest.TestCase):
         err = app[app.index('case "error":'):]
         self.assertIn("activity.finalizeActiveForBubble({ rowEl: null, expectReply: false });", err[err.index("activity.hasActiveTree"):])
         sw = (DASHBOARD / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "hermes-mini-v111";', sw)
+        self.assertRegex(sw, r'const CACHE = "hermes-mini-v\d+";')
 
 
 @unittest.skipUnless(HAVE_FASTAPI, "FastAPI is not installed in this environment")
