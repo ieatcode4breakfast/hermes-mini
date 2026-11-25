@@ -1006,5 +1006,49 @@ class JumpLatestOffsetTest(unittest.TestCase):
         self.assertIn("bottom: calc(100% + 30px);", css)
 
 
+class TodoParentRowActionsTest(unittest.TestCase):
+    """Active parent to-do rows place the eye track toggle and delete × buttons directly on the row."""
+
+    def test_todo_js_renders_direct_track_and_delete_buttons_without_row_menu(self):
+        js = (DASHBOARD / "todo.js").read_text(encoding="utf-8")
+        self.assertIn('tracked ? "todo-track" : "todo-track untracked"', js)
+        self.assertIn("svgIcon(tracked ? EYE_ICON : EYE_OFF_ICON)", js)
+        self.assertIn("() => void toggleTrack(item)", js)
+        self.assertIn('showToast(next ? "Tracked" : "Untracked");', js)
+        self.assertIn('const del = el("button", "todo-del");', js)
+        for removed in ("todo-dots", "todo-untracked-icon", "todo-menu", "hermesMiniTodoMenu", "openMenu", "closeMenu"):
+            self.assertNotIn(removed, js)
+
+    def test_todo_css_styles_direct_track_button_and_removes_row_menu(self):
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".todo-track {", css)
+        self.assertIn(".todo-track.untracked { opacity: 0.55; }", css)
+        self.assertIn(".todo-row.draft .todo-track, .todo-row.indent .todo-track { display: none; }", css)
+        for removed in (".todo-dots", ".todo-untracked-icon", ".todo-menu", ".todo-menu-scrim"):
+            self.assertNotIn(removed, css)
+
+    def test_todo_header_displays_live_tracked_counter(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        js = (DASHBOARD / "todo.js").read_text(encoding="utf-8")
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        self.assertIn('<h2 id="todoTitle" class="todo-title"><span>To-do</span><span id="todoHeaderCount"', html)
+        self.assertIn('const headerCountEl = $("todoHeaderCount");', js)
+        self.assertIn("headerCountEl.textContent = label;", js)
+        self.assertIn('headerCountEl.classList.toggle("zero", real === 0);', js)
+        self.assertIn(".todo-title .todo-head-count {", css)
+        self.assertIn(".todo-title .todo-head-count.zero {", css)
+
+    def test_row_buttons_require_completed_tap_and_delete_asks_confirmation(self):
+        js = (DASHBOARD / "todo.js").read_text(encoding="utf-8")
+        self.assertIn("function bindRowButton(", js)
+        self.assertIn("if (event.button !== 0) return;", js)
+        self.assertIn("if (editing) event.preventDefault();", js)
+        self.assertIn('listEl.addEventListener("scroll", onCancel', js)
+        self.assertIn("if (!tap.released) return;", js)
+        self.assertIn('bindRowButton(del, "delete", item, () => void confirmRemove(item));', js)
+        self.assertIn('title: "Delete to-do?",', js)
+        self.assertIn("danger: true,", js)
+
+
 if __name__ == "__main__":
     unittest.main()

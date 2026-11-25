@@ -27,6 +27,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Direct to-do row actions, header counter, and delete confirmation (`dashboard/todo.js`, `dashboard/index.html`,
+  `dashboard/style.css`):
+  - Replaced the active top-level to-do `⋮` row menu and separate static untracked badge with direct **Track** /
+    **Untrack** eye and **×** delete buttons on each row, keeping the dimmed slashed eye visible for untracked items
+    and showing neutral *"Tracked"* / *"Untracked"* toasts on toggle.
+  - Added a live `#todoHeaderCount` counter pill beside the **To-do** title (highlighted when 1+ items are tracked,
+    muted `0` when none) reflecting tracking and item changes immediately.
+  - Hardened row button presses while inline-editing (requiring a primary click release on desktop and cancelling
+    touch taps on scroll/move/cancel/off-button release) and added a **"Delete to-do?"** confirmation dialog when
+    deleting via `×`.
 - Inline local picture previews (`dashboard/app.js`): raised the per-message inline picture cap from 9 to 50,
   lazy-loaded uncached images as they approach the viewport via `IntersectionObserver`, and updated the overflow
   notice to *"This app's preview limit has been reached. N picture(s) not shown."*

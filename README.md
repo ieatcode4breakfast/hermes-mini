@@ -207,9 +207,12 @@ there is no reply to show.
   read while the reply is held unread, and Bookmark, which becomes Remove bookmark once the reply is kept. The main
   chat's messages carry the same home icon as the chat
   list.
-- **To-dos**: one shared list, nesting one level, drag to sort, clear finished. Each active top-level
-  row has a `⋮` menu with **Track** / **Untrack** and **Delete**; untracked parents are excluded from
-  the To-do and folded Tools badge counters and show a subtle untracked cue.
+- **To-dos**: one shared list, nesting one level, drag to sort, clear finished, with a live tracked-item
+  counter pill beside the **To-do** header. Each active top-level row puts the **Track** / **Untrack** eye
+  button and **×** delete button directly on the row (no extra menu): toggling tracking shows a neutral
+  *"Tracked"* / *"Untracked"* toast, excludes untracked parents from the To-do header, corner button, and
+  folded Tools badge counters, and keeps a dimmed slashed-eye icon visible for untracked items; deleting with
+  **×** asks for confirmation first.
 - **Bookmarks**: the agent replies you kept, in the tool directly above To-do in the Tools tray. A reply is bookmarked
   from its action row or its long-press menu; the panel lists them newest bookmark first, each with its chat, time and
   a short preview. Tapping one opens the chat at that reply, and the filled bookmark at the right removes it. Bookmarks
