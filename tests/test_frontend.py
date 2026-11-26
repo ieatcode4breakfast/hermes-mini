@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -207,6 +209,24 @@ class JobDeliveryInAnyChatTest(unittest.TestCase):
         self.assertIn('if (data.type === "hermes-mini-job") {\n      void syncJobDeliveries();', self.app)
 
 
+class FeedbackSurfaceTest(unittest.TestCase):
+    def test_model_errors_use_dismissible_toasts_with_details(self):
+        model = (DASHBOARD / "model.js").read_text(encoding="utf-8")
+        toast = (DASHBOARD / "toast.js").read_text(encoding="utf-8")
+        self.assertIn("showPersistentToast(message, { detail: errorText(error) })", model)
+        self.assertNotIn("inlineNotice", model)
+        persistent = toast.split("export function showPersistentToast(", 1)[1].split("let node = null", 1)[0]
+        self.assertIn('dismiss.setAttribute("aria-label", "Dismiss message")', persistent)
+        self.assertIn('dismiss.addEventListener("click"', persistent)
+        self.assertNotIn("setTimeout", persistent)
+
+    def test_both_dictation_surfaces_use_dismissible_toasts(self):
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        self.assertIn("if (sid === state.liveSid) showPersistentToast(message)", app)
+        self.assertIn("reportError(dictationFailure(res))", app)
+        self.assertIn("if (ui.input.isConnected) showPersistentToast(dictationFailure(res))", app)
+
+
 class ModelPickerTest(unittest.TestCase):
     """The model chip and sheet (model.js) restyle Hermes's own gateway methods; nothing app-side holds model state."""
 
@@ -236,19 +256,46 @@ class ModelPickerTest(unittest.TestCase):
     def test_only_hermes_methods_are_called(self):
         methods = set(re.findall(r'rpc\(\s*"([a-z_.]+)"', self.model))
         self.assertTrue(methods)
-        self.assertLessEqual(methods, {"model.options", "model.save_key", "model.disconnect", "config.set"})
+        self.assertLessEqual(methods, {"model.options", "model.save_key", "model.disconnect", "config.set", "approval.pending"})
+
+    def test_provider_picker_uses_explicit_inventory_and_declared_auth(self):
+        self.assertIn("const params = { explicit_only: true };", self.model)
+        self.assertIn('if (!custom && keyField && (!row.auth_type || row.auth_type === "api_key"))', self.model)
+        self.assertNotIn("connected && !row.auth_type", self.model)
+        self.assertIn("Sign in to Nous Portal in Hermes.", self.model)
+
+    @unittest.skipUnless(shutil.which("node"), "node is not installed")
+    def test_model_switch_confirmations_keep_costs_and_other_warnings(self):
+        formatter = self.model.split("function displaySwitchWarning(", 1)[1].split("\nexport function", 1)[0]
+        warnings = "\n\n".join((
+            "!!! EXPENSIVE MODEL WARNING !!!\n\nExample costs more.\n"
+            "Input tokens: $25.00/M\nOutput tokens: unknown\n"
+            "Confirm only if you intend to use this model.",
+            "!!! LARGE CONTEXT MODEL SWITCH !!!\n\nThis session holds ~125,000 tokens of context.\n"
+            "Confirm only if you intend to switch now.",
+            "Other provider warning.",
+        ))
+        script = f"function displaySwitchWarning({formatter}\nprocess.stdout.write(displaySwitchWarning({json.dumps(warnings)}));"
+        copy = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+        self.assertIn("Input (what the model reads): $25.00 per million tokens", copy)
+        self.assertIn("Output (what it generates): unknown", copy)
+        self.assertIn("125,000 tokens of history", copy)
+        self.assertIn("your provider charges its full input rate", copy.lower())
+        self.assertTrue(copy.endswith("Other provider warning."))
+        self.assertNotIn("!!!", copy)
 
     def test_api_keys_never_touch_browser_storage(self):
         for word in ("localStorage", "sessionStorage", "indexedDB", "console."):
             self.assertNotIn(word, self.model)
 
-    def test_new_chat_pick_rides_on_session_create(self):
-        self.assertIn('rpc("session.create", modelUi.createParams())', self.app)
-
-    def test_model_switch_is_shown_not_hidden(self):
-        hidden = re.search(r"const HIDDEN_NOTICE_KINDS = new Set\(\[([^\]]*)\]\)", self.app).group(1)
-        self.assertNotIn("model_switch", hidden)
-        self.assertIn('kind === "model_switch"', self.app)
+    def test_new_chat_model_confirmation_gates_send_and_cleans_up_cancel(self):
+        prepare = self.app.split("async function openFreshChat()", 1)[1].split("async function attachUnsent", 1)[0]
+        self.assertIn('rpc("session.create", modelUi.draftCreateParams())', prepare)
+        self.assertLess(prepare.index("await modelUi.applyDraftModel("), prepare.index("await registerNewChat("))
+        self.assertIn('rpc("session.close", { session_id: created.session_id })', prepare)
+        self.assertIn("if (!await openFreshChat()) {", self.app)
+        self.assertNotIn("/api/model/set", self.model)
+        self.assertIn("await requestModelSwitch(pick.model, pick.provider, sid, stillDraft)", self.model)
 
 
 class InboxTapReadTest(unittest.TestCase):
@@ -349,7 +396,7 @@ class StartupDictationAndModelChipTest(unittest.TestCase):
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
         clear_fn = app[app.index("function clearLog"):app.index("\n// ---------- HTTP")]
         self.assertIn("{ keepDictation = false } = {}", clear_fn)
-        self.assertIn('if (!keepDictation && typeof cancelDictation === "function") cancelDictation(true);', clear_fn)
+        self.assertIn("if (!keepDictation) cancelDictation(true);", clear_fn)
 
         history_fn = app[app.index("async function loadHistory"):app.index("\n// Loads the next older page")]
         self.assertIn("clearLog({ keepDictation: true });", history_fn)
@@ -374,7 +421,7 @@ class StartupDictationAndModelChipTest(unittest.TestCase):
         self.assertIn('id="modelChip" class="model-tab" type="button" aria-haspopup="dialog" aria-expanded="false" hidden>', html)
         self.assertIn("let settled = false;", model)
         self.assertIn('if ("model" in payload) settled = true;', model)
-        self.assertIn("chip.hidden = !settled && !model && !info.pending;", model)
+        self.assertIn("chip.hidden = !settled && !model;", model)
         self.assertIn(".model-tab[hidden], .model-tab-meta[hidden] { display: none; }", css)
 
 class NarrationShimmerTest(unittest.TestCase):
@@ -434,7 +481,7 @@ class ProviderNoteTest(unittest.TestCase):
         self.assertIn('slug === "custom"', body)
         self.assertIn('slug.startsWith("custom:")', body)
         self.assertIn("row.is_user_defined", body)
-        self.assertIn('if (!custom && (row.auth_type === "api_key"', js)
+        self.assertIn('if (!custom && keyField && (!row.auth_type || row.auth_type === "api_key"))', js)
 
 
 class SkillNarrationTest(unittest.TestCase):
@@ -877,27 +924,12 @@ class ZIndexLadderTest(unittest.TestCase):
         for over in ("--z-computer-chrome", "--z-viewer", "--z-drawer-over-computer", "--z-panel-over-computer"):
             self.assertLess(value["--z-header-beside-computer"], value[over], over)
 
-    def test_gateway_lines_are_main_chat_only_and_never_messages(self):
+    def test_gateway_restart_feedback_stays_out_of_chat(self):
         app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
-        live = app[app.index("function showNewGatewayEvents()"):app.index("async function loadHistory")]
-        self.assertIn("if (!viewingHome()) return;", live)
-        self.assertIn("const eventsLoad = home ? fetchGatewayEvents() : Promise.resolve([]);", app)
-        self.assertIn('event.kind === "down" ? "is restarting" : "is back"', app)
-        # Drawn as the muted centred system line, not as a bubble.
-        self.assertIn("const row = addFailLine(gatewayLineText(event));", app)
-
-    def test_empty_or_reset_main_chat_drops_old_gateway_lines(self):
-        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
-        load = app[app.index("async function loadHistory"):app.index("\n// Loads the next older page")]
-        self.assertNotIn("older.done ? -Infinity", load)
-        self.assertIn("rows.length ? Math.min(...rows.map((m) => Number(m.timestamp) || Infinity)) : (state.homeStartedAt || Infinity)", load)
-        attach = app[app.index("async function attachHome"):app.index("\n// Another chat picked from the drawer")]
-        self.assertIn("let startedAt = fresh ? Infinity : 0;", attach)
-        self.assertIn("startedAt = Number(resumed.started_at) || 0;", attach)
-        self.assertIn("state.homeStartedAt = startedAt;", attach)
-        reset = app[app.index("async function resetMainChat"):app.index("\n// Pins or unpins a chat")]
-        self.assertIn("cancelGatewayLineTimers();", reset)
-        self.assertIn("state.gatewaySeenTs = 0;", reset)
+        self.assertNotIn("/gateway-events", app)
+        self.assertNotIn("addGatewayLine", app)
+        self.assertIn("showRestartNotice();", app)
+        self.assertIn('showToast(back ? "Restarted" : "Restart didn\'t finish"', app)
 
     def test_every_layer_used_is_named(self):
         defined = set(re.findall(r"(--z-[a-z-]+)\s*:", self.style + self.screen))
@@ -1001,7 +1033,7 @@ class NewChatMainPromotionTest(unittest.TestCase):
 
 
 class ComposerBottomBarTest(unittest.TestCase):
-    """Top row holds attach, input, dictation, and send; bottom row holds Approvals: + icon left and model right."""
+    """Top row holds attach, input, dictation, and send; bottom row holds Approvals + icon left and model right."""
 
     def test_markup_orders_main_row_above_approval_prefix_icon_and_model(self):
         html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
@@ -1017,7 +1049,7 @@ class ComposerBottomBarTest(unittest.TestCase):
         self.assertLess(bar.index('id="approvalChip"'), bar.index('id="modelChip"'))
         chip = bar[bar.index('id="approvalChip"'):bar.index('id="modelChip"')]
         self.assertLess(
-            chip.index('<span class="approval-tab-prefix">Approvals:</span>'),
+            chip.index('<span class="approval-tab-prefix">Approvals</span>'),
             chip.index('<span class="approval-tab-icon" aria-hidden="true"></span>'),
         )
         self.assertNotIn("approval-tab-label", chip)
@@ -1042,8 +1074,11 @@ class ComposerBottomBarTest(unittest.TestCase):
         self.assertIn("background: transparent; color: var(--muted);", approval_tab_block)
         self.assertNotIn("approval-tab-label", css)
         self.assertNotIn("approval-tab-text", css)
-        self.assertIn(".approval-tab-prefix { white-space: nowrap; color: var(--muted); transition: color 150ms ease; }", css)
-        self.assertIn(".approval-tab.is-off { color: var(--danger); }", css)
+        self.assertIn(".approval-tab-prefix { white-space: nowrap; color: var(--muted); }", css)
+        self.assertIn(".approval-tab.is-off .approval-tab-icon { color: var(--danger); }", css)
+        self.assertIn(".approval-tab:hover .approval-tab-icon,", css)
+        self.assertNotRegex(css, r"\.approval-tab(?:\.is-off)?:hover\s*[,\{]")
+        self.assertNotIn(".approval-tab:hover .approval-tab-prefix", css)
         self.assertIn(".composer .row textarea { position: relative; z-index: 1; }", css)
         self.assertIn(".composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main {", css)
         self.assertIn(".log { padding-bottom: 16px; }", css)

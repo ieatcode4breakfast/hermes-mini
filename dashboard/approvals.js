@@ -3,7 +3,7 @@
 //   config.get {key: "approvals.mode"} -> {value: "manual"|"smart"|"off"}
 //   config.set {key: "approvals.mode", value: "manual"|"smart"|"off"} -> {key, value}
 
-import { openPopover, closePopover } from "./toast.js";
+import { openPopover, closePopover, inlineNotice } from "./toast.js";
 
 export const APPROVAL_MODES = [
   {
@@ -68,8 +68,8 @@ export function createApprovalPicker({ rpc, confirmDialog, showToast, chip }) {
     if (icon) icon.innerHTML = isOff ? SHIELD_OFF_SVG : info.value === "smart" ? SHIELD_SMART_SVG : SHIELD_MANUAL_SVG;
     if (label) label.textContent = info.label;
     chip.classList.toggle("is-off", isOff);
-    chip.setAttribute("aria-label", `Approvals: ${info.label}`);
-    chip.title = `Approvals: ${info.label}`;
+    chip.setAttribute("aria-label", `Approvals, ${info.label}`);
+    chip.title = `Approvals · ${info.label}`;
     chip.hidden = false;
     if (parts) renderOptions();
   }
@@ -112,9 +112,10 @@ export function createApprovalPicker({ rpc, confirmDialog, showToast, chip }) {
     list.setAttribute("role", "radiogroup");
     list.setAttribute("aria-label", "Approval mode");
 
-    sheet.append(head, list);
+    const notice = inlineNotice();
+    sheet.append(head, notice.box, list);
     document.body.append(scrim, sheet);
-    parts = { scrim, list };
+    parts = { scrim, list, notice };
 
     scrim.addEventListener("click", close);
     document.addEventListener("keydown", (event) => {
@@ -169,6 +170,7 @@ export function createApprovalPicker({ rpc, confirmDialog, showToast, chip }) {
       if (!ok) return;
     }
     saving = true;
+    parts.notice.show();
     renderOptions();
     try {
       const result = await rpc("config.set", { key: "approvals.mode", value: nextMode });
@@ -179,7 +181,9 @@ export function createApprovalPicker({ rpc, confirmDialog, showToast, chip }) {
       showToast(mode === "off" ? "Approvals off" : `Approvals: ${label}`, mode === "off" ? "error" : "success");
       close();
     } catch (error) {
-      showToast(errorText(error), "error");
+      if (sheet.classList.contains("open")) {
+        parts.notice.show("Couldn’t change approval mode. Try again.", { detail: errorText(error) });
+      }
     } finally {
       saving = false;
       renderOptions();
@@ -188,6 +192,7 @@ export function createApprovalPicker({ rpc, confirmDialog, showToast, chip }) {
 
   async function open() {
     if (!sheet) build();
+    parts.notice.show();
     renderOptions();
     openPopover(parts.scrim);
     openPopover(sheet);

@@ -18,10 +18,10 @@ import { createInbox } from "./inbox.js";
 import { createBookmarks } from "./bookmarks.js";
 import { createActivity } from "./activity.js";
 import { createSearch } from "./search.js";
-import { showToast, openPopover, closePopover, reopenPopover } from "./toast.js";
+import { showToast, openPopover, closePopover, reopenPopover, showPersistentToast } from "./toast.js";
 import * as identityApi from "./identity.js";
 import { stripCronWrapper } from "./jobtext.js";
-import { createModelPicker, shortModel } from "./model.js";
+import { createModelPicker } from "./model.js";
 import { createApprovalPicker } from "./approvals.js";
 import * as clarifyFlow from "./clarify.js";
 import { dictationInsert } from "./dictation-text.js";
@@ -160,14 +160,13 @@ const state = {
   editing: null, // Edit & resend in progress: { row, saved } (see beginEdit)
   resettingMain: false, // a main-chat reset is between its confirmation and its finish
   composerLocked: false, // a reset deleted the old main but no replacement is attached: keep the composer disabled
-  homeStartedAt: 0, // creation time of the current main chat (seconds), or Infinity right after creation
   stoppedByUser: false, // true when the user pressed Stop on the current turn
 };
 
-// The model chip on the composer and its sheet (model.js). A New chat (draft) has no session yet: its pick is sent
-// as session.create overrides when the first message creates the chat.
+// A draft model pick is guarded before the first send creates the chat.
 const modelUi = createModelPicker({
   rpc: (method, params, timeoutMs) => rpc(method, params, timeoutMs),
+  api,
   getSid: () => state.liveSid,
   isDraft: () => state.viewedUnsent && !state.liveSid,
   isBusy: () => state.streaming,
@@ -451,7 +450,7 @@ function setEmptyState(show, opts = {}) {
 }
 
 function clearLog({ keepDictation = false } = {}) {
-  if (!keepDictation && typeof cancelDictation === "function") cancelDictation(true);
+  if (!keepDictation) cancelDictation(true);
   endEdit(); // a view reset ends an edit; the composer gets its draft back
   cancelJumpScroll(); // a jump never follows the view to another chat or a rebuilt history
   hideJumpButton(true);
@@ -569,8 +568,6 @@ function messageText(message) {
 // agent/prompt_builder.py STEER_MARKER_OPEN / STEER_MARKER_CLOSE (fallback when display_content is missing).
 const STEER_WRAP = /\[OUT-OF-BAND USER MESSAGE\b[^\]]*\]\s*([\s\S]*?)\s*\[\/OUT-OF-BAND USER MESSAGE\]/g;
 const HIDDEN_NOTICE_KINDS = new Set(["personality_switch", "auto_continue"]);
-// tui_gateway/server.py _MODEL_SWITCH_MARKER_PREFIX: the row a model switch leaves, drawn as a muted "Switched to" line.
-const MODEL_SWITCH_MARKER = /^\[System: The active model for this chat has changed to (\S+)(?: via provider (\S+?))?\./;
 const FILE_REF = /@file:(?:"([^"\n]+)"|'([^'\n]+)'|`([^`\n]+)`|(\S+))/g;
 const OTHER_REF = /@(?:folder|url|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\S+)/g;
 const ATTACHED_CONTEXT_TAIL = /(?:^|\n)--- Attached Context ---\s*\n[\s\S]*$/;
@@ -718,16 +715,10 @@ function chatEntries(messages, { notices = false } = {}) {
     }
     if (message.role !== "user" && message.role !== "assistant") continue;
     const kind = message.display_kind || "";
-    if (kind === "hidden" || modelOnly(message)) continue;
+    if (kind === "hidden" || kind === "model_switch" || modelOnly(message)) continue;
     // Hermes' injected system notices (background task finished, etc.) are not shown at all.
     if (message.role === "user" && (NOTICE_KINDS.has(kind) || HIDDEN_NOTICE_KINDS.has(kind))) continue;
     const raw = typeof message.display_content === "string" ? message.display_content.trim() : messageText(message);
-    if (kind === "model_switch") {
-      // Hermes keeps one switch marker per chat (the latest); shown as a small muted line, never as a bubble.
-      const hit = MODEL_SWITCH_MARKER.exec(messageText(message).trim()) || MODEL_SWITCH_MARKER.exec(raw);
-      if (notices && hit) entries.push({ message, text: `Switched to ${shortModel(hit[1])}`, images: [], files: [], kind: "fail" });
-      continue;
-    }
     if (kind === "failed_turn") {
       // Hermes closing a failed turn, not the agent speaking: a small muted line.
       if (notices && raw) entries.push({ message, text: failureText(raw), images: [], files: [], kind: "fail" });
@@ -960,7 +951,6 @@ function onSocketClosed(ws) {
   if (wasReady) {
     noteOffline();
     scheduleReconnect();
-    showNewGatewayEvents(); // the gateway stopping: its "restarting" line
   }
 }
 
@@ -1190,7 +1180,10 @@ function persistView() {
 
 // A New chat is a local draft: no server session and no registry tag until the first message. It is shown at once,
 // keeps the greeting and the composer, and is remembered as NEW_VIEW so a reload starts another draft.
+let draftEpoch = 0;
+
 function openDraft(opts = {}) {
+  draftEpoch += 1;
   // The chat being left was on screen until now, so everything in it so far was seen.
   if (state.viewedId && !state.viewedUnsent) drawerApi.markSeen(state.viewedId);
   state.viewedId = null;
@@ -1217,8 +1210,19 @@ function openDraft(opts = {}) {
 // Creates the real chat for the first message. The draft view is already on screen, so this only adds the session and
 // its id; the composer keeps what the person typed. RPC errors are thrown to the caller.
 async function openFreshChat() {
-  const created = await rpc("session.create", modelUi.createParams());
-  modelUi.setInfo(created.info);
+  const epoch = draftEpoch;
+  const isCurrent = () => epoch === draftEpoch && state.viewedUnsent && !state.liveSid;
+  const created = await rpc("session.create", modelUi.draftCreateParams());
+  let selected;
+  try {
+    if (!isCurrent()) return false;
+    selected = await modelUi.applyDraftModel(created.session_id, isCurrent);
+    if (!selected || !isCurrent()) return false;
+  } finally {
+    if (!selected || !isCurrent()) void rpc("session.close", { session_id: created.session_id }).catch(() => {});
+  }
+  modelUi.resetDraft();
+  modelUi.setInfo({ ...created.info, ...selected });
   state.viewedId = created.stored_session_id;
   state.viewedUnsent = true;
   state.storedId = created.stored_session_id;
@@ -1226,9 +1230,10 @@ async function openFreshChat() {
   state.viewedTitle = "";
   state.ready = true;
   await registerNewChat(created.stored_session_id);
+  if (epoch !== draftEpoch || state.liveSid !== created.session_id) return false;
   persistView();
   updateCaption();
-  void modelUi.afterCreate();
+  return true;
 }
 
 // A New chat has no server id now: on boot or a reconnect it is simply a fresh draft.
@@ -1310,7 +1315,6 @@ async function attachHome(fresh) {
   let pendingConnection = null;
   let inflight = null;
   let messageCount = 0;
-  let startedAt = fresh ? Infinity : 0;
   if (!fresh) {
     try {
       const resumed = await rpc("session.resume", { session_id: state.homeId });
@@ -1321,7 +1325,6 @@ async function attachHome(fresh) {
       pendingConnection = resumed.pending_connection || null;
       inflight = resumed.inflight || null;
       messageCount = Number(resumed.message_count) || 0;
-      startedAt = Number(resumed.started_at) || 0;
     } catch (error) {
       if (!/not found/i.test(errorText(error))) throw error;
       // The stored home thread no longer exists on the server: start a fresh one.
@@ -1330,7 +1333,6 @@ async function attachHome(fresh) {
       return attachThread();
     }
   }
-  state.homeStartedAt = startedAt;
   state.storedId = state.homeId;
   state.viewedTitle = "";
   setReadOnly(false);
@@ -1667,9 +1669,6 @@ async function resetMainChat(item) {
       clearComposer(); // the old main chat's draft, attachments and pastes go with it
     }
     clearLog(); // the deleted chat's messages must never be shown again, even if the create fails below
-    cancelGatewayLineTimers();
-    state.gatewaySeenTs = 0;
-    state.homeStartedAt = 0;
     setEmptyState(false);
     for (const id of [...state.cards.keys()]) removeCard(id);
     persistView();
@@ -1745,12 +1744,7 @@ function belongsToView(params) {
 const HISTORY_PAGE = 500;
 const older = { sid: null, offset: 0, minId: Infinity, done: true, busy: false, gen: 0 };
 
-function renderHistoryEntries(messages, gatewayEvents = [], { isOldestPage = false } = {}) {
-  // Gateway stops and starts (main chat only) go in by time, between the rows around them.
-  const pendingEvents = gatewayEvents.slice().sort((a, b) => a.ts - b.ts);
-  const flushEvents = (upTo) => {
-    while (pendingEvents.length && pendingEvents[0].ts <= upTo) addGatewayLine(pendingEvents.shift());
-  };
+function renderHistoryEntries(messages, { isOldestPage = false } = {}) {
   const rawEntries = chatEntries(messages, { notices: true });
   const prepared = rawEntries.map((entry) => ({
     ...entry,
@@ -1760,7 +1754,6 @@ function renderHistoryEntries(messages, gatewayEvents = [], { isOldestPage = fal
   }));
   activity.renderHistoryTrees(state.storedId, prepared, (entry) => {
     const { message, text, images, files, kind, clarify, skill, ts, rowId } = entry;
-    if (ts) flushEvents(ts);
     if (kind === "clarify") {
       addResolvedClarify(clarify);
       return;
@@ -1781,60 +1774,6 @@ function renderHistoryEntries(messages, gatewayEvents = [], { isOldestPage = fal
     else if (kind === "job") addJobBubble(text, meta);
     else addAssistantBubble(text, meta);
   }, { isOldestPage });
-  flushEvents(Infinity);
-}
-
-// ---------- gateway restart lines (main chat only) ----------
-// bridge.py records each gateway stop ("down") and start ("up"); the main chat shows them as small centred lines,
-// "<agent> is restarting · 8:41 PM" and "<agent> is back · 8:41 PM" (the person, 15 Nov 2026). They are never chat
-// messages: the model does not see them, and they reach neither the Inbox nor a notification.
-const GATEWAY_EVENTS_ROUTE = "/api/plugins/hermes-mini/gateway-events";
-
-function viewingHome() {
-  return Boolean(state.viewedId) && state.viewedId === state.homeId && !state.viewedUnsent;
-}
-
-async function fetchGatewayEvents() {
-  try {
-    const data = await api(GATEWAY_EVENTS_ROUTE);
-    return Array.isArray(data.events) ? data.events.filter((e) => e && Number.isFinite(e.ts) && (e.kind === "down" || e.kind === "up")) : [];
-  } catch {
-    return []; // an older dashboard without the route, or the dashboard restarting too: no lines, nothing breaks
-  }
-}
-
-function gatewayLineText(event) {
-  const when = messageTimeLabel(event.ts);
-  return `${AGENT} ${event.kind === "down" ? "is restarting" : "is back"}${when ? ` · ${when}` : ""}`;
-}
-
-function addGatewayLine(event) {
-  const row = addFailLine(gatewayLineText(event));
-  row.classList.add("gateway-line");
-  state.gatewaySeenTs = Math.max(state.gatewaySeenTs || 0, event.ts);
-  return row;
-}
-
-// Live: the connection drops when the gateway stops and comes back when it is up again. Each time, any stop or start
-// recorded since the last line drawn goes at the end of the main chat. The gateway may write its line a moment after
-// the socket changes, so it looks again after a short wait.
-let gatewayLineTimers = [];
-function cancelGatewayLineTimers() {
-  for (const timer of gatewayLineTimers) clearTimeout(timer);
-  gatewayLineTimers = [];
-}
-function showNewGatewayEvents() {
-  cancelGatewayLineTimers();
-  gatewayLineTimers = [0, 3000, 10000].map((delay) => setTimeout(async () => {
-    if (!viewingHome()) return;
-    const viewed = state.viewedId;
-    const fresh = (await fetchGatewayEvents()).filter((e) => e.ts > (state.gatewaySeenTs || 0));
-    if (!fresh.length || state.viewedId !== viewed || !viewingHome()) return;
-    const stick = nearBottom();
-    for (const event of fresh.sort((a, b) => a.ts - b.ts)) addGatewayLine(event);
-    setEmptyState(false);
-    if (stick) scrollToBottom(true);
-  }, delay));
 }
 
 function lowestRowId(messages) {
@@ -1846,8 +1785,6 @@ function lowestRowId(messages) {
 async function loadHistory(messageCount = null) {
   // An empty thread has no transcript to fetch (the REST page 404s until its first message).
   let data = { messages: [] };
-  const home = viewingHome();
-  const eventsLoad = home ? fetchGatewayEvents() : Promise.resolve([]);
   const sid = !state.viewedUnsent ? state.storedId : null;
   const activityLoad = sid ? activity.loadSessionTrees(sid) : Promise.resolve([]);
   if (messageCount !== 0 && sid) {
@@ -1859,7 +1796,6 @@ async function loadHistory(messageCount = null) {
   } else {
     await activityLoad;
   }
-  const gatewayEvents = await eventsLoad;
   state.turn = null;
   clearLog({ keepDictation: true });
   const rows = data.messages || [];
@@ -1870,11 +1806,7 @@ async function loadHistory(messageCount = null) {
   older.minId = lowestRowId(rows);
   older.done = rows.length === 0;
   older.busy = false;
-  // Only the stops and starts this page covers: an empty main chat starts clean (nothing recorded before this chat
-  // existed), and older pages carry no lines.
-  const pageStart = rows.length ? Math.min(...rows.map((m) => Number(m.timestamp) || Infinity)) : (state.homeStartedAt || Infinity);
-  state.gatewaySeenTs = gatewayEvents.reduce((high, e) => Math.max(high, e.ts), 0);
-  renderHistoryEntries(rows, gatewayEvents.filter((e) => e.ts >= pageStart), { isOldestPage: rows.length < HISTORY_PAGE });
+  renderHistoryEntries(rows, { isOldestPage: rows.length < HISTORY_PAGE });
   // A chat opens at its newest message, so that is the one seen first (Inbox read tracker, the person, 8 Nov 2026). A deep
   // link lands on its own message instead; the visible-row observer marks that one.
   if (!pendingTarget) markInboxNewest();
@@ -1918,7 +1850,7 @@ async function loadOlder() {
     const prevHeight = els.log.scrollHeight;
     const prevTop = els.log.scrollTop;
     const marker = els.log.lastChild;
-    renderHistoryEntries(rows, [], { isOldestPage });
+    renderHistoryEntries(rows, { isOldestPage });
     // The render appended at the end; move the new nodes to the top, just under the hidden greeting.
     const added = [];
     for (let node = marker ? marker.nextSibling : els.log.firstChild; node; node = node.nextSibling) added.push(node);
@@ -2217,7 +2149,6 @@ async function reconnect() {
     state.backoffIdx = 0;
     noteOnline();
     setStatus("");
-    showNewGatewayEvents(); // the gateway back: its "back" line
     refreshDockedDrawer(); // the home thread may have just been adopted: the docked list needs its home row
   } catch (error) {
     if (error instanceof AuthRedirect) return;
@@ -5929,10 +5860,15 @@ async function send() {
     // A New chat is a draft: the first message is what creates the real chat.
     state.sending = true;
     try {
-      await openFreshChat();
+      if (!await openFreshChat()) {
+        state.sending = false;
+        updateComposer();
+        return;
+      }
     } catch (error) {
       state.sending = false;
-      sysLine(`Could not start the chat: ${errorText(error)}`);
+      updateComposer();
+      showPersistentToast("Couldn’t start the chat.", { detail: errorText(error) });
       return;
     }
   }
@@ -6322,13 +6258,28 @@ function insertDictatedText(rawText) {
   els.input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function dictationFailure(result) {
+  switch (result?.code) {
+    case "no_provider": return "Dictation needs a speech service. Set one up in Hermes.";
+    case "auth": return "Dictation couldn’t connect to the speech service. Check its setup in Hermes.";
+    case "rate_limit": return "The speech service is busy. Try again in a moment.";
+    case "too_large": return "That recording was too large. Try a shorter one.";
+    case "timeout": return "Transcription timed out. Try again.";
+    default: return "Couldn’t transcribe the recording. Try again.";
+  }
+}
+
 async function startDictation() {
   if (!isDictationSupported()) {
-    showToast("Microphone recording is not supported in this browser.", "error");
+    showPersistentToast("This browser doesn’t support dictation.");
     return;
   }
   if (state.dictating || state.transcribing || state.resettingMain || state.composerLocked) return;
   if (cardDictation) return; // a question card's mic is recording or transcribing
+  const sid = state.liveSid;
+  const reportError = (message) => {
+    if (sid === state.liveSid) showPersistentToast(message);
+  };
   captureDictationCaret();
   dictationDiscarded = false;
   dictationSendAfter = false;
@@ -6337,7 +6288,7 @@ async function startDictation() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch {
-    showToast("Microphone access denied or unavailable.", "error");
+    reportError("Couldn’t access the microphone. Check this site’s microphone permission and try again.");
     return;
   }
 
@@ -6357,7 +6308,7 @@ async function startDictation() {
     dictationRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
   } catch {
     releaseDictationMedia();
-    showToast("Could not start audio recorder.", "error");
+    reportError("Couldn’t start recording. Try again.");
     return;
   }
 
@@ -6409,8 +6360,7 @@ async function startDictation() {
       syncDictationUi();
 
       if (!res || res.ok === false) {
-        const msg = (res && res.error) || "Dictation failed.";
-        showToast(msg, "error");
+        reportError(dictationFailure(res));
         return;
       }
 
@@ -6433,7 +6383,7 @@ async function startDictation() {
     } catch (err) {
       state.transcribing = false;
       syncDictationUi();
-      showToast(`Dictation failed: ${errorText(err)}`, "error");
+      if (!(err instanceof AuthRedirect)) reportError(dictationFailure());
     }
   });
 
@@ -6589,7 +6539,7 @@ function syncCardMic(ui, mode) {
 
 async function startCardDictation(ui) {
   if (cardDictation || state.dictating || state.transcribing) {
-    showToast("Finish the other dictation first.", "error");
+    showPersistentToast("Finish the other dictation first.");
     return;
   }
   const { input } = ui;
@@ -6607,7 +6557,7 @@ async function startCardDictation(ui) {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch {
     cardDictation = null;
-    showToast("Microphone access denied or unavailable.", "error");
+    showPersistentToast("Couldn’t access the microphone. Check this site’s microphone permission and try again.");
     return;
   }
   session.stream = stream;
@@ -6619,7 +6569,7 @@ async function startCardDictation(ui) {
     session.recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
   } catch {
     releaseCardDictation(session);
-    showToast("Could not start audio recorder.", "error");
+    showPersistentToast("Couldn’t start recording. Try again.");
     return;
   }
   session.recorder.addEventListener("dataavailable", (event) => {
@@ -6737,7 +6687,7 @@ async function finishCardDictation(session, mimeType) {
       body: blob,
     });
     if (!res || res.ok === false) {
-      showToast((res && res.error) || "Dictation failed.", "error");
+      if (ui.input.isConnected) showPersistentToast(dictationFailure(res));
     } else {
       const text = String(res.text || "").trim();
       if (text && ui.input.isConnected) {
@@ -6753,7 +6703,7 @@ async function finishCardDictation(session, mimeType) {
       }
     }
   } catch (err) {
-    if (!(err instanceof AuthRedirect)) showToast(`Dictation failed: ${errorText(err)}`, "error");
+    if (!(err instanceof AuthRedirect) && ui.input.isConnected) showPersistentToast(dictationFailure());
   } finally {
     releaseCardDictation(session);
   }
@@ -7648,13 +7598,6 @@ if (restartBtn) {
     try {
       const res = await api("/api/plugins/hermes-mini/gateway/restart", { method: "POST" });
       showRestartNotice();
-      // The "restarting" line goes into the main chat at once: the server recorded it before anything stops.
-      if (res.event && viewingHome() && Number.isFinite(res.event.ts) && res.event.ts > (state.gatewaySeenTs || 0)) {
-        const stick = nearBottom();
-        addGatewayLine(res.event);
-        setEmptyState(false);
-        if (stick) scrollToBottom(true);
-      }
       // The button restarts the gateway and then the dashboard (plugin_api.py _restart_all_command): done when both report a
       // new pid AND this app is attached to the new gateway. Reads fail while the dashboard is down; the loop just
       // waits. The pill stays up for the whole loop.
@@ -7676,7 +7619,6 @@ if (restartBtn) {
         }
       }
       hideRestartNotice();
-      if (back) showNewGatewayEvents(); // and its "back" line
       showToast(back ? "Restarted" : "Restart didn't finish", back ? "success" : "error");
     } catch (error) {
       hideRestartNotice();

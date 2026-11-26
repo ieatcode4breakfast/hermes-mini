@@ -1,20 +1,22 @@
-// Model picker: a tab on the input box's top edge and a bottom sheet behind it. Everything here is a restyle
+// Model picker: a control on the message card and a bottom sheet behind it. Everything here is a restyle
 // of Hermes's own gateway methods; the app keeps no model state of its own beyond what the open chat reports.
 //   model.options {session_id?, include_unconfigured?, refresh?}  providers, their models, prices and capabilities
 //   config.set {session_id, key:"model", value:"<model> --provider <slug>[ --global]", confirm_expensive_model?}
 //       -> {value, confirm_required, confirm_message, deferred?}  (a switch during a reply is queued for the next turn)
 //   config.set {session_id, key:"reasoning", value:"none|low|medium|high|xhigh|max"}  and  {key:"fast", value:"on|off"}
 //   model.save_key {slug, api_key} -> {provider}   model.disconnect {slug}
-//   session.create {model, provider, reasoning_effort}  a New chat's pick is sent as create overrides (app.js asks
-//       createParams() when it makes the session), the same per-session route the Hermes composer uses.
+//   A draft starts on the current default, then uses the same guarded config.set as an existing chat.
 // The chip reads `info` from session.create/session.resume results and from session.info events.
 // API keys are only ever held in the password field until Save; nothing here touches browser storage.
 
-import { openPopover, closePopover } from "./toast.js";
+import { openPopover, closePopover, showPersistentToast } from "./toast.js";
 import { displayModelName } from "./model-name.js";
 
 const EFFORTS = [["none", "Off"], ["low", "Low"], ["medium", "Med"], ["high", "High"], ["xhigh", "XHigh"], ["max", "Max"]];
 const LONG_PRESS_MS = 550;
+const NOUS_SIGN_IN = "Sign in to Nous Portal in Hermes.";
+// Same model families Hermes warns about. The gateway supplies any additional warnings after switching.
+const HERMES_CHAT_MODEL = /(?:^|[/:])hermes[-_ ]?[34](?:[-_.:]|$)/i;
 
 function node(tag, className, text) {
   const n = document.createElement(tag);
@@ -46,35 +48,66 @@ function errorText(error) {
   return (error && (error.message || String(error))) || "Something went wrong";
 }
 
-export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog, showToast, chip }) {
-  const info = { model: "", provider: "", reasoning: "", fast: false, pending: "" };
+function displaySwitchWarning(message) {
+  // Rewrite the two known gateway blocks. Keep other warnings and fall back to the server text if its format changes.
+  return message
+    .replace(/^!!! EXPENSIVE MODEL WARNING !!!$[\s\S]*?^Confirm only if you intend to use this model\.$/gm, (block) => {
+      const input = block.match(/^Input tokens: (.+)$/m)?.[1];
+      const output = block.match(/^Output tokens: (.+)$/m)?.[1];
+      if (!input || !output) return block;
+      const rate = (value) => value.replace(/\/M$/, " per million tokens");
+      const suggestion = block.includes("did you mean to select openai/gpt-5.5?")
+        ? "\n\nIf you meant to pick GPT-5.5, cancel and select it from the list."
+        : "";
+      return `This model is expensive to use.\n\nInput (what the model reads): ${rate(input)}\nOutput (what it generates): ${rate(output)}${suggestion}`;
+    })
+    .replace(/^!!! LARGE CONTEXT MODEL SWITCH !!!$[\s\S]*?^Confirm only if you intend to switch now\.$/gm, (block) => {
+      const tokens = block.match(/^This session holds ~([\d,]+) tokens of context\.$/m)?.[1];
+      if (!tokens) return block;
+      return `This chat has about ${tokens} tokens of history. After you switch, the model reads that history again. Your provider charges its full input rate for that history on the next reply.`;
+    });
+}
+
+export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDialog, showToast, chip }) {
+  const info = { model: "", provider: "", reasoning: "", fast: false };
+  let pendingPick = null;
   let settled = false;
-  let draftPick = null; // { model, provider, global } chosen on a New chat, sent with session.create
+  let draftPick = null;
   let draftEffort = "";
   let options = null; // last model.options payload
   let loading = null;
   let sheet = null;
   let parts = null;
+  let view = 0;
+  let picking = false;
+  function pickerError(viewAtStart, message, error) {
+    if (viewAtStart === view) showPersistentToast(message, { detail: errorText(error) });
+  }
 
   // ---------- chip ----------
 
+  function selectedModel() {
+    if (isDraft() && draftPick) return draftPick;
+    if (pendingPick?.sid === getSid()) return pendingPick;
+    return info;
+  }
+
   // previewEffort: the slider's level while it is being dragged, shown in the title line before it is sent.
   function paintChip(previewEffort) {
-    const model = draftPick && isDraft() ? draftPick.model : info.model;
+    const { model } = selectedModel();
     const effort = previewEffort || (isDraft() && draftEffort ? draftEffort : info.reasoning);
     if (parts) parts.current.textContent = [shortModel(model), effortLabel(effort), info.fast ? "Fast" : ""].filter(Boolean).join(" · ");
     if (!chip) return;
-    chip.hidden = !settled && !model && !info.pending;
+    chip.hidden = !settled && !model;
     const name = chip.querySelector(".model-tab-name");
-    if (name) name.textContent = info.pending ? `→ ${shortModel(info.pending)}` : shortModel(model) || "Model";
+    if (name) name.textContent = shortModel(model) || "Model";
     const meta = chip.querySelector(".model-tab-meta");
     if (meta) {
-      const bits = info.pending ? ["after this reply"] : [effortLabel(effort), info.fast ? "⚡" : ""].filter(Boolean);
+      const bits = [effortLabel(effort), info.fast ? "⚡" : ""].filter(Boolean);
       meta.textContent = bits.join(" ");
       meta.hidden = !bits.length;
     }
-    chip.setAttribute("aria-label", `Model: ${shortModel(model) || "default"}${effort ? `, reasoning ${effortLabel(effort)}` : ""}${
-      info.pending ? `; switching to ${shortModel(info.pending)} after this reply` : ""}`);
+    chip.setAttribute("aria-label", `Model: ${shortModel(model) || "default"}${effort ? `, reasoning ${effortLabel(effort)}` : ""}`);
   }
 
   // session.info payload (event or create/resume result). Lazy infos carry only model/provider.
@@ -82,20 +115,19 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     if (!payload || typeof payload !== "object") return;
     if ("model" in payload) settled = true;
     if (typeof payload.model === "string" && payload.model) {
-      if (info.pending && payload.model === info.pending && !payload.running) info.pending = "";
       info.model = payload.model;
     }
     if (typeof payload.provider === "string" && payload.provider) info.provider = payload.provider;
     if (typeof payload.reasoning_effort === "string") info.reasoning = payload.reasoning_effort;
     if (typeof payload.fast === "boolean") info.fast = payload.fast;
-    if (payload.running === false) info.pending = "";
+    if (pendingPick?.sid !== getSid() || payload.running === false) pendingPick = null;
     paintChip();
     if (sheet && sheet.classList.contains("open")) renderList();
   }
 
   // A New chat on screen: show the profile default (or the pick already made for this draft).
   async function showDraft() {
-    info.pending = "";
+    pendingPick = null;
     info.fast = false;
     try {
       const payload = await loadOptions(false);
@@ -115,29 +147,37 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     draftEffort = "";
   }
 
-  // session.create overrides for a New chat's first message.
-  function createParams() {
-    const params = {};
-    if (draftPick) {
-      params.model = draftPick.model;
-      if (draftPick.provider) params.provider = draftPick.provider;
-    }
-    if (draftEffort) params.reasoning_effort = draftEffort;
-    return params;
+  function draftCreateParams() {
+    return draftEffort ? { reasoning_effort: draftEffort } : {};
   }
 
-  // After session.create for a draft: a "make default" pick still has to be written to config.
-  async function afterCreate() {
+  async function applyDraftModel(sid, isCurrent) {
     const pick = draftPick;
-    resetDraft();
-    if (pick && pick.global) await switchModel(pick.model, pick.provider, true).catch(() => {});
+    if (!pick) return {};
+    const stillDraft = () => isCurrent() && draftPick === pick;
+
+    // This read waits for Hermes's agent build. A switch with an explicit provider can otherwise race a cold build.
+    try {
+      await rpc("approval.pending", { session_id: sid }, 35000);
+    } catch (error) {
+      // Hermes’s guarded switch can recover a failed default model once initialization has settled.
+      if (error.code !== 5032 || /still starting/i.test(error.message)) throw error;
+    }
+    if (!stillDraft()) return null;
+    const result = await requestModelSwitch(pick.model, pick.provider, sid, stillDraft);
+    if (!result) return null;
+    if (result.deferred || !result.value) throw new Error("Hermes hasn’t switched to the selected model yet.");
+    const warning = extraWarning(result, HERMES_CHAT_MODEL.test(pick.model));
+    if (warning) showPersistentToast("Model switched with a warning.", { detail: warning, tone: "neutral" });
+    return { model: result.value, provider: pick.provider };
   }
 
   // ---------- data ----------
 
   function loadOptions(refresh, includeUnconfigured = false) {
     const sid = isDraft() ? "" : getSid();
-    const params = {};
+    // Use Hermes’s explicitly configured inventory for both the picker and setup list.
+    const params = { explicit_only: true };
     if (sid) params.session_id = sid;
     if (refresh) params.refresh = true;
     if (includeUnconfigured) params.include_unconfigured = true;
@@ -162,60 +202,103 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
 
   // ---------- switching ----------
 
-  async function switchModel(model, provider, global, confirmed = false) {
-    const sid = getSid();
-    let value = provider ? `${model} --provider ${provider}` : model;
-    if (global) value += " --global";
-    const params = { session_id: sid, key: "model", value };
+  function extraWarning(result, compatibilityShown) {
+    return String(result?.warning || "").split(" | ").filter((text) =>
+      !compatibilityShown || !text.startsWith("Nous Research Hermes 3 & 4 models are NOT agentic")
+    ).join(" | ");
+  }
+
+  async function requestModelSwitch(model, provider, sid, isCurrent, confirmed = false) {
+    const selection = provider ? `${model} --provider ${provider}` : model;
+    const params = { session_id: sid, key: "model", value: `${selection} --global` };
     if (confirmed) params.confirm_expensive_model = true;
     const result = (await rpc("config.set", params, 60000)) || {};
-    if (result.confirm_required) {
-      const ok = await confirmDialog({
-        title: "Switch model?",
-        message: result.confirm_message || result.warning || "This model costs more than usual.",
-        confirmLabel: "Switch",
-      });
-      if (!ok) return false;
-      return switchModel(model, provider, global, true);
-    }
+    if (!isCurrent()) return null;
+    if (!result.confirm_required) return result;
+
+    if (confirmed) throw new Error("Hermes didn’t accept the confirmation.");
+    const warning = result.confirm_message || result.warning || "Switching models may increase the cost of this chat.";
+    const ok = await confirmDialog({
+      title: "Switch model?",
+      message: displaySwitchWarning(warning),
+      confirmLabel: "Switch",
+    });
+    if (!ok || !isCurrent()) return null;
+    return requestModelSwitch(model, provider, sid, isCurrent, true);
+  }
+
+  async function switchModel(model, provider) {
+    const sid = getSid();
+    const pickerView = view;
+    const result = await requestModelSwitch(model, provider, sid, () => sid === getSid() && pickerView === view);
+    if (!result) return null;
     if (result.deferred) {
-      info.pending = model;
+      pendingPick = { model, provider, sid };
     } else {
       info.model = String(result.value || model);
       if (provider) info.provider = provider;
-      info.pending = "";
+      pendingPick = null;
     }
-    if (result.warning && !result.confirm_required) showToast(String(result.warning));
     paintChip();
-    return true;
+    return result;
   }
 
   async function pickModel(model, provider) {
-    // Whatever is picked also becomes the default for new chats (--global), like `/model --global`.
-    const global = true;
-    if (isDraft()) {
-      draftPick = { model, provider, global };
-      info.model = model;
-      info.provider = provider;
-      paintChip();
-      close();
-      return;
-    }
-    if (!getSid()) {
-      showToast("Not connected", "error");
-      return;
-    }
+    if (picking) return;
+    const viewAtStart = view;
+    const sid = getSid();
+    const draft = isDraft();
+    const compatibilityWarning = HERMES_CHAT_MODEL.test(model);
+    picking = true;
     try {
-      if (await switchModel(model, provider, global)) {
-        // Silent on success: the tab shows the new model (or "→ X after this reply" when queued).
+      if (compatibilityWarning) {
+        const ok = await confirmDialog({
+          title: "Switch to this model?",
+          message: "Hermes 3 and 4 are chat models. They don’t support the tool calls Hermes Agent needs for tasks.",
+          confirmLabel: "Switch",
+        });
+        if (!ok || viewAtStart !== view || draft !== isDraft() || sid !== getSid()) return;
+      }
+      if (draft) {
+        draftPick = { model, provider };
+        info.model = model;
+        info.provider = provider;
+        paintChip();
+        close();
+        return;
+      }
+      if (!sid) {
+        showPersistentToast("The chat isn’t connected yet. Try again when it reconnects.");
+        return;
+      }
+      const result = await switchModel(model, provider);
+      if (!result || viewAtStart !== view) return;
+      const warning = extraWarning(result, compatibilityWarning);
+      if (warning) {
+        showPersistentToast("Model switched with a warning.", { detail: warning, tone: "neutral" });
+      } else {
         close();
       }
     } catch (error) {
-      showToast(errorText(error), "error");
+      if (draft !== isDraft() || sid !== getSid()) return;
+      const detail = errorText(error);
+      const name = (options?.providers || []).find((row) => row.slug === provider)?.name || "This provider";
+      if (/is not connected: no API key or login/i.test(detail)) {
+        if (provider === "nous") {
+          if (viewAtStart === view) showPersistentToast(NOUS_SIGN_IN, { detail: detail.split(/\bDetails:\s*/, 2)[1] });
+        } else {
+          pickerError(viewAtStart, `${name} isn’t connected. Open Providers to set it up.`, error);
+        }
+      } else {
+        pickerError(viewAtStart, "Couldn’t switch models. Try again or choose another model.", error);
+      }
+    } finally {
+      picking = false;
     }
   }
 
   async function setEffort(word) {
+    const viewAtStart = view;
     if (isDraft()) {
       draftEffort = word;
       paintChip();
@@ -228,17 +311,20 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
       paintChip();
       renderControls();
     } catch (error) {
-      showToast(errorText(error), "error");
+      pickerError(viewAtStart, "Couldn’t change the reasoning level.", error);
+      paintChip();
+      renderControls();
     }
   }
 
   async function setFast(on) {
+    const viewAtStart = view;
     try {
       const result = await rpc("config.set", { session_id: getSid(), key: "fast", value: on ? "on" : "off" });
       info.fast = String(result?.value || "") === "fast" || String(result?.value || "") === "ultrafast";
       paintChip();
     } catch (error) {
-      showToast(errorText(error), "error");
+      pickerError(viewAtStart, "Couldn’t change Fast mode.", error);
     }
     renderControls();
   }
@@ -385,6 +471,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
   }
 
   function showPane(which) {
+    view += 1;
     const adding = which === "add";
     parts.pick.hidden = adding;
     parts.addPane.hidden = !adding;
@@ -441,7 +528,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
       return;
     }
     const query = parts.search.value.trim().toLowerCase();
-    const current = isDraft() && draftPick ? draftPick : { model: info.model, provider: info.provider };
+    const current = selectedModel();
     const ordered = [...rows].sort((a, b) => Number(b.slug === current.provider) - Number(a.slug === current.provider));
     for (const row of ordered) {
       // The search matches the id, the friendly name, or the provider.
@@ -490,11 +577,12 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
   }
 
   async function reload(refresh) {
+    const viewAtStart = view;
     if (refresh) parts.refresh.classList.add("spin");
     try {
       await loadOptions(refresh);
     } catch (error) {
-      showToast(errorText(error), "error");
+      pickerError(viewAtStart, "Couldn’t load models. Use Refresh models to try again.", error);
     } finally {
       parts.refresh.classList.remove("spin");
     }
@@ -502,33 +590,40 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
   }
 
   async function disconnect(row) {
+    const viewAtStart = view;
     const ok = await confirmDialog({
       title: `Disconnect ${row.name || row.slug}?`,
       message: "Hermes removes this provider's saved credentials. Chats using it stop working until it is added again.",
       confirmLabel: "Disconnect",
       danger: true,
     });
-    if (!ok) return;
+    if (!ok || viewAtStart !== view) return;
     try {
       await rpc("model.disconnect", { slug: row.slug });
       showToast("Disconnected", "success");
       await reload(false);
     } catch (error) {
-      showToast(errorText(error), "error");
+      pickerError(viewAtStart, "Couldn’t disconnect the provider.", error);
     }
   }
 
   async function openAdd() {
     showPane("add");
+    const viewAtStart = view;
     const pane = parts.addPane;
     pane.replaceChildren(node("p", "model-empty", "Loading…"));
-    let payload;
+    let payload, keyFields;
     try {
-      payload = await loadOptions(false, true);
+      [payload, keyFields] = await Promise.all([
+        loadOptions(false, true),
+        api("/api/plugins/hermes-mini/provider-key-fields").catch(() => null),
+      ]);
     } catch (error) {
-      pane.replaceChildren(node("p", "model-empty", errorText(error)));
+      if (viewAtStart === view) pane.replaceChildren();
+      pickerError(viewAtStart, "Couldn’t load providers. Go back and try again.", error);
       return;
     }
+    if (viewAtStart !== view) return;
     pane.replaceChildren();
     const search = node("input", "model-search");
     search.type = "search";
@@ -542,7 +637,7 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
       cards.append(node("p", "model-empty", "Hermes lists no providers."));
       return;
     }
-    const all = rows.map((row) => ({ row, card: providerCard(row) }));
+    const all = rows.map((row) => ({ row, card: providerCard(row, keyFields?.providers) }));
     const none = node("p", "model-empty", "No providers match.");
     const filter = () => {
       const query = search.value.trim().toLowerCase();
@@ -553,12 +648,12 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     filter();
   }
 
-  function providerCard(row) {
+  function providerCard(row, keyFields) {
     const card = node("section", "model-group provider-card");
     const header = node("button", "model-provider");
     header.type = "button";
     header.append(node("span", "model-provider-name", row.name || row.slug));
-    const connected = row.authenticated !== false;
+    const connected = row.authenticated === true;
     if (connected) header.append(node("span", "provider-connected", row.is_current ? "· In use" : "· Connected"));
     const body = node("div", "provider-body");
     header.addEventListener("click", () => {
@@ -567,9 +662,11 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
       if (next) body.querySelector("input")?.focus();
     });
     const custom = isCustomProvider(row);
-    if (!custom && (row.auth_type === "api_key" || (connected && !row.auth_type))) {
+    const catalogField = keyFields && Object.hasOwn(keyFields, row.slug) ? keyFields[row.slug] : "";
+    const keyField = catalogField || (row.auth_type === "api_key" ? row.key_env : "");
+    if (!custom && keyField && (!row.auth_type || row.auth_type === "api_key")) {
       const form = node("form", "provider-form");
-      const label = node("label", "provider-label", connected ? `${row.key_env || "API key"} · a key is already saved` : row.key_env || "API key");
+      const label = node("label", "provider-label", connected ? "A key is already saved" : keyField);
       const input = node("input", "provider-key");
       input.type = "password";
       input.autocomplete = "off";
@@ -586,13 +683,14 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
         input.value = ""; // the key leaves the page in this one request and is not kept anywhere
         if (!key) return;
         save.disabled = true;
+        const viewAtStart = view;
         try {
           await rpc("model.save_key", { slug: row.slug, api_key: key }, 60000);
           showToast(`${row.name || row.slug} ${connected ? "updated" : "added"}`, "success");
-          showPane("pick");
+          if (viewAtStart === view) showPane("pick");
           await reload(false);
         } catch (error) {
-          showToast(errorText(error), "error");
+          pickerError(viewAtStart, "Couldn’t save the provider key. Check it and try again.", error);
         } finally {
           save.disabled = false;
         }
@@ -612,17 +710,18 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
     return Boolean(row.is_user_defined) || slug === "custom" || slug.startsWith("custom:");
   }
 
-  // The note for a provider the app cannot connect: one that signs in with an account (OAuth, AWS, Vertex) or a
-  // custom endpoint. Hermes' own hint is written for its terminal ("run `hermes model` to configure
-  // (oauth_external)") and is never shown; `hermes model` is Hermes' setup menu and connects every provider.
+  // Hermes handles setup for custom endpoints and providers without a declared API-key method.
   function setupNote(row, custom, connected) {
     const name = row.name || row.slug;
     const note = node("div", "provider-note");
-    note.append(node("p", "provider-note-title", custom ? "Set up in Hermes" : "Connect this one on your computer"));
+    const oauth = String(row.auth_type || "").startsWith("oauth");
+    const title = row.slug === "nous" && !connected ? NOUS_SIGN_IN : "Manage in Hermes";
+    note.append(node("p", "provider-note-title", title));
     let text;
     if (custom && connected) text = `${name} is your own endpoint. Change its address or key on the computer that runs Hermes: run`;
     else if (custom) text = "Use your own OpenAI-compatible endpoint. Add it on the computer that runs Hermes: run";
-    else text = `${name} signs in with your account, not a key. On the computer that runs Hermes, run`;
+    else if (!connected && (oauth || row.slug === "nous")) text = "On the computer that runs Hermes, sign in through the provider setup menu. Run";
+    else text = "On the computer that runs Hermes, open the provider setup menu. Run";
     const line = node("p", "provider-note-text", `${text} `);
     const command = node("button", "provider-command", "hermes model");
     command.type = "button";
@@ -669,5 +768,5 @@ export function createModelPicker({ rpc, getSid, isDraft, isBusy, confirmDialog,
   chip?.addEventListener("click", () => void open());
   paintChip();
 
-  return { setInfo, showDraft, resetDraft, createParams, afterCreate, close, isBusy };
+  return { setInfo, showDraft, resetDraft, draftCreateParams, applyDraftModel, close, isBusy };
 }

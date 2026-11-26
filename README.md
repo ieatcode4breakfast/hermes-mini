@@ -239,11 +239,15 @@ there is no reply to show.
 - **Model and provider picker**: a two-row message card keeps the `+` button, input field, dictation, and Send on
   the top row, and places a transparent control bar underneath inside the card. Aligned at the bottom right sits
   the model picker showing the chat's model and reasoning level. Friendly names are used throughout — the
-  button, the sheet, the picker and the "Switched to" line read "DeepSeek v4.1 Flash" instead of the raw model id.
-  The sheet lists Hermes's connected providers and their models (search, prices where Hermes has them), with a
+  button, sheet, and picker read "DeepSeek v4.1 Flash" instead of the raw model id.
+  The sheet lists providers Hermes recognizes as explicitly configured and their models (search, prices where Hermes has them), with a
   five-bar reasoning level meter and fast mode where the model supports it; a pick switches the chat and becomes
-  the default for new chats. **Providers +** can add or update a provider's API key through Hermes. On the bottom
-  left of that same bar sits the **Approval mode** button showing neutral **`Approvals:`** text followed by a
+  the default for new chats. Model and provider errors appear as compact toasts with **Details** and stay until dismissed with **×**.
+  Before switching, the picker explains unusually high model prices, the cost of rereading a long chat, or the
+  limits of Hermes 3 or 4 chat models when relevant. **Providers +** can add or update a provider’s
+  API key when Hermes identifies it as an API-key provider, including replacement after connection. Other providers
+  show setup instructions for Hermes. A new chat waits for model confirmation before sending its first message. Dictation errors appear in dismissible toasts too. On the bottom
+  left of that same bar sits the **Approval mode** button showing neutral **`Approvals`** text followed by a
   status shield icon (turning the icon red without any resting background fill when **Off**): tapping it opens a
   bottom sheet for Hermes's live profile approval mode (**Manual**, **Smart**, **Off**) with plain-English
   descriptions. It asks for confirmation before switching to **Off** (explicit deny rules in Hermes

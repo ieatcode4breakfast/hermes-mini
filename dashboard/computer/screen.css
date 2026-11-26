@@ -454,30 +454,11 @@ body:not(.docked) .bs-title-icon { display: none; }
    larger balances it optically. The button itself stays 32px like the others. */
 .bs-controls #bsKeyboard svg { width: 19px; height: 19px; }
 
-/* Toast (toast.js): a small pill at the bottom centre, above the composer and above the computer pane. It is a
-   top-layer popover, so its layer needs no z-index. */
-.toast {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px);
-  transform: translate(-50%, 10px) scale(0.96); padding: 9px 18px; border-radius: 999px;
-  background: color-mix(in srgb, var(--fg) 84%, var(--bg)); color: var(--bg);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
-  font-size: 15px; font-weight: 500; pointer-events: none;
-  opacity: 0; transition: opacity 180ms var(--ease-out), transform 260ms var(--ease-spring);
-}
-.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
-.toast.success { background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%); color: #fff; }
-.toast.error { background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%); color: #fff; }
-/* The restart pill (app.js): it stays up for the whole restart, above a transient toast so neither covers the other. */
-.toast.restart-toast { bottom: calc(env(safe-area-inset-bottom) + 148px); }
 @media (prefers-reduced-motion: reduce) {
-  .toast, .bs-controls .bs-btn, .bs-lease-group .bs-btn, .bs-overlay .bs-btn { transition: none; }
+  .bs-controls .bs-btn, .bs-lease-group .bs-btn, .bs-overlay .bs-btn { transition: none; }
   .bs-controls .bs-btn:active, .bs-lease-group .bs-btn:active, .bs-overlay .bs-btn:active { transform: none; }
 }
 /* Computers have a real keyboard: no on-screen keyboard button there. */
 @media (hover: hover) and (pointer: fine) {
   .bs-controls #bsKeyboard { display: none; }
 }
-
-/* Toast text is centred, also when a longer message wraps. */
-.toast { text-align: center; }

@@ -4026,6 +4026,20 @@ def _identity_payload() -> dict[str, Any]:
     }
 
 
+@router.get("/provider-key-fields")
+def provider_key_fields():
+    """Expose only the key field names accepted by Hermes's model.save_key."""
+    from hermes_cli.auth import PROVIDER_REGISTRY
+
+    return {
+        "providers": {
+            slug: provider.api_key_env_vars[0]
+            for slug, provider in PROVIDER_REGISTRY.items()
+            if provider.auth_type == "api_key" and provider.api_key_env_vars
+        },
+    }
+
+
 @router.get("/identity")
 async def get_identity():
     """The agent name and picture for this profile. A pure read: creates no file or directory."""

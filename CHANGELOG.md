@@ -27,12 +27,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Model-switch confirmations explain higher prices and long-chat costs in plain English.
+- The model picker uses Hermes’s explicitly configured inventory. **Providers** offers a key field only when Hermes
+  declares API-key support. Nous Portal shows sign-in instructions when disconnected.
+- Model, provider, and dictation errors use compact toasts that stay until dismissed with **×**. Model and
+  provider errors offer expandable details. The picker warns before switching to Hermes 3 or 4 chat models.
+  Short confirmations still disappear automatically.
 - Two-row message composer card and red approvals-off alert (`dashboard/index.html`, `dashboard/style.css`,
   `dashboard/app.js`, `dashboard/approvals.js`, `dashboard/sw.js`):
   - Replaced the top-edge browser-style model/approval tab with an integrated bottom action row inside the composer
     card while keeping `+`, the expanding message box, dictation, and Send on the top row.
-  - Placed neutral **`Approvals:`** text beside the status shield icon on the bottom left (turning only the icon red
-    with no resting background fill when **Off**, and showing a red *"Approvals off"* toast upon disabling) and aligned
+  - Placed neutral **`Approvals`** text beside the status shield icon on the bottom left (turning only the icon red
+    with no resting background fill when **Off**, highlighting only the shield on hover, and showing a red *"Approvals off"* toast upon disabling) and aligned
     the transparent model picker pill on the bottom right.
   - Fixed empty-box voice dictation and transcription so collapsing the placeholder field keeps the composer at its
     normal single-line height instead of wrapping the placeholder vertically.
@@ -55,12 +61,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Removed
 
+- Removed model-switch and gateway-restart announcements from chat. The model picker shows the selected model immediately.
 - Removed the `transform_tool_result` progress-update hook (which appended a forced progress-update directive every
   four minutes or ten tool calls in app chats). Long turns now rely on the opening acknowledgment, live narration
   line, and any interim updates the agent writes naturally. Needs a gateway restart to take effect.
 
 ### Fixed
 
+- Connected API-key providers still offer key replacement. The first message in a new chat waits for the guarded
+  model switch, which leaves the profile’s tool routing alone.
 - Activity-tree audit follow-ups (`dashboard/plugin_api.py`, `dashboard/activity.js`, `dashboard/app.js`, `dashboard/sw.js`):
   - Compaction-safe disconnect recovery collapses compaction copies by display slot and resolves `anchor_after_id` to
     the row the chat actually draws, so a turn interrupted by a mid-run compaction still finds its real reply (and

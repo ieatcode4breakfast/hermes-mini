@@ -602,6 +602,20 @@ class InboxStateTest(InboxDbCase):
         self.assertEqual(self.client.get(f"{self.BASE}/state?ids={ids}").status_code, 200)
 
 
+class ProviderKeyFieldTest(RouteTestCase):
+    def test_returns_only_accepted_key_field_names(self):
+        auth = types.ModuleType("hermes_cli.auth")
+        auth.PROVIDER_REGISTRY = {
+            "keys": types.SimpleNamespace(auth_type="api_key", api_key_env_vars=("FIRST_KEY", "ALIAS_KEY")),
+            "nous": types.SimpleNamespace(auth_type="oauth_device_code", api_key_env_vars=("IGNORED",)),
+            "no-field": types.SimpleNamespace(auth_type="api_key", api_key_env_vars=()),
+        }
+        with mock.patch.dict(sys.modules, {"hermes_cli.auth": auth}):
+            response = self.client.get("/api/plugins/hermes-mini/provider-key-fields")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"providers": {"keys": "FIRST_KEY"}})
+
+
 class IdentityRoutesTest(RouteTestCase):
     def test_get_identity_is_a_pure_read(self):
         before = self.snapshot_tree(self.home)

@@ -1336,14 +1336,17 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   transform: translate(-50%, -50%) scale(0.94); opacity: 0; visibility: hidden;
   transition: transform 160ms var(--ease-exit), opacity 160ms ease-in, visibility 0s linear 160ms;
 }
-.confirm-dialog { width: min(calc(100vw - 32px), 400px); }
+.confirm-dialog {
+  width: min(calc(100vw - 32px), 400px);
+  max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto;
+}
 .rename-dialog.open, .confirm-dialog.open {
   transform: translate(-50%, -50%) scale(1); opacity: 1; visibility: visible;
   transition: transform 280ms var(--ease-out), opacity 160ms ease-out, visibility 0s;
 }
 .rename-title, .confirm-title { margin: 0 0 20px; font-size: 22px; font-weight: 500; line-height: 1.3; color: var(--fg); }
 .confirm-title { margin-bottom: 8px; }
-.confirm-message { margin: 0; font-size: 16px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.confirm-message { margin: 0; font-size: 16px; line-height: 1.5; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
 .rename-input {
   display: block; box-sizing: border-box; width: 100%; height: 48px; margin: 0; padding: 0 14px;
   border: 0; border-radius: 12px; background: color-mix(in srgb, var(--fg) 6%, var(--bg)); color: var(--fg);
@@ -2381,7 +2384,7 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .app.drop-target .composer .row::after { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
 .log { padding-bottom: 16px; }
-/* Bottom row inside the composer card: "Approvals:" + icon on the left, model selector aligned right. */
+/* Bottom row inside the composer card: "Approvals" + icon on the left, model selector aligned right. */
 .model-tab {
   position: relative; flex: 0 1 auto; min-width: 0; max-width: 260px; height: 30px;
   display: inline-flex; align-items: center; gap: 4px; margin: 0 0 0 auto; padding: 0 10px;
@@ -2390,28 +2393,34 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
   font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
   transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
 }
-.model-tab:active, .approval-tab:active { transform: scale(0.96); }
+.model-tab:active { transform: scale(0.96); }
 .approval-tab {
   position: relative; flex: 0 0 auto; margin: 0; height: 30px;
-  display: inline-flex; align-items: center; gap: 5px; padding: 0 10px;
+  display: inline-flex; align-items: center; gap: 1px; padding: 0 10px;
   border: 0; border-radius: 999px;
   background: transparent; color: var(--muted);
   font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
 }
 .approval-tab[hidden] { display: none; }
-.approval-tab-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.approval-tab-icon {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 23px; height: 23px; border-radius: 50%;
+  transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
+}
 .approval-tab-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.approval-tab-prefix { white-space: nowrap; color: var(--muted); transition: color 150ms ease; }
-.approval-tab.is-off { color: var(--danger); }
-:where(:root[data-input="mouse"]) .approval-tab:hover,
+.approval-tab-prefix { white-space: nowrap; color: var(--muted); }
+.approval-tab.is-off .approval-tab-icon { color: var(--danger); }
+.approval-tab:active .approval-tab-icon { transform: scale(0.96); }
+:where(:root[data-input="mouse"]) .approval-tab:hover .approval-tab-icon,
 :where(:root[data-input="mouse"]) .model-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
-:where(:root[data-input="mouse"]) .approval-tab:hover .approval-tab-prefix,
-.approval-tab[aria-expanded="true"] .approval-tab-prefix { color: var(--fg); }
-:where(:root[data-input="mouse"]) .approval-tab.is-off:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
-.approval-tab[aria-expanded="true"],
+:where(:root[data-input="mouse"]) .approval-tab.is-off:hover .approval-tab-icon {
+  color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.approval-tab[aria-expanded="true"] .approval-tab-icon,
 .model-tab[aria-expanded="true"] { color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.approval-tab.is-off[aria-expanded="true"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.approval-tab.is-off[aria-expanded="true"] .approval-tab-icon {
+  color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
 .model-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-tab-meta { flex: 0 0 auto; white-space: nowrap; }
 .model-tab-meta::before { content: "·"; margin-right: 4px; }
@@ -2440,6 +2449,61 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 .approval-option-check { flex: 0 0 auto; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: var(--accent); }
 .approval-option.danger .approval-option-check { color: var(--danger); }
 .approval-option-check svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; }
+
+/* Compact feedback stays a pill. Longer messages use the available width and a readable card. */
+.toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px);
+  width: max-content; max-width: min(calc(100% - 32px), 380px);
+  transform: translate(-50%, 10px) scale(0.96); padding: 9px 18px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 84%, var(--bg)); color: var(--bg);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  font-size: 15px; font-weight: 500; line-height: 1.5; text-align: center; pointer-events: none;
+  opacity: 0; transition: opacity 180ms var(--ease-out), transform 260ms var(--ease-spring);
+}
+.toast-text { display: block; overflow-wrap: anywhere; }
+.toast-wrapped { border-radius: 14px; text-align: left; }
+.toast-wrapped .toast-text {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.toast.success { background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%); color: #fff; }
+.toast.error { background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%); color: #fff; }
+.toast.restart-toast { bottom: calc(env(safe-area-inset-bottom) + 148px); }
+body:has(.toast-wrapped.show) .toast.restart-toast { bottom: calc(env(safe-area-inset-bottom) + 190px); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+.inline-notice {
+  min-width: 0; margin: 4px 6px 8px; padding: 9px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--fg); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere;
+}
+.inline-notice > p { color: var(--danger); }
+.inline-notice p { margin: 0; }
+.inline-notice details { margin-top: 4px; }
+.inline-notice summary { width: fit-content; cursor: pointer; }
+.inline-notice details p { max-height: 7em; overflow: auto; white-space: pre-wrap; margin-top: 4px; }
+.model-sheet > .inline-notice { flex: none; max-height: 42vh; overflow: auto; }
+
+.toast-persistent {
+  display: grid; grid-template-columns: minmax(0, 1fr) 36px; column-gap: 8px; align-items: center;
+  padding: 6px 8px 6px 14px; border-radius: 14px;
+  background: var(--raised); color: var(--fg); text-align: left; overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+}
+.toast-persistent[data-tone="error"] { border-color: color-mix(in srgb, var(--danger) 48%, transparent); }
+.toast-dismiss {
+  width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px;
+  color: inherit; background: transparent; font-size: 22px; line-height: 1; pointer-events: auto;
+}
+.toast-dismiss:hover, .toast-dismiss:active { background: var(--zebra); }
+.toast-persistent details {
+  grid-column: 1 / -1; font-size: 13px; pointer-events: auto; color: var(--muted);
+}
+.toast-persistent details summary { width: fit-content; cursor: pointer; }
+.toast-persistent details p { margin: 4px 0; max-height: 7em; overflow: auto; white-space: pre-wrap; }
+body:has(.toast-persistent.show) .toast:not(.toast-persistent) { bottom: calc(env(safe-area-inset-bottom) + 190px); }
+body:has(.toast-persistent.show) .toast.restart-toast { bottom: calc(env(safe-area-inset-bottom) + 280px); }
 
 .model-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; width: min(100%, 560px);
@@ -2582,12 +2646,12 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
 }
 .provider-command:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
-  .model-sheet, .model-sheet.open, .model-provider::after, .approval-tab, .approval-tab-prefix, .model-tab, .model-option, .approval-option, .model-add { transition: none; }
+  .model-sheet, .model-sheet.open, .model-provider::after, .approval-tab-icon, .model-tab, .model-option, .approval-option, .model-add { transition: none; }
   .model-refresh.spin svg, .identity:not(.flying):not(.lowering) .avatar, .card:not(.resolved), .todo-check.checked, .inbox-new, .tray .item { animation: none; }
   .audio-bar, .audio-play, .audio-down { transition: none; }
   .audio-card.loading-meta .audio-bar { animation: none; }
   .avatar, .media-img, .file-attach, .menu-icon, .jump-latest, .push-btn, .theme-switch button { transition: none; }
-  .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .approval-tab:active, .model-tab:active, .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
+  .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .approval-tab:active .approval-tab-icon, .model-tab:active, .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
 }
 
 /* Schedule mentions in the draft (app.js syncMentions): a layer behind the (transparent) textarea with the same box and
