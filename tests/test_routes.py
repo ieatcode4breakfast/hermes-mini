@@ -792,6 +792,18 @@ class DataRoutesTest(RouteTestCase):
         bad_patch = self.client.patch(f"/api/plugins/hermes-mini/todos/{item_id}", json={"tracked": 1})
         self.assertEqual(bad_patch.status_code, 400)
 
+    def test_delete_parent_todo_deletes_children_too(self):
+        parent = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "Parent"}).json()["id"]
+        child1 = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "Child 1", "index": 1, "indent": 1}).json()["id"]
+        child2 = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "Child 2", "index": 2, "indent": 1}).json()["id"]
+        other = self.client.post("/api/plugins/hermes-mini/todos", json={"text": "Other", "index": 3, "indent": 0}).json()["id"]
+        deleted = self.client.delete(f"/api/plugins/hermes-mini/todos/{parent}")
+        self.assertEqual(deleted.status_code, 200)
+        remaining_ids = [item["id"] for item in deleted.json()["items"]]
+        self.assertEqual(remaining_ids, [other])
+        self.assertNotIn(child1, remaining_ids)
+        self.assertNotIn(child2, remaining_ids)
+
     def test_seen_store_is_created_on_first_read_and_kept_outside_package(self):
         body = self.client.get("/api/plugins/hermes-mini/seen").json()
         self.assertIn("seen", body)

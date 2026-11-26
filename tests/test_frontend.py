@@ -1162,6 +1162,9 @@ class TodoParentRowActionsTest(unittest.TestCase):
         self.assertIn('listEl.addEventListener("scroll", onCancel', js)
         self.assertIn("if (!tap.released) return;", js)
         self.assertIn('bindRowButton(del, "delete", item, () => void confirmRemove(item));', js)
+        self.assertIn('if (childCount === 0) {', js)
+        self.assertIn('will be permanently deleted. This can\'t be undone.', js)
+        self.assertIn('if (editing && !(kind === "delete" && editing.id === item.id)) finishEdit(editing.span.textContent);', js)
         self.assertIn('title: "Delete to-do?",', js)
         self.assertIn("danger: true,", js)
 

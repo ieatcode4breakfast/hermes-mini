@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- To-do deletion now prompts for confirmation only when deleting a parent item with sub-items, cascade-deletes the parent's sub-items along with the parent (`DELETE /todos/{id}`), and cancels active edits instead of racing a `PATCH` against `DELETE` when deleting an item while typing (needs a dashboard restart for the updated delete route).
 - Removed the inline red error banner above the left chats panel (`#drawerNote`) and routed all drawer and push-notification errors to dismissible top-layer toasts with expandable details.
 - Model and reasoning switches update the global default for future new chats while pinning each chat's starting model and reasoning level so existing chats stay isolated; New chat shows the default reasoning level immediately before sending, unsent drafts leave the global default untouched, stale cross-chat state and in-flight responses are blocked, the Model sheet header shows the active provider name, and the Approvals button restores full-pill hover/active highlights.
 - Model-switch confirmations explain higher prices and long-chat costs in plain English.

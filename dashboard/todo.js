@@ -509,7 +509,11 @@ export function createTodo({ api }) {
     if (Object.keys(patch).length) {
       void send(`${TODOS_API}/${encodeURIComponent(id)}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
-      }).then((result) => (result === true ? null : failed("Couldn't save the to-do")));
+      }).then((result) => {
+        if (result === true) return null;
+        if (result.status === 404 && !items.some((entry) => entry.id === id)) return null;
+        return failed("Couldn't save the to-do");
+      });
     }
   }
 
@@ -572,19 +576,17 @@ export function createTodo({ api }) {
 
   async function remove(item) {
     if (item.pending) return;
-    if (item.draft) {
-      // Its save is still out: the row goes now and is deleted on the server once its id lands (landDraft).
-      item.discard = true;
-      items = items.filter((entry) => entry.id !== item.id);
-      render();
-      return;
-    }
-    // A deleted parent leaves its children behind as top-level rows: a child only exists under its parent
-    //. The server's delete does the same.
     const holder = blockOf(item);
-    if (holder && holder.parent.id === item.id) for (const child of holder.children) child.indent = 0;
-    items = items.filter((entry) => entry.id !== item.id);
+    const isParent = Boolean(holder && holder.parent.id === item.id);
+    const drop = isParent ? [item, ...holder.children] : [item];
+    const dropIds = new Set(drop.map((entry) => entry.id));
+    if (editing && dropIds.has(editing.id)) stopEdit();
+    for (const entry of drop) {
+      if (entry.draft) entry.discard = true;
+    }
+    items = items.filter((entry) => !dropIds.has(entry.id));
     render();
+    if (item.draft) return;
     const result = await send(`${TODOS_API}/${encodeURIComponent(item.id)}`, { method: "DELETE" });
     // Already gone on the server (another device, or a double tap) is what we wanted anyway.
     if (result !== true && result.status !== 404) await failed("Couldn't delete the to-do");
@@ -595,19 +597,26 @@ export function createTodo({ api }) {
     if (!current || current.pending) return;
     const holder = blockOf(current);
     const childCount = holder && holder.parent.id === current.id ? holder.children.length : 0;
-    const trimmed = current.text.trim();
+    if (childCount === 0) {
+      void remove(current);
+      return;
+    }
+    const editingSame = Boolean(editing && editing.id === current.id);
+    const rawText = editingSame && editing.span ? editing.span.textContent : current.text;
+    const trimmed = String(rawText || "").trim();
     const preview = trimmed.length > 60 ? `${trimmed.slice(0, 59).trimEnd()}…` : trimmed;
     const subject = preview ? `"${preview}"` : "This item";
-    const message = childCount > 0
-      ? `${subject} will be deleted. Its ${childCount === 1 ? "1 sub-item will stay" : `${childCount} sub-items will stay`} as top-level items.`
-      : `${subject} will be permanently deleted. This can't be undone.`;
+    const message = `${subject} and its ${childCount === 1 ? "1 sub-item" : `${childCount} sub-items`} will be permanently deleted. This can't be undone.`;
     const ok = await confirmDialog({
       title: "Delete to-do?",
       message,
       confirmLabel: "Delete",
       danger: true,
     });
-    if (!ok) return;
+    if (!ok) {
+      if (editing && editing.id === current.id) finishEdit(editing.span.textContent);
+      return;
+    }
     const live = items.find((entry) => entry.id === item.id);
     if (live) void remove(live);
   }
@@ -706,7 +715,7 @@ export function createTodo({ api }) {
       event.stopPropagation();
       clearPendingTap();
       if (drag || performance.now() < suppressClickUntil || item.pending || (skipDraft && item.draft)) return;
-      if (editing) finishEdit(editing.span.textContent);
+      if (editing && !(kind === "delete" && editing.id === item.id)) finishEdit(editing.span.textContent);
       action();
     });
   }
@@ -1039,7 +1048,9 @@ export function createTodo({ api }) {
     const result = await send(`${TODOS_API}/${encodeURIComponent(id)}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
     });
-    if (result !== true) await failed("Couldn't save the to-do");
+    if (result !== true && !(result.status === 404 && !items.some((entry) => entry.id === id))) {
+      await failed("Couldn't save the to-do");
+    }
   }
 
   // ---------- drag to sort the open rows ----------

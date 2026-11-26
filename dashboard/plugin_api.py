@@ -1902,13 +1902,13 @@ async def delete_todo(item_id: str):
             target = next((item for item in items if item["id"] == item_id), None)
             if target is None:
                 return JSONResponse({"detail": "no such to-do"}, status_code=404)
-            # A deleted parent leaves its children behind as top-level rows: a child only exists under its parent
-            #.
+            # Deleting a parent removes its sub-items too.
+            drop_ids = {item_id}
             for block in _todo_blocks(items):
                 if block["parent"]["id"] == item_id:
                     for child in block["children"]:
-                        child["indent"] = 0
-            kept = [item for item in items if item["id"] != item_id]
+                        drop_ids.add(child["id"])
+            kept = [item for item in items if item["id"] not in drop_ids]
             _normalise_todos(kept)
             _write_todos(kept)
     except Exception as exc:  # noqa: BLE001
