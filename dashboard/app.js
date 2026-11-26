@@ -7373,7 +7373,6 @@ setInterval(pollBusyChats, BUSY_POLL_MS);
 
 const pushBtn = $("pushBtn");
 const PUSH_API = "/api/plugins/hermes-mini";
-let pushNoteTimer = 0;
 
 async function openPushedSession(id) {
   if (!id) return;
@@ -7460,15 +7459,6 @@ function setPushState(on) {
   pushBtn.setAttribute("aria-label", label);
 }
 
-// Notes use the chats panel's own note line, the same place the drawer reports failures.
-function pushNote(text) {
-  const noteEl = $("drawerNote");
-  if (!noteEl) return;
-  noteEl.textContent = text || "";
-  clearTimeout(pushNoteTimer);
-  if (text) pushNoteTimer = setTimeout(() => { noteEl.textContent = ""; }, 8000);
-}
-
 async function refreshPushState() {
   if (!pushBtn) return;
   try {
@@ -7484,7 +7474,7 @@ async function enablePush() {
   // requestPermission() must run inside the click handler; everything else waits behind it.
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
-    pushNote("Notifications are blocked in your browser settings.");
+    showPersistentToast("Notifications are blocked in your browser settings.");
     return;
   }
   const registration = await navigator.serviceWorker.ready;
@@ -7536,7 +7526,7 @@ if (pushBtn) {
         if (turningOff) await disablePush();
         else await enablePush();
       } catch (error) {
-        pushNote(`Could not change notifications: ${errorText(error)}.`);
+        showPersistentToast("Couldn’t change notifications.", { detail: errorText(error) });
       } finally {
         pushBtn.disabled = false;
       }

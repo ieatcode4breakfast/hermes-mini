@@ -226,6 +226,18 @@ class FeedbackSurfaceTest(unittest.TestCase):
         self.assertIn("reportError(dictationFailure(res))", app)
         self.assertIn("if (ui.input.isConnected) showPersistentToast(dictationFailure(res))", app)
 
+    def test_drawer_and_push_errors_use_dismissible_toasts_not_drawer_banner(self):
+        html = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+        css = (DASHBOARD / "style.css").read_text(encoding="utf-8")
+        drawer = (DASHBOARD / "drawer.js").read_text(encoding="utf-8")
+        app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+        for src in (html, css, drawer, app):
+            self.assertNotIn("drawerNote", src)
+            self.assertNotIn("drawer-note", src)
+        self.assertIn("showPersistentToast(message,", drawer)
+        self.assertIn('showPersistentToast("Notifications are blocked in your browser settings.")', app)
+        self.assertIn('showPersistentToast("Couldn’t change notifications.", { detail: errorText(error) })', app)
+
 
 class ModelPickerTest(unittest.TestCase):
     """The model chip and sheet (model.js) restyle Hermes's own gateway methods; nothing app-side holds model state."""

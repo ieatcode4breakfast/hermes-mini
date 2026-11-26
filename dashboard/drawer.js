@@ -3,7 +3,7 @@
 // WebSocket or changes threads itself: app.js passes in the data and actions it needs (see createDrawer's deps).
 
 import { confirmDialog } from "./confirm.js";
-import { openPopover, closePopover } from "./toast.js";
+import { openPopover, closePopover, showPersistentToast } from "./toast.js";
 
 const PAGE_SIZE = 40;
 const LONG_PRESS_MS = 450;
@@ -131,7 +131,6 @@ export function createDrawer(deps) {
   const searchBtn = $("searchBtn"); // Search, placed directly under New chat
   const schedRow = $("schedBtn"); // Scheduled, placed directly under the main chat
   const list = $("drawerList");
-  const noteEl = $("drawerNote");
   const rowMenuScrim = $("rowMenuScrim");
   const rowMenu = $("rowMenu");
   const menuPin = $("rowMenuPin");
@@ -228,7 +227,7 @@ export function createDrawer(deps) {
       if (shouldMute) st.muted.delete(item.id);
       else st.muted.add(item.id);
       render({ keepScroll: true });
-      note((err && err.message) || "Could not change notification setting.");
+      reportError("Couldn’t change notification setting.", err);
     }
   }
 
@@ -329,7 +328,7 @@ export function createDrawer(deps) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order: st.pinOrder }),
-    }).catch((error) => note((error && error.message) || "Could not save the pinned order."));
+    }).catch((error) => reportError("Couldn’t save the pinned order.", error));
   }
 
   // Pinned chats in the manual order. A chat pinned before it had a place (or on another client) goes at the bottom
@@ -359,8 +358,9 @@ export function createDrawer(deps) {
   // Docked: the drawer is the permanent left column on a wide window (app.js owns the query and the body class).
   const isDocked = () => Boolean(deps.isDocked && deps.isDocked());
 
-  function note(text) {
-    noteEl.textContent = text || "";
+  function reportError(message, error) {
+    const detail = error && (error.message || String(error));
+    showPersistentToast(message, detail && detail !== message ? { detail } : undefined);
   }
 
   // ---------- data ----------
@@ -410,11 +410,10 @@ export function createDrawer(deps) {
         // The home thread is normally the most recent row; when it is not on the first page, fetch just that row.
         st.home = await deps.api(`/api/sessions/${encodeURIComponent(home)}`).then(normalize).catch(() => null);
       }
-      note("");
     } catch {
       if (seq !== st.seq) return;
       st.error = true;
-      note("Could not load chats. Check the connection and try again.");
+      reportError("Couldn’t load chats. Check the connection and try again.");
     } finally {
       if (seq === st.seq) st.loading = false;
       if (st.open) render({ keepScroll: true });
@@ -450,7 +449,7 @@ export function createDrawer(deps) {
         }
       }
     } catch {
-      if (seq === st.seq) note("Could not load more chats.");
+      if (seq === st.seq) reportError("Couldn’t load more chats.");
     } finally {
       if (seq === st.seq) st.loading = false;
       if (st.open && seq === st.seq) render({ keepScroll: true });
@@ -797,10 +796,9 @@ export function createDrawer(deps) {
         danger: true,
       });
       if (!proceed) return;
-      note("");
       await deps.resetMainChat(item);
     } catch (error) {
-      note((error && error.message) || "Could not reset the main chat.");
+      reportError("Couldn’t reset the main chat.", error);
     } finally {
       st.resetBusy = false;
     }
@@ -917,7 +915,7 @@ export function createDrawer(deps) {
         showRenameError(renameError(error));
         renameInput.focus({ preventScroll: true });
       } else {
-        note(renameError(error)); // the dialog was closed while saving: say why in the list's note instead
+        reportError(renameError(error)); // the dialog was closed while saving: surface via dismissible toast
       }
     }
   }
@@ -935,7 +933,7 @@ export function createDrawer(deps) {
     try {
       await deps.delete(item);
     } catch (error) {
-      note((error && error.message) || "Could not delete this chat.");
+      reportError("Couldn’t delete this chat.", error);
       return;
     }
     // The server's listing shifts up by one only when the row was among the pages already loaded.
@@ -943,7 +941,6 @@ export function createDrawer(deps) {
     st.rows = st.rows.filter((row) => row.id !== item.id);
     st.total = Math.max(0, st.total - 1);
     if (wasLoaded) st.next = Math.max(0, st.next - 1);
-    note("");
     render({ keepScroll: true });
   }
 
@@ -953,7 +950,7 @@ export function createDrawer(deps) {
     try {
       await deps.pin(item, pinned);
     } catch (error) {
-      note((error && error.message) || "Could not change the pin.");
+      reportError("Couldn’t change the pin.", error);
       return;
     }
     // A new pin always goes to the bottom of the existing pinned chats; an unpin leaves the rest in order.
@@ -970,7 +967,6 @@ export function createDrawer(deps) {
     }
     for (const row of st.rows) if (row.id === item.id) row.pinned = pinned;
     void savePinOrder();
-    note("");
     render({ keepScroll: true });
   }
 
