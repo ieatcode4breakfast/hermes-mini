@@ -73,13 +73,22 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
   let pendingPick = null;
   let settled = false;
   let draftPick = null;
+  let draftDefault = null;
   let draftEffort = "";
-  let options = null; // last model.options payload
+  let draftSeq = 0;
+  let draftLoad = null;
+  let options = null; // last model.options payload for the current target
+  let optionsKey = "";
   let loading = null;
+  let loadingKey = "";
   let sheet = null;
   let parts = null;
   let view = 0;
   let picking = false;
+
+  function targetKey() {
+    return isDraft() ? "__draft__" : (getSid() || "__none__");
+  }
   function pickerError(viewAtStart, message, error) {
     if (viewAtStart === view) showPersistentToast(message, { detail: errorText(error) });
   }
@@ -92,11 +101,21 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
     return info;
   }
 
+  function providerLabel(slug) {
+    if (!slug) return "";
+    const row = (options?.providers || []).find((entry) => entry.slug === slug);
+    return row?.name || slug;
+  }
+
   // previewEffort: the slider's level while it is being dragged, shown in the title line before it is sent.
   function paintChip(previewEffort) {
-    const { model } = selectedModel();
+    const { model, provider } = selectedModel();
     const effort = previewEffort || (isDraft() && draftEffort ? draftEffort : info.reasoning);
-    if (parts) parts.current.textContent = [shortModel(model), effortLabel(effort), info.fast ? "Fast" : ""].filter(Boolean).join(" · ");
+    if (parts) {
+      parts.current.textContent = [providerLabel(provider), shortModel(model), effortLabel(effort), info.fast ? "Fast" : ""]
+        .filter(Boolean)
+        .join(" · ");
+    }
     if (!chip) return;
     chip.hidden = !settled && !model;
     const name = chip.querySelector(".model-tab-name");
@@ -110,9 +129,19 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
     chip.setAttribute("aria-label", `Model: ${shortModel(model) || "default"}${effort ? `, reasoning ${effortLabel(effort)}` : ""}`);
   }
 
-  // session.info payload (event or create/resume result). Lazy infos carry only model/provider.
-  function setInfo(payload) {
+  // session.info payload (event or create/resume result). Lazy infos carry only model/provider, so
+  // switching to another chat passes replace:true to clear the previous chat's reasoning/fast state.
+  function setInfo(payload, { replace = false } = {}) {
     if (!payload || typeof payload !== "object") return;
+    if (replace) {
+      draftSeq += 1;
+      info.reasoning = "";
+      info.fast = false;
+      if ("model" in payload) {
+        info.model = "";
+        info.provider = "";
+      }
+    }
     if ("model" in payload) settled = true;
     if (typeof payload.model === "string" && payload.model) {
       info.model = payload.model;
@@ -127,70 +156,155 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
 
   // A New chat on screen: show the profile default (or the pick already made for this draft).
   async function showDraft() {
+    const seq = ++draftSeq;
     pendingPick = null;
+    info.reasoning = "";
     info.fast = false;
-    try {
-      const payload = await loadOptions(false);
-      settled = true;
-      if (!draftPick) {
-        info.model = payload.model || "";
-        info.provider = payload.provider || "";
-      }
-    } catch {
-      /* not connected yet: the chip keeps its last text until a chat attaches */
+    if (!draftPick) {
+      info.model = "";
+      info.provider = "";
     }
     paintChip();
+    const run = (async () => {
+      try {
+        const [payload, reasoningRes] = await Promise.all([
+          loadOptions(false),
+          rpc("config.get", { key: "reasoning" }, 15000).catch(() => null),
+        ]);
+        if (!isDraft() || seq !== draftSeq) return;
+        settled = true;
+        const reasoning = typeof reasoningRes?.value === "string" ? reasoningRes.value : "";
+        draftDefault = payload.model || reasoning
+          ? { model: payload.model || "", provider: payload.provider || "", reasoning }
+          : null;
+        if (!draftPick) {
+          info.model = payload.model || "";
+          info.provider = payload.provider || "";
+        }
+        if (!draftEffort && reasoning) info.reasoning = reasoning;
+      } catch {
+        /* not connected yet: the chip stays clean until a chat attaches */
+      }
+      if (isDraft() && seq === draftSeq) paintChip();
+    })();
+    const pending = run.finally(() => {
+      if (draftLoad === pending) draftLoad = null;
+    });
+    draftLoad = pending;
+    return pending;
+  }
+
+  async function ensureDraftDefault() {
+    if (draftPick || draftDefault?.model) return;
+    if (draftLoad) {
+      await draftLoad;
+      return;
+    }
+    await showDraft();
   }
 
   function resetDraft() {
     draftPick = null;
+    draftDefault = null;
     draftEffort = "";
   }
 
   function draftCreateParams() {
-    return draftEffort ? { reasoning_effort: draftEffort } : {};
+    const params = {};
+    if (!draftPick && draftDefault?.model) {
+      params.model = draftDefault.model;
+      if (draftDefault.provider) params.provider = draftDefault.provider;
+    }
+    const effort = draftEffort || draftDefault?.reasoning || "";
+    if (effort) params.reasoning_effort = effort;
+    return params;
+  }
+
+  async function defaultCreateParams() {
+    try {
+      const [payload, reasoningRes] = await Promise.all([
+        rpc("model.options", { explicit_only: true }, 60000).catch(() => null),
+        rpc("config.get", { key: "reasoning" }, 15000).catch(() => null),
+      ]);
+      const params = {};
+      if (typeof payload?.model === "string" && payload.model) {
+        params.model = payload.model;
+        if (typeof payload.provider === "string" && payload.provider) params.provider = payload.provider;
+      }
+      if (typeof reasoningRes?.value === "string" && reasoningRes.value) {
+        params.reasoning_effort = reasoningRes.value;
+      }
+      return params;
+    } catch {
+      /* fall back to Hermes default if options cannot be read yet */
+    }
+    return {};
   }
 
   async function applyDraftModel(sid, isCurrent) {
     const pick = draftPick;
-    if (!pick) return {};
-    const stillDraft = () => isCurrent() && draftPick === pick;
+    const effort = draftEffort;
+    const applied = {};
+    if (effort) applied.reasoning_effort = effort;
+    else if (draftDefault?.reasoning) applied.reasoning_effort = draftDefault.reasoning;
 
-    // This read waits for Hermes's agent build. A switch with an explicit provider can otherwise race a cold build.
-    try {
-      await rpc("approval.pending", { session_id: sid }, 35000);
-    } catch (error) {
-      // Hermes’s guarded switch can recover a failed default model once initialization has settled.
-      if (error.code !== 5032 || /still starting/i.test(error.message)) throw error;
+    if (pick) {
+      const stillDraft = () => isCurrent() && draftPick === pick;
+
+      // This read waits for Hermes's agent build. A switch with an explicit provider can otherwise race a cold build.
+      try {
+        await rpc("approval.pending", { session_id: sid }, 35000);
+      } catch (error) {
+        // Hermes’s guarded switch can recover a failed default model once initialization has settled.
+        if (error.code !== 5032 || /still starting/i.test(error.message)) throw error;
+      }
+      if (!stillDraft()) return null;
+      const result = await requestModelSwitch(pick.model, pick.provider, sid, stillDraft);
+      if (!result) return null;
+      if (result.deferred || !result.value) throw new Error("Hermes hasn’t switched to the selected model yet.");
+      const warning = extraWarning(result, HERMES_CHAT_MODEL.test(pick.model));
+      if (warning) showPersistentToast("Model switched with a warning.", { detail: warning, tone: "neutral" });
+      applied.model = result.value;
+      applied.provider = pick.provider;
     }
-    if (!stillDraft()) return null;
-    const result = await requestModelSwitch(pick.model, pick.provider, sid, stillDraft);
-    if (!result) return null;
-    if (result.deferred || !result.value) throw new Error("Hermes hasn’t switched to the selected model yet.");
-    const warning = extraWarning(result, HERMES_CHAT_MODEL.test(pick.model));
-    if (warning) showPersistentToast("Model switched with a warning.", { detail: warning, tone: "neutral" });
-    return { model: result.value, provider: pick.provider };
+
+    if (effort) {
+      if (!isCurrent()) return null;
+      const res = await rpc("config.set", { session_id: sid, key: "reasoning", value: effort, scope: "global" }).catch(() => null);
+      if (typeof res?.value === "string" && res.value) applied.reasoning_effort = res.value;
+    }
+    return applied;
   }
 
   // ---------- data ----------
 
   function loadOptions(refresh, includeUnconfigured = false) {
     const sid = isDraft() ? "" : getSid();
+    const key = sid || "__draft__";
     // Use Hermes’s explicitly configured inventory for both the picker and setup list.
     const params = { explicit_only: true };
     if (sid) params.session_id = sid;
     if (refresh) params.refresh = true;
     if (includeUnconfigured) params.include_unconfigured = true;
-    if (!includeUnconfigured && !refresh && loading) return loading;
+    if (!includeUnconfigured && !refresh && loading && loadingKey === key) return loading;
     const call = rpc("model.options", params, 60000).then((payload) => {
-      if (!includeUnconfigured) options = payload || { providers: [] };
-      return payload || { providers: [] };
+      const data = payload || { providers: [] };
+      if (!includeUnconfigured && targetKey() === key) {
+        options = data;
+        optionsKey = key;
+      }
+      return data;
     });
     if (!includeUnconfigured) {
-      loading = call.finally(() => {
-        loading = null;
+      loadingKey = key;
+      const pending = call.finally(() => {
+        if (loading === pending) {
+          loading = null;
+          loadingKey = "";
+        }
       });
-      return loading;
+      loading = pending;
+      return pending;
     }
     return call;
   }
@@ -305,12 +419,16 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
       renderControls();
       return;
     }
+    const sid = getSid();
+    if (!sid) return;
     try {
-      const result = await rpc("config.set", { session_id: getSid(), key: "reasoning", value: word });
+      const result = await rpc("config.set", { session_id: sid, key: "reasoning", value: word, scope: "global" });
+      if (isDraft() || getSid() !== sid) return;
       info.reasoning = String(result?.value || word);
       paintChip();
       renderControls();
     } catch (error) {
+      if (isDraft() || getSid() !== sid) return;
       pickerError(viewAtStart, "Couldn’t change the reasoning level.", error);
       paintChip();
       renderControls();
@@ -319,11 +437,15 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
 
   async function setFast(on) {
     const viewAtStart = view;
+    const sid = getSid();
+    if (isDraft() || !sid) return;
     try {
-      const result = await rpc("config.set", { session_id: getSid(), key: "fast", value: on ? "on" : "off" });
+      const result = await rpc("config.set", { session_id: sid, key: "fast", value: on ? "on" : "off" });
+      if (isDraft() || getSid() !== sid) return;
       info.fast = String(result?.value || "") === "fast" || String(result?.value || "") === "ultrafast";
       paintChip();
     } catch (error) {
+      if (isDraft() || getSid() !== sid) return;
       pickerError(viewAtStart, "Couldn’t change Fast mode.", error);
     }
     renderControls();
@@ -578,15 +700,21 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
 
   async function reload(refresh) {
     const viewAtStart = view;
+    const targetAtStart = targetKey();
     if (refresh) parts.refresh.classList.add("spin");
     try {
       await loadOptions(refresh);
     } catch (error) {
-      pickerError(viewAtStart, "Couldn’t load models. Use Refresh models to try again.", error);
+      if (targetKey() === targetAtStart) {
+        pickerError(viewAtStart, "Couldn’t load models. Use Refresh models to try again.", error);
+      }
     } finally {
       parts.refresh.classList.remove("spin");
     }
-    renderList();
+    if (viewAtStart === view && targetKey() === targetAtStart) {
+      paintChip();
+      renderList();
+    }
   }
 
   async function disconnect(row) {
@@ -768,5 +896,5 @@ export function createModelPicker({ rpc, api, getSid, isDraft, isBusy, confirmDi
   chip?.addEventListener("click", () => void open());
   paintChip();
 
-  return { setInfo, showDraft, resetDraft, draftCreateParams, applyDraftModel, close, isBusy };
+  return { setInfo, showDraft, ensureDraftDefault, resetDraft, draftCreateParams, defaultCreateParams, applyDraftModel, close, isBusy };
 }

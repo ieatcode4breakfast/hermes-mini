@@ -256,7 +256,7 @@ class ModelPickerTest(unittest.TestCase):
     def test_only_hermes_methods_are_called(self):
         methods = set(re.findall(r'rpc\(\s*"([a-z_.]+)"', self.model))
         self.assertTrue(methods)
-        self.assertLessEqual(methods, {"model.options", "model.save_key", "model.disconnect", "config.set", "approval.pending"})
+        self.assertLessEqual(methods, {"model.options", "model.save_key", "model.disconnect", "config.get", "config.set", "approval.pending"})
 
     def test_provider_picker_uses_explicit_inventory_and_declared_auth(self):
         self.assertIn("const params = { explicit_only: true };", self.model)
@@ -296,6 +296,23 @@ class ModelPickerTest(unittest.TestCase):
         self.assertIn("if (!await openFreshChat()) {", self.app)
         self.assertNotIn("/api/model/set", self.model)
         self.assertIn("await requestModelSwitch(pick.model, pick.provider, sid, stillDraft)", self.model)
+
+    def test_new_chats_pin_starting_model_and_isolate_cross_chat_state(self):
+        self.assertIn("const createParams = await modelUi.defaultCreateParams();", self.app)
+        self.assertIn('const created = await rpc("session.create", createParams);', self.app)
+        self.assertIn("await modelUi.ensureDraftDefault();", self.app)
+        self.assertIn("if (!draftPick && draftDefault?.model)", self.model)
+        self.assertIn("function setInfo(payload, { replace = false } = {})", self.model)
+        self.assertIn("if (!isDraft() || seq !== draftSeq) return;", self.model)
+        self.assertIn("if (isDraft() || getSid() !== sid) return;", self.model)
+        self.assertIn("if (event.session_id && event.session_id !== state.liveSid) return;", self.app)
+        self.assertIn("modelUi.setInfo(resumed.info, { replace: true });", self.app)
+        self.assertIn("if (draftLoad === pending) draftLoad = null;", self.model)
+        self.assertIn("if (loading === pending) {", self.model)
+        self.assertIn('rpc("config.get", { key: "reasoning" }', self.model)
+        self.assertIn('key: "reasoning", value: word, scope: "global"', self.model)
+        self.assertIn('key: "reasoning", value: effort, scope: "global"', self.model)
+        self.assertIn("[providerLabel(provider), shortModel(model), effortLabel(effort)", self.model)
 
 
 class InboxTapReadTest(unittest.TestCase):
@@ -1074,11 +1091,11 @@ class ComposerBottomBarTest(unittest.TestCase):
         self.assertIn("background: transparent; color: var(--muted);", approval_tab_block)
         self.assertNotIn("approval-tab-label", css)
         self.assertNotIn("approval-tab-text", css)
-        self.assertIn(".approval-tab-prefix { white-space: nowrap; color: var(--muted); }", css)
-        self.assertIn(".approval-tab.is-off .approval-tab-icon { color: var(--danger); }", css)
-        self.assertIn(".approval-tab:hover .approval-tab-icon,", css)
-        self.assertNotRegex(css, r"\.approval-tab(?:\.is-off)?:hover\s*[,\{]")
-        self.assertNotIn(".approval-tab:hover .approval-tab-prefix", css)
+        self.assertIn(".approval-tab-prefix { white-space: nowrap; color: var(--muted); transition: color 150ms ease; }", css)
+        self.assertIn(".approval-tab.is-off { color: var(--danger); }", css)
+        self.assertIn(':where(:root[data-input="mouse"]) .approval-tab:hover,', css)
+        self.assertIn(':where(:root[data-input="mouse"]) .approval-tab:hover .approval-tab-prefix,', css)
+        self.assertNotIn(".approval-tab:hover .approval-tab-icon", css)
         self.assertIn(".composer .row textarea { position: relative; z-index: 1; }", css)
         self.assertIn(".composer .row.dictating:has(textarea:not(:placeholder-shown)) .composer-main {", css)
         self.assertIn(".log { padding-bottom: 16px; }", css)

@@ -2393,34 +2393,28 @@ body.tools-open #toolsBtn svg { rotate: -90deg; }
   font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
   transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
 }
-.model-tab:active { transform: scale(0.96); }
+.model-tab:active, .approval-tab:active { transform: scale(0.96); }
 .approval-tab {
   position: relative; flex: 0 0 auto; margin: 0; height: 30px;
-  display: inline-flex; align-items: center; gap: 1px; padding: 0 10px;
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 10px;
   border: 0; border-radius: 999px;
   background: transparent; color: var(--muted);
   font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
-}
-.approval-tab[hidden] { display: none; }
-.approval-tab-icon {
-  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
-  width: 23px; height: 23px; border-radius: 50%;
   transition: transform 160ms var(--ease-spring), color 150ms ease, background-color 150ms ease;
 }
+.approval-tab[hidden] { display: none; }
+.approval-tab-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .approval-tab-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.approval-tab-prefix { white-space: nowrap; color: var(--muted); }
-.approval-tab.is-off .approval-tab-icon { color: var(--danger); }
-.approval-tab:active .approval-tab-icon { transform: scale(0.96); }
-:where(:root[data-input="mouse"]) .approval-tab:hover .approval-tab-icon,
+.approval-tab-prefix { white-space: nowrap; color: var(--muted); transition: color 150ms ease; }
+.approval-tab.is-off { color: var(--danger); }
+:where(:root[data-input="mouse"]) .approval-tab:hover,
 :where(:root[data-input="mouse"]) .model-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
-:where(:root[data-input="mouse"]) .approval-tab.is-off:hover .approval-tab-icon {
-  color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent);
-}
-.approval-tab[aria-expanded="true"] .approval-tab-icon,
+:where(:root[data-input="mouse"]) .approval-tab:hover .approval-tab-prefix,
+.approval-tab[aria-expanded="true"] .approval-tab-prefix { color: var(--fg); }
+:where(:root[data-input="mouse"]) .approval-tab.is-off:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.approval-tab[aria-expanded="true"],
 .model-tab[aria-expanded="true"] { color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.approval-tab.is-off[aria-expanded="true"] .approval-tab-icon {
-  color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent);
-}
+.approval-tab.is-off[aria-expanded="true"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
 .model-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-tab-meta { flex: 0 0 auto; white-space: nowrap; }
 .model-tab-meta::before { content: "·"; margin-right: 4px; }
@@ -2646,12 +2640,12 @@ body:has(.toast-persistent.show) .toast.restart-toast { bottom: calc(env(safe-ar
 }
 .provider-command:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
-  .model-sheet, .model-sheet.open, .model-provider::after, .approval-tab-icon, .model-tab, .model-option, .approval-option, .model-add { transition: none; }
+  .model-sheet, .model-sheet.open, .model-provider::after, .approval-tab, .approval-tab-prefix, .model-tab, .model-option, .approval-option, .model-add { transition: none; }
   .model-refresh.spin svg, .identity:not(.flying):not(.lowering) .avatar, .card:not(.resolved), .todo-check.checked, .inbox-new, .tray .item { animation: none; }
   .audio-bar, .audio-play, .audio-down { transition: none; }
   .audio-card.loading-meta .audio-bar { animation: none; }
   .avatar, .media-img, .file-attach, .menu-icon, .jump-latest, .push-btn, .theme-switch button { transition: none; }
-  .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .approval-tab:active .approval-tab-icon, .model-tab:active, .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
+  .fab:hover, .btn:hover:not(:disabled), .send:hover:not(:disabled), .approval-tab:active, .model-tab:active, .media-img:hover, .file-attach:hover:not(:disabled), .menu-item:hover .menu-icon, .push-btn:active, .model-meter-bar.on { transform: none; }
 }
 
 /* Schedule mentions in the draft (app.js syncMentions): a layer behind the (transparent) textarea with the same box and

@@ -1070,10 +1070,11 @@ async function currentServerThreadRow() {
 
 // Creates the home thread and makes it live here. Callers decide whether it is the chat on screen.
 async function createThread() {
-  const created = await rpc("session.create", {});
+  const createParams = await modelUi.defaultCreateParams();
+  const created = await rpc("session.create", createParams);
   if (!state.viewedUnsent) state.liveSid = created.session_id;
   state.homeId = created.stored_session_id;
-  if (!state.viewedUnsent) modelUi.setInfo(created.info);
+  if (!state.viewedUnsent) modelUi.setInfo(created.info, { replace: true });
   safeStorageSet(STORE_KEY, state.homeId);
   const winner = await registerAppChat(state.homeId, true);
   if (winner && winner !== state.homeId) {
@@ -1212,6 +1213,8 @@ function openDraft(opts = {}) {
 async function openFreshChat() {
   const epoch = draftEpoch;
   const isCurrent = () => epoch === draftEpoch && state.viewedUnsent && !state.liveSid;
+  await modelUi.ensureDraftDefault();
+  if (!isCurrent()) return false;
   const created = await rpc("session.create", modelUi.draftCreateParams());
   let selected;
   try {
@@ -1222,7 +1225,7 @@ async function openFreshChat() {
     if (!selected || !isCurrent()) void rpc("session.close", { session_id: created.session_id }).catch(() => {});
   }
   modelUi.resetDraft();
-  modelUi.setInfo({ ...created.info, ...selected });
+  modelUi.setInfo({ ...created.info, ...selected }, { replace: true });
   state.viewedId = created.stored_session_id;
   state.viewedUnsent = true;
   state.storedId = created.stored_session_id;
@@ -1319,7 +1322,7 @@ async function attachHome(fresh) {
     try {
       const resumed = await rpc("session.resume", { session_id: state.homeId });
       state.liveSid = resumed.session_id;
-      modelUi.setInfo(resumed.info);
+      modelUi.setInfo(resumed.info, { replace: true });
       running = Boolean(resumed.running);
       openRequests = resumed.open_requests || [];
       pendingConnection = resumed.pending_connection || null;
@@ -1351,7 +1354,7 @@ async function attachSession(id) {
   const resumed = await rpc("session.resume", { session_id: id });
   state.storedId = id;
   state.liveSid = resumed.session_id;
-  modelUi.setInfo(resumed.info);
+  modelUi.setInfo(resumed.info, { replace: true });
   state.ready = false;
   setReadOnly(false);
   updateCaption();
@@ -4415,7 +4418,7 @@ function onEvent(event) {
   if (state.readOnly) return;
   // A draft has no runtime either: ignore every chat event, including un-keyed ones.
   if (state.viewedUnsent && !state.liveSid) return;
-  if (event.session_id && state.liveSid && event.session_id !== state.liveSid) return;
+  if (event.session_id && event.session_id !== state.liveSid) return;
   if (type === "session.info") {
     modelUi.setInfo(payload);
     return;

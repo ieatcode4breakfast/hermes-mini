@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Model and reasoning switches update the global default for future new chats while pinning each chat's starting model and reasoning level so existing chats stay isolated; New chat shows the default reasoning level immediately before sending, unsent drafts leave the global default untouched, stale cross-chat state and in-flight responses are blocked, the Model sheet header shows the active provider name, and the Approvals button restores full-pill hover/active highlights.
 - Model-switch confirmations explain higher prices and long-chat costs in plain English.
 - The model picker uses Hermes’s explicitly configured inventory. **Providers** offers a key field only when Hermes
   declares API-key support. Nous Portal shows sign-in instructions when disconnected.
