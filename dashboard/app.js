@@ -1191,6 +1191,10 @@ function openDraft(opts = {}) {
   state.viewedUnsent = true;
   state.storedId = null;
   state.liveSid = null;
+  older.gen += 1;
+  older.sid = null;
+  older.done = true;
+  older.busy = false;
   state.viewedTitle = "";
   state.streaming = false;
   state.turn = null;
@@ -1807,7 +1811,7 @@ async function loadHistory(messageCount = null) {
   older.sid = state.storedId;
   older.offset = HISTORY_PAGE;
   older.minId = lowestRowId(rows);
-  older.done = rows.length === 0;
+  older.done = rows.length < HISTORY_PAGE;
   older.busy = false;
   renderHistoryEntries(rows, { isOldestPage: rows.length < HISTORY_PAGE });
   // A chat opens at its newest message, so that is the one seen first (Inbox read tracker, the person, 8 Nov 2026). A deep
@@ -3081,6 +3085,8 @@ async function submitEdit() {
   const after = rows.length - at - 1;
   const userTurns = rows.slice(at).filter((node) => node.hermesMiniMsg.role === "user").length;
   const deep = userTurns > 1;
+  const hasEarlierPage = older.sid === state.storedId && !older.done;
+  const empty = !hasEarlierPage && !rows.slice(0, at).some((node) => node.hermesMiniMsg.role === "user");
   if (deep) {
     const proceed = await confirmDialog({
       title: "Edit message?",
@@ -3105,6 +3111,7 @@ async function submitEdit() {
       confirm_truncate: true,
       truncate_before_row_id: rowId,
       ...(deep ? { confirm_deep_truncate: true } : {}),
+      ...(empty ? { confirm_empty_truncate: true } : {}),
     });
     truncatedAtRowId = rowId;
   } catch (error) {

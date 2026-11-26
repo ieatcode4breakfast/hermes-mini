@@ -69,6 +69,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Editing the first message of a chat now sends `confirm_empty_truncate: true` (with older-history pagination reset on new drafts and marked done on single-page histories), fixing Hermes's full-transcript truncation rejection while keeping the multi-turn edit warning intact.
 - Connected API-key providers still offer key replacement. The first message in a new chat waits for the guarded
   model switch, which leaves the profile’s tool routing alone.
 - Activity-tree audit follow-ups (`dashboard/plugin_api.py`, `dashboard/activity.js`, `dashboard/app.js`, `dashboard/sw.js`):
