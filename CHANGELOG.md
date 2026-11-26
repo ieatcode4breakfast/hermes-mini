@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-27
+
 ### Added
 
 - Collapsible live activity trees (`dashboard/activity.js`, `POST /narrate` `mode="tree"`, `GET`/`PUT`/`DELETE /activity/{session_id}`):
@@ -41,8 +43,8 @@ All notable changes to this project are documented here. The format follows
   - Replaced the top-edge browser-style model/approval tab with an integrated bottom action row inside the composer
     card while keeping `+`, the expanding message box, dictation, and Send on the top row.
   - Placed neutral **`Approvals`** text beside the status shield icon on the bottom left (turning only the icon red
-    with no resting background fill when **Off**, highlighting only the shield on hover, and showing a red *"Approvals off"* toast upon disabling) and aligned
-    the transparent model picker pill on the bottom right.
+    with no resting background fill when **Off**, with full-pill hover/active highlight and a red *"Approvals off"*
+    toast upon disabling) and aligned the transparent model picker pill on the bottom right.
   - Fixed empty-box voice dictation and transcription so collapsing the placeholder field keeps the composer at its
     normal single-line height instead of wrapping the placeholder vertically.
 - Direct to-do row actions, header counter, and delete confirmation (`dashboard/todo.js`, `dashboard/index.html`,
@@ -53,8 +55,7 @@ All notable changes to this project are documented here. The format follows
   - Added a live `#todoHeaderCount` counter pill beside the **To-do** title (highlighted when 1+ items are tracked,
     muted `0` when none) reflecting tracking and item changes immediately.
   - Hardened row button presses while inline-editing (requiring a primary click release on desktop and cancelling
-    touch taps on scroll/move/cancel/off-button release) and added a **"Delete to-do?"** confirmation dialog when
-    deleting via `×`.
+    touch taps on scroll/move/cancel/off-button release).
 - Inline local picture previews (`dashboard/app.js`): raised the per-message inline picture cap from 9 to 50,
   lazy-loaded uncached images as they approach the viewport via `IntersectionObserver`, and updated the overflow
   notice to *"This app's preview limit has been reached. N picture(s) not shown."*

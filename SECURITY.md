@@ -23,7 +23,7 @@ reasonable window to ship a fix before publishing details.
 
 ## Supported versions
 
-The project is pre-1.0 (`0.3.x`). Fixes go to the latest release only, and the current Hermes tested
+The project is pre-1.0 (`0.4.x`). Fixes go to the latest release only, and the current Hermes tested
 version is named in `README.md`. An older Hermes may lack the plugin hooks or routes this app builds
 on; that is a compatibility problem, not a security one.
 

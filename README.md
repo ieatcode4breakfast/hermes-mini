@@ -88,7 +88,7 @@ because restarting the gateway ends its reply. Then open the address, sign in wi
 Hermes login, and use your browser's "Install app" / "Add to Home Screen".
 
 Installing by name uses the Hermes plugin catalog, which pins a reviewed release (currently
-v0.3.1). To get the newest commit on `main` before the catalog catches up, install from GitHub
+v0.4.0). To get the newest commit on `main` before the catalog catches up, install from GitHub
 instead:
 
 ```bash
@@ -211,8 +211,9 @@ there is no reply to show.
   counter pill beside the **To-do** header. Each active top-level row puts the **Track** / **Untrack** eye
   button and **×** delete button directly on the row (no extra menu): toggling tracking shows a neutral
   *"Tracked"* / *"Untracked"* toast, excludes untracked parents from the To-do header, corner button, and
-  folded Tools badge counters, and keeps a dimmed slashed-eye icon visible for untracked items; deleting with
-  **×** asks for confirmation first.
+  folded Tools badge counters, and keeps a dimmed slashed-eye icon visible for untracked items; deleting a
+  parent with sub-items asks for confirmation first and removes its sub-items together, while standalone
+  items and sub-items delete immediately.
 - **Bookmarks**: the agent replies you kept, in the tool directly above To-do in the Tools tray. A reply is bookmarked
   from its action row or its long-press menu; the panel lists them newest bookmark first, each with its chat, time and
   a short preview. Tapping one opens the chat at that reply, and the filled bookmark at the right removes it. Bookmarks
@@ -240,9 +241,12 @@ there is no reply to show.
   the top row, and places a transparent control bar underneath inside the card. Aligned at the bottom right sits
   the model picker showing the chat's model and reasoning level. Friendly names are used throughout — the
   button, sheet, and picker read "DeepSeek v4.1 Flash" instead of the raw model id.
-  The sheet lists providers Hermes recognizes as explicitly configured and their models (search, prices where Hermes has them), with a
-  five-bar reasoning level meter and fast mode where the model supports it; a pick switches the chat and becomes
-  the default for new chats. Model and provider errors appear as compact toasts with **Details** and stay until dismissed with **×**.
+  The sheet header shows the active provider name along with the model and reasoning level. It lists providers
+  Hermes recognizes as explicitly configured and their models (search, prices where Hermes has them), with a
+  five-bar reasoning level meter and fast mode where the model supports it; a pick switches the current chat
+  and updates the default for future new chats without changing other existing chats, and new chats show the
+  default reasoning level immediately before sending. Model, provider, dictation, and drawer errors appear as
+  compact toasts with **Details** and stay until dismissed with **×**.
   Before switching, the picker explains unusually high model prices, the cost of rereading a long chat, or the
   limits of Hermes 3 or 4 chat models when relevant. **Providers +** can add or update a provider’s
   API key when Hermes identifies it as an API-key provider, including replacement after connection. Other providers
