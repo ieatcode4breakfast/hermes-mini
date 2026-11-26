@@ -40,6 +40,10 @@ Screenshots use sample data.
 </p>
 
 <p>
+<a href="docs/media/demo-desktop.mp4"><img src="docs/media/demo-desktop.gif" alt="Desktop walkthrough: chats, scheduled jobs, inline photos, inbox, to-dos, bookmarks and Hermes's Computer" width="800"></a>
+</p>
+
+<p>
 <a href="docs/media/desktop-01-computer.png"><img src="docs/media/desktop-01-computer.png" alt="On a computer: the chats list, the chat and the agent's computer side by side" width="800"></a>
 <a href="docs/media/desktop-02-chat.png"><img src="docs/media/desktop-02-chat.png" alt="On a computer: the chats list docked beside the chat" width="263"></a>
 <a href="docs/media/desktop-03-todo.png"><img src="docs/media/desktop-03-todo.png" alt="On a computer: a chat with the to-do panel open" width="263"></a>
