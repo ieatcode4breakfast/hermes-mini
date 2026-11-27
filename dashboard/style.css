@@ -63,6 +63,7 @@
   --z-drawer-over-computer: 73; /* the chats drawer opened over the docked computer */
   --z-panel-over-computer: 74;  /* To-do, Inbox, Scheduled, Bookmarks and Search cards opened while the computer is docked */
   --z-header-over-computer: 75; /* ... with the photo and name still above them */
+  --z-bookmark-flight: 76;     /* the bookmark flying from a reply to the header */
 }
 /* No Android tap flash on tapped elements; keyboard focus rings only (not after a tap). */
 * { -webkit-tap-highlight-color: transparent; }
@@ -3016,7 +3017,7 @@ body:has(.toast-persistent.show) .toast.restart-toast { bottom: calc(env(safe-ar
   place-items: center;
   color: var(--accent, #7c6cf6);
   pointer-events: none;
-  z-index: 950;
+  z-index: var(--z-bookmark-flight);
   will-change: transform, opacity;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.32));
 }
