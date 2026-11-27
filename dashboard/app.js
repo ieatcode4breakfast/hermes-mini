@@ -3241,6 +3241,104 @@ async function toggleReplyUnread(row) {
 
 // Bookmark / Remove bookmark: one button that follows the reply's stored flag. The reply's durable id is the
 // bookmark, so it reads the same from every device; bookmarkBusy keeps a double press to one request.
+
+// Bookmark lift animation: lifts a filled bookmark icon from the reply's bookmark button up into
+// the top-right Bookmarks button (when Tools is expanded) or the Tools button (when collapsed),
+// briefly showing a filled bookmark icon on the target for ~1.1s before returning to normal.
+let bmFlashTimer = 0;
+let bmPopTimer = 0;
+const activeBmFlyers = new Set();
+function clearBookmarkFlash({ cancelFlyers = false } = {}) {
+  if (bmFlashTimer) { clearTimeout(bmFlashTimer); bmFlashTimer = 0; }
+  if (bmPopTimer) { clearTimeout(bmPopTimer); bmPopTimer = 0; }
+  if (els.bookmarkBtn) els.bookmarkBtn.classList.remove("bm-flash", "bm-pop");
+  const tb = document.getElementById("toolsBtn");
+  if (tb) tb.classList.remove("bm-flash", "bm-pop");
+  if (cancelFlyers) {
+    for (const cancel of [...activeBmFlyers]) cancel();
+  }
+}
+function animateBookmarkLift(row, onLand) {
+  const toolsOpen = document.body.classList.contains("tools-open");
+  const tb = document.getElementById("toolsBtn");
+  const target = toolsOpen ? els.bookmarkBtn : tb;
+  let notified = false;
+  const done = () => {
+    if (notified) return;
+    notified = true;
+    if (typeof onLand === "function") onLand();
+  };
+  if (!target) { done(); return; }
+  const flashTarget = () => {
+    clearBookmarkFlash();
+    void target.offsetWidth;
+    target.classList.add("bm-flash", "bm-pop");
+    bmPopTimer = setTimeout(() => {
+      target.classList.remove("bm-pop");
+      bmPopTimer = 0;
+    }, 320);
+    bmFlashTimer = setTimeout(() => {
+      target.classList.remove("bm-flash");
+      bmFlashTimer = 0;
+    }, 1150);
+    done();
+  };
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const srcBtn = row ? row.querySelector('[data-action="bookmark"]') : null;
+  const srcRect = srcBtn ? srcBtn.getBoundingClientRect() : null;
+  const rowRect = row ? row.getBoundingClientRect() : null;
+  const dstRect = target.getBoundingClientRect();
+  const hasSrc = srcRect && srcRect.width > 0 && srcRect.height > 0;
+  const hasDst = dstRect && dstRect.width > 0 && dstRect.height > 0;
+  if (reduced || !hasDst || (!hasSrc && !(rowRect && rowRect.width > 0))) {
+    flashTarget();
+    return;
+  }
+  const sx = hasSrc ? srcRect.left + srcRect.width / 2 : Math.min(window.innerWidth - 40, Math.max(40, rowRect.left + 80));
+  const sy = hasSrc ? srcRect.top + srcRect.height / 2 : Math.min(window.innerHeight - 80, Math.max(80, rowRect.bottom - 18));
+  const tx = dstRect.left + dstRect.width / 2;
+  const ty = dstRect.top + dstRect.height / 2;
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const liftY = -28;
+  const liftX = dx * 0.06;
+  const flyer = document.createElement("span");
+  flyer.className = "bm-fly";
+  flyer.setAttribute("aria-hidden", "true");
+  flyer.innerHTML = ICON_BOOKMARKED;
+  flyer.style.left = `${sx}px`;
+  flyer.style.top = `${sy}px`;
+  document.body.append(flyer);
+  const anim = flyer.animate([
+    { transform: "translate3d(0, 0, 0) scale(0.8)", opacity: 1, offset: 0 },
+    { transform: `translate3d(${liftX.toFixed(1)}px, ${liftY}px, 0) scale(1)`, opacity: 1, offset: 0.26 },
+    { transform: `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0) scale(1)`, opacity: 1, offset: 1 }
+  ], {
+    duration: 740,
+    easing: "cubic-bezier(0.32, 0.72, 0.22, 1)",
+    fill: "forwards"
+  });
+  let settled = false;
+  const cancelWithoutFlash = () => {
+    if (settled) return;
+    settled = true;
+    activeBmFlyers.delete(cancelWithoutFlash);
+    try { anim.cancel(); } catch {}
+    flyer.remove();
+    done();
+  };
+  const triggerCatch = () => {
+    if (settled) return;
+    settled = true;
+    activeBmFlyers.delete(cancelWithoutFlash);
+    flashTarget();
+    flyer.remove();
+  };
+  activeBmFlyers.add(cancelWithoutFlash);
+  anim.onfinish = triggerCatch;
+  anim.oncancel = cancelWithoutFlash;
+}
+
 const bookmarkBusy = new Set();
 async function toggleReplyBookmark(row) {
   const meta = row.hermesMiniMsg;
@@ -3257,7 +3355,7 @@ async function toggleReplyBookmark(row) {
       showToast("Bookmark removed");
     } else {
       await bookmarks.add(rowId);
-      showToast("Bookmarked");
+      animateBookmarkLift(row, () => showToast("Bookmarked"));
     }
     meta.bookmarked = !removing;
   } catch (error) {
@@ -7236,7 +7334,7 @@ try {
   /* unavailable storage: start folded */
 }
 setToolsOpen(toolsRemembered, { remember: false });
-toolsBtn.addEventListener("click", () => setToolsOpen(!document.body.classList.contains("tools-open")));
+toolsBtn.addEventListener("click", () => { clearBookmarkFlash({ cancelFlyers: true }); setToolsOpen(!document.body.classList.contains("tools-open")); });
 new MutationObserver(syncToolsCount).observe(todoCountEl, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
 
 // The Scheduled panel: Hermes's scheduled jobs, fetched on every open; pause, resume, delete and

@@ -497,6 +497,7 @@ input, textarea, select { font-family: inherit; }
 .msg-act svg, .code-copy svg { width: 16px; height: 16px; }
 /* A bookmarked reply's bookmark button stays accent-coloured, so the kept state reads at a glance. */
 .msg-act[data-action="bookmark"][data-state="bookmarked"] { color: var(--accent); }
+.msg-act[data-action="bookmark"][data-state="bookmarked"] svg, .msg-act[data-action="bookmark"][data-state="bookmarked"] svg path { fill: currentColor; }
 .msg-time { margin: 0 6px; font-size: 13px; line-height: 1; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* was @media (hover: hover): follows the last input (data-input, index.html) */
   /* Hidden icons keep their slots (opacity, not display), so the time does not move when they fade in. An invisible
@@ -2310,12 +2311,12 @@ body.computer-docked:not(.tools-open) #screenBtn {
 /* Tools looks pressed while its tray is out, the way Computer does while the computer is open. */
 body.tools-open #toolsBtn { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
 /* A solid hammer-and-screwdriver glyph in the icon colour; drawn at 24px so it reads as large as the 20px line icons. */
-#toolsBtn svg { width: 24px; height: 24px; transition: rotate 380ms var(--ease-out); }
-body.tools-open #toolsBtn svg { rotate: -90deg; }
+#toolsBtn .tools-icon { width: 24px; height: 24px; transition: rotate 380ms var(--ease-out), transform 200ms var(--ease-spring), opacity 180ms ease; }
+body.tools-open #toolsBtn .tools-icon { rotate: -90deg; }
 @media (prefers-reduced-motion: reduce) {
   .fab.fab-tray, body:not(.tools-open) .fab.fab-tray { transition: opacity 120ms ease, visibility 0s linear 120ms; translate: none; scale: none; }
   body.tools-open .fab.fab-tray { transition: opacity 120ms ease; }
-  #toolsBtn svg, body.tools-open #toolsBtn svg { transition: none; rotate: none; }
+  #toolsBtn .tools-icon, body.tools-open #toolsBtn .tools-icon, #toolsBtn .tools-bm-icon { transition: none; rotate: none; }
 }
 .btn:active, .rename-cancel:active, .confirm-cancel:active,
 .rename-submit:active:not(:disabled), .confirm-submit:active:not(:disabled) { transform: scale(0.97); }
@@ -2951,4 +2952,77 @@ body:has(.toast-persistent.show) .toast.restart-toast { bottom: calc(env(safe-ar
 }
 @media (prefers-reduced-motion: reduce) {
   .activity-chevron { transition: none; }
+}
+
+/* ---------- bookmark lift animation ---------- */
+#toolsBtn .tools-bm-icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+  transform: scale(0.55);
+  pointer-events: none;
+  transition: transform 200ms var(--ease-spring), opacity 220ms ease;
+}
+#toolsBtn.bm-flash .tools-icon {
+  transition: none;
+  opacity: 0;
+  transform: scale(0.55);
+}
+#toolsBtn.bm-flash .tools-bm-icon {
+  transition: none;
+  opacity: 1;
+  transform: scale(1);
+  color: var(--accent);
+}
+#toolsBtn.bm-flash .tools-bm-icon path {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.fab.fab-bookmark svg,
+.fab.fab-bookmark svg path {
+  transition: fill 300ms ease, stroke 300ms ease, color 300ms ease;
+}
+.fab.fab-bookmark.bm-flash svg,
+.fab.fab-bookmark.bm-flash svg path {
+  transition: none;
+}
+.fab.fab-bookmark.bm-flash svg {
+  color: var(--accent);
+}
+.fab.fab-bookmark.bm-flash svg path {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.fab.bm-pop {
+  animation: bm-catch-pop 280ms var(--ease-spring);
+}
+@keyframes bm-catch-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+.bm-fly {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  margin-top: -10px;
+  display: grid;
+  place-items: center;
+  color: var(--accent, #7c6cf6);
+  pointer-events: none;
+  z-index: 950;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.32));
+}
+.bm-fly svg,
+.bm-fly svg path {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
 }
